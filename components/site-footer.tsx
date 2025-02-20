@@ -11,7 +11,7 @@ export function SiteFooter() {
             rel="noreferrer"
             className="text-xs text-center font-medium"
           >
-            2024 Onyx. 
+            2024 Neuvia. 
           </a>
         </p>
     

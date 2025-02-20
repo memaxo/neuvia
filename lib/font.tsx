@@ -1,11 +1,13 @@
-import { JetBrains_Mono as FontMono, Inter as FontSans } from "next/font/google"
+import { Roboto, Roboto_Mono } from "next/font/google"
 
-export const fontSans = FontSans({
+export const fontSans = Roboto({
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
   variable: "--font-sans",
 })
 
-export const fontMono = FontMono({
+export const fontMono = Roboto_Mono({
   subsets: ["latin"],
+  weight: ["400", "500", "700"],
   variable: "--font-mono",
 })

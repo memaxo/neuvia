@@ -17,14 +17,14 @@ export default function OnboardingPage() {
     <>
       <div className="hidden">
         <Image
-          src="https://quantumone.b-cdn.net/onyx/IMG_4777.jpeg"
+          src="https://quantumone.b-cdn.net/neuvia/IMG_4777-comp.jpg"
           width={1280}
           height={843}
           alt="Onboarding"
           className="block dark:hidden"
         />
         <Image
-          src="https://quantumone.b-cdn.net/onyx/IMG_5036.jpeg"
+          src="https://quantumone.b-cdn.net/neuvia/IMG_5036-comp.jpg"
           width={1280}
           height={843}
           alt="Onboarding-two"
@@ -44,12 +44,12 @@ export default function OnboardingPage() {
         <div className="relative hidden h-full flex-col bg-muted p-10 text-white md:flex dark:border-r">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-700 via-gray-900 to-black">
           <Image
-          src="https://quantumone.b-cdn.net/onyx/IMG_5036.jpeg"
+          src="https://quantumone.b-cdn.net/neuvia/IMG_5036-comp.jpg"
           width={2048}
           height={2048}
           alt="Onboarding-two"
           style={{objectFit: "contain"}}
-          
+          priority
         />
           </div>
           <div className="relative z-20 flex items-center text-lg font-medium">

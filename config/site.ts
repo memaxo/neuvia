@@ -1,9 +1,9 @@
 export type SiteConfig = typeof siteConfig
 
 export const siteConfig = {
-  name: "Onyx",
+  name: "Neuvia",
   description:
-    "Onyx SaaS PWA Template with validated CRUD ops, user authentication + RBAC, maximum header security, Rust API runtime, TanStack, and more.",
+    "Neuvia SaaS PWA Template with validated CRUD ops, user authentication + RBAC, maximum header security, Rust API runtime, TanStack, and more.",
   mainNav: [
     {
       title: "Home",
@@ -41,8 +41,8 @@ export const siteConfig = {
   ],
   links: {
     twitter: "https://twitter.com/r_mourey_jr",
-    github: "https://github.com/rmourey26/onyx",
-    login: "https://onyx-rho-pink.vercel.app/auth",
-    signup: "https://onyx-rho-pink.vercel.app/onboarding",
+    github: "https://github.com/rmourey26/neuvia",
+    login: "https://neuvia.vercel.app/auth",
+    signup: "https://neuvia.vercel.app/onboarding",
   },
 }

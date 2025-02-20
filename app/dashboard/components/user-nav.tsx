@@ -21,17 +21,17 @@ import {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-8 w-8 rounded-full">
             <Avatar className="h-8 w-8">
-              <AvatarImage src="/avatar.png" alt="@onyx" />
-              <AvatarFallback>OX</AvatarFallback>
+              <AvatarImage src="/neuvia-comp.jpg" alt="@neuvia" />
+              <AvatarFallback>NV</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none">onyx</p>
+              <p className="text-sm font-medium leading-none">neuvia</p>
               <p className="text-xs leading-none text-muted-foreground">
-                e@onyx.com
+                e@neuvia.com
               </p>
             </div>
           </DropdownMenuLabel>
