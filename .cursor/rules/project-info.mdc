@@ -1,0 +1,97 @@
+---
+description: Description of neuvia app structure
+globs: 
+---
+1. **Core Technology Stack**:
+- NextJS 14+ with App Router in TypeScript
+- Supabase for backend services
+- TanStack React Query for data management
+- Shadcn-UI and Radix-UI for UI components
+- Tailwind CSS for styling
+- Rust for serverless function runtime
+- Next-PWA for Progressive Web App capabilities
+
+2. **Authentication & Authorization**:
+- Full Supabase SSR Auth integration
+- Email/password signup and login
+- OAuth support
+- PKCE (Proof Key for Code Exchange) implementation
+- Role-Based Access Control (RBAC)
+- Middleware for auth protection
+- Server actions for auth operations
+
+3. **Database & Data Management**:
+- Postgres DB (via Supabase)
+- CRUD operations configured
+- User account and profile management
+- Admin dashboard with data visualization
+- Members administration
+- Todo lists functionality
+- Zod for data validation
+
+4. **UI/UX Features**:
+- Modern, responsive design
+- Theme support (light/dark mode)
+- PWA capabilities
+- Dashboard with analytics
+- Contact form with toast notifications
+- OpenAI playground UI
+- Podcast UI component
+- MDX support for content pages
+- Cookie consent management (Termly integration)
+
+5. **Security Features**:
+- Secure headers implementation
+- RBAC (Role-Based Access Control)
+- Environment variable management
+- API key security practices
+- CSP (Content Security Policy) headers
+
+6. **Project Structure**:
+```
+/app
+  /auth - Authentication related components
+  /dashboard - Admin dashboard
+  /blog - MDX blog functionality
+  /onboarding - User onboarding flow
+  /privacy - Privacy policy page
+  /terms - Terms of service page
+/components - Reusable UI components
+/config - Site configuration
+/public - Static assets
+/lib - Utility functions and types
+```
+
+7. **Developer Experience**:
+- TypeScript support
+- ESLint configuration
+- Prettier for code formatting
+- Development tools integration
+- Hot reloading
+- React Query DevTools
+
+8. **Deployment & Build**:
+- Vercel deployment ready
+- PWA manifest configuration
+- Optimized build process
+- Environment variable management
+- SEO optimization with metadata
+
+9. **Additional Features**:
+- Internationalization support
+- Analytics integration (Vercel)
+- Speed Insights
+- Sitemap generation
+- Image optimization
+- MDX support for content pages
+- Custom error handling
+
+10. **Notable Dependencies**:
+- `@ducanh2912/next-pwa`
+- `@supabase/auth-helpers-nextjs`
+- `@tanstack/react-query`
+- `@vercel/analytics`
+- `zod`
+- `react-hook-form`
+- Various UI component libraries
+
