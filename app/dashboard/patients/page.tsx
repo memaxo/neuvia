@@ -11,17 +11,17 @@ export default function PatientsPage() {
       {/* Search and filters */}
       <div className="flex items-center justify-between">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-teal-300" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
             placeholder="Search patients..."
-            className="pl-10 pr-4 py-2 rounded-md bg-teal-800/50 text-teal-100 placeholder:text-teal-300 border border-teal-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            className="pl-10 pr-4 py-2 rounded-md bg-teal-800/50 text-slate-200 placeholder:text-slate-400 border border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
         </div>
         <Link
           href="/dashboard/patients/new"
           className={buttonVariants({
-            className: "bg-cyan-600 hover:bg-cyan-500 text-white"
+            className: "bg-orange-600 hover:bg-orange-500 text-white"
           })}
         >
           <PlusCircle className="h-5 w-5 mr-2" />
@@ -31,8 +31,8 @@ export default function PatientsPage() {
 
       {/* Placeholder content */}
       <div className="bg-teal-800/50 rounded-lg p-8 text-center">
-        <h3 className="text-xl font-bold text-teal-100 mb-2">Patient Management Coming Soon</h3>
-        <p className="text-teal-300">This section will include patient lists, records, and management tools.</p>
+        <h3 className="text-xl font-bold text-slate-100 mb-2">Patient Management Coming Soon</h3>
+        <p className="text-slate-300">This section will include patient lists, records, and management tools.</p>
       </div>
     </div>
   )

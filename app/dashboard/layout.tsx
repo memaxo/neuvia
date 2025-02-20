@@ -2,6 +2,7 @@ import React from "react"
 import { readUserSession } from "@/utils/actions"
 import { redirect } from "next/navigation"
 import { DashboardSidebar } from "./components/dashboard-sidebar"
+import DashboardBackground from "./components/dashboard-background"
 
 export default async function DashboardLayout({
 	children,
@@ -15,11 +16,16 @@ export default async function DashboardLayout({
 	}
 
 	return (
-		<div className="flex h-screen bg-navy-900">
-			<DashboardSidebar />
-			<main className="flex-1 overflow-y-auto p-8">
-				{children}
-			</main>
+		<div className="flex h-screen bg-black">
+			<div className="absolute inset-0 z-0">
+				<DashboardBackground />
+			</div>
+			<div className="relative z-10 flex w-full">
+				<DashboardSidebar />
+				<main className="flex-1 overflow-y-auto p-8">
+					{children}
+				</main>
+			</div>
 		</div>
 	)
 }

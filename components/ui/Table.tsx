@@ -15,7 +15,7 @@ export default function Table({
 						return (
 							<h1
 								key={index}
-								className="font-medium text-sm dark:text-gray-500"
+								className="font-medium text-sm dark:text-slate-500"
 							>
 								{header}
 							</h1>

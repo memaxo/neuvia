@@ -22,7 +22,7 @@ export default function DashboardPage() {
       <Link
         href="/dashboard/patients/new"
         className={buttonVariants({
-          className: "mt-8 flex items-center space-x-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition-colors duration-300"
+          className: "mt-8 flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 px-4 rounded transition-colors duration-300"
         })}
       >
         <PlusCircle className="h-5 w-5" />

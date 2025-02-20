@@ -52,11 +52,11 @@ export default function SettingsPage() {
             >
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2 rounded-lg bg-teal-700/50">
-                  <Icon className="h-6 w-6 text-cyan-400" />
+                  <Icon className="h-6 w-6 text-teal-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-teal-100">{section.title}</h3>
+                <h3 className="text-lg font-semibold text-slate-100">{section.title}</h3>
               </div>
-              <p className="text-teal-300 pl-11">
+              <p className="text-slate-300 pl-11">
                 {section.description}
               </p>
             </Link>
@@ -65,7 +65,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Version info */}
-      <div className="text-sm text-teal-400 text-center pt-4">
+      <div className="text-sm text-slate-400 text-center pt-4">
         Version 1.0.0 • Last updated: {new Date().toLocaleDateString()}
       </div>
     </div>

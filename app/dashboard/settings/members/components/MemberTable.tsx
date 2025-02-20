@@ -16,11 +16,11 @@ export default function MemberTable() {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-teal-700">
-            <th className="text-left py-3 px-4 text-teal-300 font-medium">Name</th>
-            <th className="text-left py-3 px-4 text-teal-300 font-medium">Role</th>
-            <th className="text-left py-3 px-4 text-teal-300 font-medium">Joined</th>
-            <th className="text-left py-3 px-4 text-teal-300 font-medium">Status</th>
-            <th className="text-right py-3 px-4 text-teal-300 font-medium">Actions</th>
+            <th className="text-left py-3 px-4 text-slate-300 font-medium">Name</th>
+            <th className="text-left py-3 px-4 text-slate-300 font-medium">Role</th>
+            <th className="text-left py-3 px-4 text-slate-300 font-medium">Joined</th>
+            <th className="text-left py-3 px-4 text-slate-300 font-medium">Status</th>
+            <th className="text-right py-3 px-4 text-slate-300 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -29,21 +29,21 @@ export default function MemberTable() {
               <td className="py-3 px-4">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-teal-700/50 flex items-center justify-center">
-                    <User className="w-4 h-4 text-teal-300" />
+                    <User className="w-4 h-4 text-slate-300" />
                   </div>
-                  <span className="text-teal-100">{member.name}</span>
+                  <span className="text-slate-200">{member.name}</span>
                 </div>
               </td>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
-                  <Shield className="w-4 h-4 text-cyan-400" />
-                  <span className="text-teal-100">{member.role}</span>
+                  <Shield className="w-4 h-4 text-teal-400" />
+                  <span className="text-slate-200">{member.role}</span>
                 </div>
               </td>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-teal-300" />
-                  <span className="text-teal-100">{member.joined}</span>
+                  <Calendar className="w-4 h-4 text-slate-300" />
+                  <span className="text-slate-200">{member.joined}</span>
                 </div>
               </td>
               <td className="py-3 px-4">
@@ -51,7 +51,7 @@ export default function MemberTable() {
                   <CircleIcon className={`w-3 h-3 ${
                     member.status === "Active" ? "text-green-400" : "text-amber-400"
                   }`} />
-                  <span className="text-teal-100">{member.status}</span>
+                  <span className="text-slate-200">{member.status}</span>
                 </div>
               </td>
               <td className="py-3 px-4">
@@ -59,7 +59,7 @@ export default function MemberTable() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-teal-300 hover:text-teal-100 hover:bg-teal-700"
+                    className="text-slate-300 hover:text-slate-100 hover:bg-teal-700"
                   >
                     <Pencil1Icon className="w-4 h-4" />
                   </Button>

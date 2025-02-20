@@ -7,33 +7,58 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          operationName?: string
-          query?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          changes: Json | null
+          created_at: string | null
+          department_id: string | null
+          entity_id: string
+          entity_type: string
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          changes?: Json | null
+          created_at?: string | null
+          department_id?: string | null
+          entity_id: string
+          entity_type: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          changes?: Json | null
+          created_at?: string | null
+          department_id?: string | null
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       countries: {
         Row: {
           continent: Database["public"]["Enums"]["continents"] | null
@@ -61,32 +86,100 @@ export type Database = {
         }
         Relationships: []
       }
-      gpt_one: {
+      departments: {
         Row: {
           created_at: string | null
-          email: string | null
+          description: string | null
           id: string
-          messages: string | null
-          user_input: string | null
-          vector_one: string | null
+          metadata: Json | null
+          name: string
+          updated_at: string | null
         }
         Insert: {
           created_at?: string | null
-          email?: string | null
-          id: string
-          messages?: string | null
-          user_input?: string | null
-          vector_one?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          updated_at?: string | null
         }
         Update: {
           created_at?: string | null
-          email?: string | null
+          description?: string | null
           id?: string
-          messages?: string | null
-          user_input?: string | null
-          vector_one?: string | null
+          metadata?: Json | null
+          name?: string
+          updated_at?: string | null
         }
         Relationships: []
+      }
+      document_chunks: {
+        Row: {
+          chunk_embedding: string | null
+          chunk_index: number
+          chunk_type: string | null
+          content: string
+          created_at: string | null
+          document_id: string | null
+          heading: string | null
+          id: string
+          importance_score: number | null
+          metadata: Json | null
+          page_number: number | null
+          position_end: number | null
+          position_metadata: Json | null
+          position_start: number | null
+          related_chunks: Json | null
+          token_count: number
+          updated_at: string | null
+        }
+        Insert: {
+          chunk_embedding?: string | null
+          chunk_index: number
+          chunk_type?: string | null
+          content: string
+          created_at?: string | null
+          document_id?: string | null
+          heading?: string | null
+          id?: string
+          importance_score?: number | null
+          metadata?: Json | null
+          page_number?: number | null
+          position_end?: number | null
+          position_metadata?: Json | null
+          position_start?: number | null
+          related_chunks?: Json | null
+          token_count: number
+          updated_at?: string | null
+        }
+        Update: {
+          chunk_embedding?: string | null
+          chunk_index?: number
+          chunk_type?: string | null
+          content?: string
+          created_at?: string | null
+          document_id?: string | null
+          heading?: string | null
+          id?: string
+          importance_score?: number | null
+          metadata?: Json | null
+          page_number?: number | null
+          position_end?: number | null
+          position_metadata?: Json | null
+          position_start?: number | null
+          related_chunks?: Json | null
+          token_count?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "patient_documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inqueries: {
         Row: {
@@ -115,213 +208,341 @@ export type Database = {
         }
         Relationships: []
       }
-      members_table: {
+      patient_documents: {
         Row: {
+          category: Database["public"]["Enums"]["document_category"]
+          checksum: string
+          chunk_embeddings: Json | null
+          content_summary: string | null
+          content_text: string | null
           created_at: string | null
-          id: number
-          member_id: string
-          name: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: never
-          member_id: string
-          name?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: never
-          member_id?: string
-          name?: string | null
-        }
-        Relationships: []
-      }
-      moralis_users: {
-        Row: {
-          created_at: string | null
+          department: string | null
+          document_date: string
+          document_embedding: string | null
+          document_type: Json
+          facility_name: string | null
+          file_path: string
+          file_size: number
+          file_type: string
           id: string
+          is_processed: boolean | null
+          key_findings: Json | null
+          last_modified_by: string | null
           metadata: Json | null
-          moralis_provider: string | null
+          patient_id: string | null
+          processing_error: string | null
+          processing_status: string
+          provider_name: string | null
+          title: string
+          updated_at: string | null
+          uploaded_by: string | null
         }
         Insert: {
+          category: Database["public"]["Enums"]["document_category"]
+          checksum: string
+          chunk_embeddings?: Json | null
+          content_summary?: string | null
+          content_text?: string | null
           created_at?: string | null
-          id: string
-          metadata?: Json | null
-          moralis_provider?: string | null
-        }
-        Update: {
-          created_at?: string | null
+          department?: string | null
+          document_date: string
+          document_embedding?: string | null
+          document_type?: Json
+          facility_name?: string | null
+          file_path: string
+          file_size: number
+          file_type: string
           id?: string
+          is_processed?: boolean | null
+          key_findings?: Json | null
+          last_modified_by?: string | null
           metadata?: Json | null
-          moralis_provider?: string | null
-        }
-        Relationships: []
-      }
-      nods_page: {
-        Row: {
-          checksum: string | null
-          id: number
-          meta: Json | null
-          parent_page_id: number | null
-          path: string
-          source: string | null
-          type: string | null
-        }
-        Insert: {
-          checksum?: string | null
-          id?: never
-          meta?: Json | null
-          parent_page_id?: number | null
-          path: string
-          source?: string | null
-          type?: string | null
+          patient_id?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          provider_name?: string | null
+          title: string
+          updated_at?: string | null
+          uploaded_by?: string | null
         }
         Update: {
-          checksum?: string | null
-          id?: never
-          meta?: Json | null
-          parent_page_id?: number | null
-          path?: string
-          source?: string | null
-          type?: string | null
+          category?: Database["public"]["Enums"]["document_category"]
+          checksum?: string
+          chunk_embeddings?: Json | null
+          content_summary?: string | null
+          content_text?: string | null
+          created_at?: string | null
+          department?: string | null
+          document_date?: string
+          document_embedding?: string | null
+          document_type?: Json
+          facility_name?: string | null
+          file_path?: string
+          file_size?: number
+          file_type?: string
+          id?: string
+          is_processed?: boolean | null
+          key_findings?: Json | null
+          last_modified_by?: string | null
+          metadata?: Json | null
+          patient_id?: string | null
+          processing_error?: string | null
+          processing_status?: string
+          provider_name?: string | null
+          title?: string
+          updated_at?: string | null
+          uploaded_by?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "nods_page_parent_page_id_fkey"
-            columns: ["parent_page_id"]
+            foreignKeyName: "patient_documents_patient_id_fkey"
+            columns: ["patient_id"]
             isOneToOne: false
-            referencedRelation: "nods_page"
+            referencedRelation: "patients"
             referencedColumns: ["id"]
           },
         ]
       }
-      nods_page_section: {
+      patients: {
         Row: {
-          content: string | null
-          embedding: string | null
-          heading: string | null
-          id: number
-          page_id: number
-          slug: string | null
-          token_count: number | null
-        }
-        Insert: {
-          content?: string | null
-          embedding?: string | null
-          heading?: string | null
-          id?: never
-          page_id: number
-          slug?: string | null
-          token_count?: number | null
-        }
-        Update: {
-          content?: string | null
-          embedding?: string | null
-          heading?: string | null
-          id?: never
-          page_id?: number
-          slug?: string | null
-          token_count?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "nods_page_section_page_id_fkey"
-            columns: ["page_id"]
-            isOneToOne: false
-            referencedRelation: "nods_page"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      permission_table: {
-        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          allergies: Json | null
+          blood_type: string | null
+          city: string | null
+          clinical_data: Json | null
+          conditions: Json | null
+          country: string | null
           created_at: string | null
-          id: number
-          member_id: string
-          role: string
-          status: string
+          created_by: string | null
+          current_medications: Json | null
+          custom_fields: Json | null
+          date_of_birth: string
+          department_id: string | null
+          email: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_relationship: string | null
+          first_name: string
+          gender: string | null
+          id: string
+          immunizations: Json | null
+          insurance_id: string | null
+          insurance_provider: string | null
+          last_modified_by: string | null
+          last_name: string
+          mrn: string
+          patient_embedding: string | null
+          phone: string | null
+          postal_code: string | null
+          preferred_language: string | null
+          primary_care_physician: string | null
+          social_determinants: Json | null
+          state: string | null
+          status: Database["public"]["Enums"]["patient_status"]
+          updated_at: string | null
+          vital_signs: Json | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          allergies?: Json | null
+          blood_type?: string | null
+          city?: string | null
+          clinical_data?: Json | null
+          conditions?: Json | null
+          country?: string | null
           created_at?: string | null
-          id?: never
-          member_id: string
-          role: string
-          status: string
+          created_by?: string | null
+          current_medications?: Json | null
+          custom_fields?: Json | null
+          date_of_birth: string
+          department_id?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          first_name: string
+          gender?: string | null
+          id?: string
+          immunizations?: Json | null
+          insurance_id?: string | null
+          insurance_provider?: string | null
+          last_modified_by?: string | null
+          last_name: string
+          mrn: string
+          patient_embedding?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          preferred_language?: string | null
+          primary_care_physician?: string | null
+          social_determinants?: Json | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["patient_status"]
+          updated_at?: string | null
+          vital_signs?: Json | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          allergies?: Json | null
+          blood_type?: string | null
+          city?: string | null
+          clinical_data?: Json | null
+          conditions?: Json | null
+          country?: string | null
           created_at?: string | null
-          id?: never
-          member_id?: string
-          role?: string
-          status?: string
+          created_by?: string | null
+          current_medications?: Json | null
+          custom_fields?: Json | null
+          date_of_birth?: string
+          department_id?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          first_name?: string
+          gender?: string | null
+          id?: string
+          immunizations?: Json | null
+          insurance_id?: string | null
+          insurance_provider?: string | null
+          last_modified_by?: string | null
+          last_name?: string
+          mrn?: string
+          patient_embedding?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          preferred_language?: string | null
+          primary_care_physician?: string | null
+          social_determinants?: Json | null
+          state?: string | null
+          status?: Database["public"]["Enums"]["patient_status"]
+          updated_at?: string | null
+          vital_signs?: Json | null
         }
         Relationships: []
       }
       profiles: {
         Row: {
           avatar_url: string | null
+          created_at: string | null
           email: string | null
           full_name: string | null
           id: string
+          is_active: boolean | null
+          medical_role: Database["public"]["Enums"]["medical_role"]
+          metadata: Json | null
           updated_at: string | null
           username: string | null
           website: string | null
         }
         Insert: {
           avatar_url?: string | null
+          created_at?: string | null
           email?: string | null
           full_name?: string | null
           id: string
+          is_active?: boolean | null
+          medical_role?: Database["public"]["Enums"]["medical_role"]
+          metadata?: Json | null
           updated_at?: string | null
           username?: string | null
           website?: string | null
         }
         Update: {
           avatar_url?: string | null
+          created_at?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
+          is_active?: boolean | null
+          medical_role?: Database["public"]["Enums"]["medical_role"]
+          metadata?: Json | null
           updated_at?: string | null
           username?: string | null
           website?: string | null
         }
         Relationships: []
       }
-      todos: {
+      resource_permissions: {
         Row: {
-          created_at: string
-          created_by: string | null
-          id: number
-          is_complete: boolean | null
-          task: string | null
-          title: string | null
-          user_id: string
+          access_level: Database["public"]["Enums"]["access_level"]
+          conditions: Json | null
+          created_at: string | null
+          id: string
+          medical_role: Database["public"]["Enums"]["medical_role"]
+          metadata: Json | null
+          resource_type: string
+          updated_at: string | null
         }
         Insert: {
-          created_at: string
-          created_by?: string | null
-          id?: never
-          is_complete?: boolean | null
-          task?: string | null
-          title?: string | null
-          user_id: string
+          access_level?: Database["public"]["Enums"]["access_level"]
+          conditions?: Json | null
+          created_at?: string | null
+          id?: string
+          medical_role: Database["public"]["Enums"]["medical_role"]
+          metadata?: Json | null
+          resource_type: string
+          updated_at?: string | null
         }
         Update: {
-          created_at?: string
-          created_by?: string | null
-          id?: never
-          is_complete?: boolean | null
-          task?: string | null
-          title?: string | null
-          user_id?: string
+          access_level?: Database["public"]["Enums"]["access_level"]
+          conditions?: Json | null
+          created_at?: string | null
+          id?: string
+          medical_role?: Database["public"]["Enums"]["medical_role"]
+          metadata?: Json | null
+          resource_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_departments: {
+        Row: {
+          access_level: Database["public"]["Enums"]["access_level"]
+          created_at: string | null
+          department_id: string | null
+          id: string
+          is_primary: boolean | null
+          metadata: Json | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          access_level?: Database["public"]["Enums"]["access_level"]
+          created_at?: string | null
+          department_id?: string | null
+          id?: string
+          is_primary?: boolean | null
+          metadata?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          access_level?: Database["public"]["Enums"]["access_level"]
+          created_at?: string | null
+          department_id?: string | null
+          id?: string
+          is_primary?: boolean | null
+          metadata?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "todos_created_by_fkey"
-            columns: ["created_by"]
+            foreignKeyName: "user_departments_department_id_fkey"
+            columns: ["department_id"]
             isOneToOne: false
-            referencedRelation: "members_table"
-            referencedColumns: ["member_id"]
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_departments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -343,16 +564,49 @@ export type Database = {
             }
             Returns: unknown
           }
-      get_page_parents: {
+      check_document_category_access: {
         Args: {
-          page_id: number
+          category: Database["public"]["Enums"]["document_category"]
+          required_level: Database["public"]["Enums"]["access_level"]
         }
-        Returns: {
-          id: number
-          parent_page_id: number
-          path: string
-          meta: Json
-        }[]
+        Returns: boolean
+      }
+      check_resource_access: {
+        Args: {
+          resource_type: string
+          required_level: Database["public"]["Enums"]["access_level"]
+        }
+        Returns: boolean
+      }
+      gtrgm_compress: {
+        Args: {
+          "": unknown
+        }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: {
+          "": unknown
+        }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: {
+          "": unknown
+        }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: {
+          "": unknown
+        }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: {
+          "": unknown
+        }
+        Returns: unknown
       }
       halfvec_avg: {
         Args: {
@@ -452,21 +706,35 @@ export type Database = {
             }
             Returns: unknown
           }
-      match_page_sections: {
+      match_patient_documents: {
         Args: {
           embedding: string
           match_threshold: number
           match_count: number
-          min_content_length: number
+          patient_id?: string
         }
         Returns: {
-          id: number
-          page_id: number
-          slug: string
-          heading: string
+          id: string
+          document_id: string
           content: string
           similarity: number
         }[]
+      }
+      set_limit: {
+        Args: {
+          "": number
+        }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: {
+          "": string
+        }
+        Returns: string[]
       }
       sparsevec_out: {
         Args: {
@@ -485,6 +753,18 @@ export type Database = {
           "": unknown[]
         }
         Returns: number
+      }
+      validate_document_type: {
+        Args: {
+          doc_type: Json
+        }
+        Returns: boolean
+      }
+      validate_jsonb_fields: {
+        Args: {
+          fields: Json[]
+        }
+        Returns: boolean
       }
       vector_avg: {
         Args: {
@@ -531,6 +811,7 @@ export type Database = {
       }
     }
     Enums: {
+      access_level: "none" | "read" | "write" | "admin"
       continents:
         | "Africa"
         | "Antarctica"
@@ -539,6 +820,14 @@ export type Database = {
         | "Oceania"
         | "North America"
         | "South America"
+      document_category:
+        | "clinical"
+        | "lab"
+        | "imaging"
+        | "prescription"
+        | "administrative"
+      medical_role: "admin" | "doctor" | "nurse" | "staff" | "researcher"
+      patient_status: "active" | "inactive" | "archived" | "deceased"
     }
     CompositeTypes: {
       [_ in never]: never
