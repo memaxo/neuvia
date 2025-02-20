@@ -7,10 +7,6 @@ interface DocsConfig {
 
 export const docsConfig: DocsConfig = {
   mainNav: [
-    {
-      title: "Home",
-      href: "/",
-    },
     { 
       title: "Account",
       href: "/account",
@@ -23,7 +19,6 @@ export const docsConfig: DocsConfig = {
       title: "OpenAI",
       href: "/playground",
     },
-
     { 
       title: "Podcasts",
       href: "/music",
@@ -34,11 +29,7 @@ export const docsConfig: DocsConfig = {
     },
     { 
       title: "RBAC",
-      href: "/dashboard/members",
-    },
-    {
-      title: "Contact",
-      href: "/contact",
+      href: "/dashboard/settings/members",
     },
   ],
   sidebarNav: [

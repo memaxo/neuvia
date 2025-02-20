@@ -1,27 +1,25 @@
-import React, { ReactNode } from "react";
-import SideNav from "./components/SideNav";
-import ToggleSidebar from "./components/ToggleSidebar";
-import MobileSideNav from "./components/MobileSideNav";
-import { readUserSession } from "@/utils/actions";
-import { redirect } from "next/navigation";
+import React from "react"
+import { readUserSession } from "@/utils/actions"
+import { redirect } from "next/navigation"
+import { DashboardSidebar } from "./components/dashboard-sidebar"
 
-export default async function Layout({ children }: { children: ReactNode }) {
-	const { data: userSession } = await readUserSession();
+export default async function DashboardLayout({
+	children,
+}: {
+	children: React.ReactNode
+}) {
+	const { data: userSession } = await readUserSession()
 
 	if (!userSession.session) {
-		return redirect("/auth");
+		return redirect("/auth")
 	}
-	return (
-		<div className="w-full flex ">
-			<div className="h-screen flex flex-col">
-				<SideNav />
-				<MobileSideNav />
-			</div>
 
-			<div className="w-full sm:flex-1 p-5 sm:p-10 space-y-5 bg-gray-100 dark:bg-inherit">
-				<ToggleSidebar />
+	return (
+		<div className="flex h-screen bg-navy-900">
+			<DashboardSidebar />
+			<main className="flex-1 overflow-y-auto p-8">
 				{children}
-			</div>
+			</main>
 		</div>
-	);
+	)
 }
