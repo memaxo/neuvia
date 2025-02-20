@@ -13,7 +13,7 @@
     --popover: 0 0% 0%;
     --popover-foreground: 0 0% 100%;
  
-    --primary: 180 100% 50%;
+    --primary: 230 98% 65%;
     --primary-foreground: 0 0% 0%;
  
     --secondary: 300 100% 50%;
@@ -28,16 +28,16 @@
     --destructive: 0 100% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 180 100% 50%;
-    --input: 180 100% 50%;
-    --ring: 180 100% 50%;
+    --border: 230 98% 65%;
+    --input: 230 98% 65%;
+    --ring: 230 98% 65%;
  
     --radius: 0.5rem;
  
-    --chart-1: 180 73% 41%;
+    --chart-1: 230 98% 65%;
     --chart-2: 32 100% 50%;
     --chart-3: 215 25% 27%;
-    --chart-4: 180 50% 60%;
+    --chart-4: 230 98% 65%;
     --chart-5: 32 80% 60%;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -59,7 +59,7 @@
     --popover: 0 0% 0%;
     --popover-foreground: 0 0% 100%;
  
-    --primary: 180 100% 50%;
+    --primary: 230 98% 65%;
     --primary-foreground: 0 0% 0%;
  
     --secondary: 300 100% 50%;
@@ -74,14 +74,14 @@
     --destructive: 0 100% 50%;
     --destructive-foreground: 0 0% 100%;
  
-    --border: 180 100% 50%;
-    --input: 180 100% 50%;
-    --ring: 180 100% 50%;
+    --border: 230 98% 65%;
+    --input: 230 98% 65%;
+    --ring: 230 98% 65%;
 
-    --chart-1: 180 73% 41%;
+    --chart-1: 230 98% 65%;
     --chart-2: 32 100% 50%;
     --chart-3: 215 25% 27%;
-    --chart-4: 180 50% 60%;
+    --chart-4: 230 98% 65%;
     --chart-5: 32 80% 60%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -106,7 +106,7 @@
 
 @layer utilities {
   .bg-gradient-dark {
-    background: linear-gradient(to bottom right, rgb(1, 53, 53), rgb(13, 91, 91), rgb(10, 25, 47));
+    background: linear-gradient(to bottom right, rgb(30, 41, 99), rgb(43, 59, 140), rgb(10, 25, 47));
   }
   
   .animate-fade-in {
@@ -131,24 +131,168 @@
 
   /* Wave gradient layers */
   .layer-1 {
-    background: linear-gradient(270deg, #003D33, #5B2FB8, #00E5FF);
+    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
     background-size: 200% 200%;
     animation: waveMotion 30s ease-in-out infinite;
     opacity: 0.4;
   }
 
   .layer-2 {
-    background: linear-gradient(270deg, #003D33, #5B2FB8, #00E5FF);
+    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
     background-size: 200% 200%;
     animation: waveMotion 40s linear infinite reverse;
     opacity: 0.3;
   }
 
   .layer-3 {
-    background: linear-gradient(270deg, #003D33, #5B2FB8, #00E5FF);
+    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
     background-size: 200% 200%;
     animation: waveMotion 50s ease-in-out infinite;
     opacity: 0.2;
+  }
+
+  .card-premium {
+    @apply relative bg-gradient-to-br from-black/30 to-black/40 backdrop-blur-xl;
+    @apply border border-white/5;
+    @apply transition-all duration-300;
+    @apply hover:translate-y-[-2px];
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(0, 0, 0, 0.1),
+      inset 0 -1px 1px 0 rgba(0, 0, 0, 0.1),
+      0 4px 14px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  .card-premium:hover {
+    @apply border-white/10;
+    box-shadow: 
+      inset 0 1px 1px 0 rgba(0, 0, 0, 0.15),
+      inset 0 -1px 1px 0 rgba(0, 0, 0, 0.15),
+      0 12px 24px -4px rgba(0, 0, 0, 0.2);
+  }
+
+  .card-premium-header {
+    @apply relative overflow-hidden rounded-t-lg;
+    @apply bg-gradient-to-br;
+    @apply from-white/5 to-transparent;
+    @apply border-b border-white/5;
+    @apply p-3;
+  }
+
+  .card-premium-header-content {
+    @apply flex items-center justify-between;
+  }
+
+  .card-premium-title {
+    @apply text-sm font-medium bg-gradient-to-r from-[#4B6BFD] to-[#0066FF] bg-clip-text text-transparent;
+  }
+
+  .card-premium-action {
+    @apply text-[10px] text-white/60 hover:text-white/80;
+    @apply h-6 px-2;
+    @apply bg-black/20 hover:bg-black/30;
+    @apply rounded-full;
+    @apply transition-colors duration-200;
+  }
+
+  .card-premium-content {
+    @apply relative z-10;
+    @apply bg-gradient-to-br from-transparent to-black/20;
+    @apply p-3;
+  }
+
+  .card-premium-grid {
+    @apply grid gap-3;
+  }
+
+  /* Header Components */
+  .header-button {
+    @apply h-8 w-8 rounded-full;
+    @apply bg-black/20 hover:bg-black/30;
+    @apply text-white/60 hover:text-white/80;
+    @apply transition-colors duration-200;
+  }
+
+  .header-icon {
+    @apply h-4 w-4;
+  }
+
+  .header-dropdown {
+    @apply w-56 p-2;
+    @apply bg-black/95 backdrop-blur-lg;
+    @apply border border-white/5;
+    @apply rounded-lg;
+    @apply shadow-lg;
+  }
+
+  .header-dropdown-label {
+    @apply px-2 py-1.5;
+    @apply text-sm font-medium text-white/90;
+  }
+
+  .header-dropdown-item {
+    @apply flex items-center px-2 py-1.5 rounded-md;
+    @apply text-sm text-white/80 hover:text-white;
+    @apply hover:bg-white/5;
+    @apply transition-colors duration-200;
+    @apply cursor-pointer;
+  }
+
+  .header-dropdown-separator {
+    @apply my-1 border-t border-white/5;
+  }
+
+  /* Stats Components */
+  .stat-value {
+    @apply font-medium tracking-tight;
+  }
+
+  .stat-value-lg {
+    @apply text-xl;
+  }
+
+  .stat-value-md {
+    @apply text-lg;
+  }
+
+  .stat-label {
+    @apply text-[10px] text-white/60;
+  }
+
+  .stat-trend {
+    @apply flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-black/20;
+  }
+
+  .stat-trend-positive {
+    @apply text-emerald-400 bg-emerald-500/10;
+  }
+
+  .stat-trend-negative {
+    @apply text-rose-400 bg-rose-500/10;
+  }
+
+  .stat-trend-icon {
+    @apply h-2.5 w-2.5;
+  }
+
+  .stat-trend-value {
+    @apply font-medium;
+  }
+
+  .action-button {
+    @apply h-6 min-w-[80px] px-2;
+    @apply text-white/60 hover:text-white;
+    @apply bg-black/20 hover:bg-black/40;
+    @apply border border-white/5 hover:border-white/10;
+    @apply transition-all duration-300;
+    @apply flex items-center justify-center gap-1;
+  }
+
+  .action-button-icon {
+    @apply h-3 w-3;
+  }
+
+  .action-button-text {
+    @apply text-[10px];
   }
 }
 

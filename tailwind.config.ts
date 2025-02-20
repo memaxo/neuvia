@@ -11,7 +11,7 @@ const config: Config = {
   	extend: {
   		colors: {
   			spline: {
-  				cyan: '#00FFFF',
+  				cyan: '#4B6BFD',
   				blue: '#0066FF',
   				magenta: '#FF00FF',
   				yellow: '#FFFF00',
@@ -96,7 +96,7 @@ const config: Config = {
   		backgroundImage: {
   			'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
   			'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-  			'gradient-spline': 'linear-gradient(to right, #00FFFF, #0066FF, #FF00FF)'
+  			'gradient-spline': 'linear-gradient(to right, #4B6BFD, #0066FF, #FF00FF)'
   		},
   		fontFamily: {
   			sans: [
@@ -145,9 +145,9 @@ const config: Config = {
   			'300': '300ms'
   		},
   		boxShadow: {
-  			lg: '0 10px 15px -3px rgba(0, 255, 255, 0.1), 0 4px 6px -2px rgba(0, 255, 255, 0.05)',
-  			xl: '0 20px 25px -5px rgba(0, 255, 255, 0.1), 0 10px 10px -5px rgba(0, 255, 255, 0.04)',
-  			spline: '0 4px 14px 0 rgba(0, 255, 255, 0.3)'
+  			lg: '0 10px 15px -3px rgba(75, 107, 253, 0.1), 0 4px 6px -2px rgba(75, 107, 253, 0.05)',
+  			xl: '0 20px 25px -5px rgba(75, 107, 253, 0.1), 0 10px 10px -5px rgba(75, 107, 253, 0.04)',
+  			spline: '0 4px 14px 0 rgba(75, 107, 253, 0.3)'
   		}
   	}
   },

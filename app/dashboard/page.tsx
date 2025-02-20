@@ -3,30 +3,46 @@ import { QuickStats } from "./components/quick-stats"
 import { RecentActivity } from "./components/recent-activity"
 import { PatientShortcuts } from "./components/patient-shortcuts"
 import { DashboardHeader } from "./components/dashboard-header"
+import { PatientOverview } from "./components/patient-overview"
 import { buttonVariants } from "@/components/ui/button"
 import Link from "next/link"
 
 export default function DashboardPage() {
   return (
-    <div className="flex-1 space-y-8">
+    <div className="flex-1 space-y-3">
       <DashboardHeader />
       
-      {/* Dashboard content */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <QuickStats />
-        <RecentActivity />
-        <PatientShortcuts />
+      {/* Main content and sidebar layout */}
+      <div className="flex gap-3">
+        {/* Main content area */}
+        <div className="flex-1 space-y-3">
+          {/* Top row - Quick stats */}
+          <QuickStats />
+          
+          {/* Middle row - Patient overview */}
+          <PatientOverview />
+          
+          {/* Bottom row - Patient shortcuts with grid view */}
+          <div className="grid grid-cols-3 gap-3">
+            <PatientShortcuts />
+          </div>
+        </div>
+
+        {/* Right sidebar for activity */}
+        <div className="w-[300px] hidden xl:block">
+          <RecentActivity />
+        </div>
       </div>
 
-      {/* Add New Patient button */}
+      {/* Floating action button */}
       <Link
         href="/dashboard/patients/new"
         className={buttonVariants({
-          className: "mt-8 flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 px-4 rounded transition-colors duration-300"
+          className: "fixed bottom-4 right-4 flex items-center space-x-2 bg-[#4B6BFD] hover:bg-[#4B6BFD]/90 text-white font-medium py-2 px-3 rounded-full shadow-lg transition-colors duration-300"
         })}
       >
-        <PlusCircle className="h-5 w-5" />
-        <span>Add New Patient</span>
+        <PlusCircle className="h-4 w-4" />
+        <span className="text-sm">Add Patient</span>
       </Link>
     </div>
   )
