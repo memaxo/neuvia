@@ -17,14 +17,21 @@ export default function DashboardPage() {
         {/* Main content area */}
         <div className="flex-1 space-y-3">
           {/* Top row - Quick stats */}
-          <QuickStats />
+          <div className="p-4 bg-gray-800 rounded-lg shadow-sm">
+            <QuickStats />
+          </div>
           
+          <hr className="my-4 border-gray-700" />
           {/* Middle row - Patient overview */}
-          <PatientOverview />
+          <div className="p-4 bg-gray-800 rounded-lg shadow-sm">
+            <PatientOverview />
+          </div>
           
           {/* Bottom row - Patient shortcuts with grid view */}
-          <div className="grid grid-cols-3 gap-3">
-            <PatientShortcuts />
+          <div className="p-4 bg-gray-800 rounded-lg shadow-sm">
+            <div className="grid grid-cols-3 gap-3">
+              <PatientShortcuts />
+            </div>
           </div>
         </div>
 
@@ -38,7 +45,7 @@ export default function DashboardPage() {
       <Link
         href="/dashboard/patients/new"
         className={buttonVariants({
-          className: "fixed bottom-4 right-4 flex items-center space-x-2 bg-[#4B6BFD] hover:bg-[#4B6BFD]/90 text-white font-medium py-2 px-3 rounded-full shadow-lg transition-colors duration-300"
+          className: "fixed bottom-4 right-4 flex items-center space-x-2 bg-[#4B6BFD] hover:bg-[#4B6BFD]/90 text-white font-medium py-2 px-3 rounded-full shadow-lg transition-all hover:shadow-xl duration-300"
         })}
       >
         <PlusCircle className="h-4 w-4" />

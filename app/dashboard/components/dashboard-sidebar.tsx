@@ -65,132 +65,102 @@ const sidebarLinks = [
 
 export function DashboardSidebar() {
   const pathname = usePathname()
-  const [isOpen, setIsOpen] = useState(true)
-  const [isMobile, setIsMobile] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
 
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-      setIsOpen(window.innerWidth >= 768)
-    }
-    
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
   return (
-    <TooltipProvider>
-      <div>
+    <div className={cn(
+      "h-screen sticky top-0 flex flex-col",
+      "bg-black/20 backdrop-blur-xl",
+      isCollapsed ? "w-[80px]" : "w-[280px]"
+    )}>
+      {/* Logo section */}
+      <div className="flex items-center justify-between p-4 md:p-6 border-b border-white/5">
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 p-2">
+            <Activity className="w-full h-full text-cyan-400" />
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl" />
+          </div>
+          {!isCollapsed && (
+            <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 text-transparent bg-clip-text">
+              Neuvia
+            </span>
+          )}
+        </Link>
         <Button
           variant="ghost"
-          size="icon"
-          className="fixed top-4 left-4 z-50 md:hidden h-10 w-10"
-          onClick={() => setIsOpen(!isOpen)}
+          size="sm"
+          className="relative overflow-hidden group bg-black/20 hover:bg-black/40 text-white/70 hover:text-white"
+          onClick={() => setIsCollapsed(!isCollapsed)}
         >
-          <Menu className="h-5 w-5 text-white/80" />
+          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute top-0 -left-full w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent group-hover:animate-scan" />
+          </div>
         </Button>
-        
-        <aside className={cn(
-          "fixed md:relative h-screen bg-black/30 backdrop-blur-lg border-r border-white/5",
-          "transition-all duration-300 ease-in-out",
-          isCollapsed ? "w-[72px]" : "w-64",
-          isMobile && !isOpen ? "-translate-x-full" : "translate-x-0",
-          isMobile ? "z-40" : ""
-        )}>
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="flex h-14 items-center justify-between border-b border-white/5 px-4">
-              <Link href="/" className={cn(
-                "flex items-center gap-2 transition-opacity duration-200",
-                isCollapsed ? "opacity-0" : "opacity-100"
-              )}>
-                <span className="text-xl font-bold bg-gradient-to-r from-[#4B6BFD] to-[#0066FF] bg-clip-text text-transparent">
-                  Neuvia
-                </span>
-              </Link>
-              {!isMobile && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-white/60 hover:text-white/80 hover:bg-white/5"
-                  onClick={() => setIsCollapsed(!isCollapsed)}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="h-5 w-5" />
-                  ) : (
-                    <ChevronLeft className="h-5 w-5" />
-                  )}
-                </Button>
-              )}
-            </div>
-            
-            {/* Search - Only show when expanded */}
-            <div className={cn(
-              "p-4 transition-opacity duration-200",
-              isCollapsed ? "opacity-0" : "opacity-100 h-[72px]",
-              isCollapsed && "h-0 p-0 overflow-hidden"
-            )}>
-              <SearchBar />
-            </div>
+      </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 space-y-1 px-3 py-3">
-              {sidebarLinks.map((link) => {
-                const Icon = link.icon
-                const isActive = pathname === link.href
+      {/* Search bar */}
+      {!isCollapsed && (
+        <div className="p-4">
+          <SearchBar />
+        </div>
+      )}
 
-                return (
-                  <Tooltip key={link.href} delayDuration={0}>
-                    <TooltipTrigger asChild>
-                      <Link
-                        href={link.href}
-                        className={cn(
-                          "group relative flex items-center gap-3 rounded-lg px-3 py-2.5",
-                          "transition-all duration-300",
-                          isActive
-                            ? "bg-[#4B6BFD]/10 text-white"
-                            : "text-white/70 hover:bg-white/5 hover:text-white"
-                        )}
-                        onClick={() => isMobile && setIsOpen(false)}
-                      >
-                        <Icon className={cn(
-                          "h-5 w-5 transition-transform duration-300",
-                          "group-hover:scale-110"
-                        )} />
+      {/* Navigation links */}
+      <nav className="flex-1 overflow-y-auto p-2">
+        {sidebarLinks.map((link) => {
+          const isActive = pathname === link.href
+          return (
+            <TooltipProvider key={link.href}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    href={link.href}
+                    className={cn(
+                      "group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
+                      "hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]",
+                      isActive ? "bg-black/40 border border-cyan-500/30" : "border border-transparent",
+                      isCollapsed ? "justify-center" : ""
+                    )}
+                  >
+                    <div className={cn(
+                      "flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl",
+                      "bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10",
+                      "group-hover:border-cyan-500/20 transition-colors duration-300"
+                    )}>
+                      <link.icon className={cn(
+                        "h-5 w-5 transition-colors duration-300",
+                        isActive ? "text-cyan-400" : "text-white/70 group-hover:text-cyan-400"
+                      )} />
+                    </div>
+                    {!isCollapsed && (
+                      <div className="flex-1 min-w-0">
                         <span className={cn(
-                          "flex-1 transition-all duration-200 text-sm",
-                          isCollapsed ? "opacity-0 w-0" : "opacity-100"
+                          "block text-sm font-medium transition-colors duration-300",
+                          isActive ? "text-white" : "text-white/70 group-hover:text-white"
                         )}>
                           {link.title}
                         </span>
-                        {isActive && !isCollapsed && (
-                          <ChevronRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                        )}
-                      </Link>
-                    </TooltipTrigger>
-                    {isCollapsed && (
-                      <TooltipContent side="right" className="ml-2 bg-black/90 border-white/10">
-                        <p className="text-sm font-medium text-white/90">{link.title}</p>
-                        <p className="text-xs text-white/70">{link.description}</p>
-                      </TooltipContent>
+                        <span className="block text-xs text-white/50">
+                          {link.description}
+                        </span>
+                      </div>
                     )}
-                  </Tooltip>
-                )
-              })}
-            </nav>
-          </div>
-        </aside>
-        
-        {/* Backdrop for mobile */}
-        {isMobile && isOpen && (
-          <div 
-            className="fixed inset-0 bg-black/50 z-30"
-            onClick={() => setIsOpen(false)}
-          />
-        )}
-      </div>
-    </TooltipProvider>
+                  </Link>
+                </TooltipTrigger>
+                {isCollapsed && (
+                  <TooltipContent side="right">
+                    <div className="space-y-1">
+                      <p className="font-medium">{link.title}</p>
+                      <p className="text-xs text-white/70">{link.description}</p>
+                    </div>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )
+        })}
+      </nav>
+    </div>
   )
 } 

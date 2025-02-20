@@ -16,14 +16,25 @@ export default async function DashboardLayout({
 	}
 
 	return (
-		<div className="flex min-h-screen bg-black">
-			<div className="fixed inset-0 z-0">
+		<div className="grid grid-cols-1 min-h-screen bg-black relative isolate overflow-hidden">
+			{/* Background wrapper - using grid layering instead of absolute */}
+			<div className="col-start-1 row-start-1 row-span-full">
 				<DashboardBackground />
 			</div>
-			<div className="relative z-10 flex w-full">
-				<DashboardSidebar />
-				<main className="flex-1 w-0 min-h-screen overflow-y-auto">
-					<div className="px-2 py-2 mx-auto max-w-7xl">
+
+			{/* Subtle gradient overlay */}
+			<div className="col-start-1 row-start-1 row-span-full bg-gradient-to-b from-black/40 via-black/20 to-black/40 backdrop-blur-[2px]" />
+
+			{/* Main content wrapper */}
+			<div className="col-start-1 row-start-1 row-span-full flex">
+				{/* Sidebar */}
+				<div className="flex-none transition-all duration-300 shadow-lg backdrop-blur-xl bg-black/30 border-r border-white/10">
+					<DashboardSidebar />
+				</div>
+
+				{/* Main content */}
+				<main className="flex-1 min-w-0 overflow-y-auto">
+					<div className="px-4 py-4 md:px-6 md:py-6 mx-auto max-w-7xl space-y-6 md:space-y-8">
 						{children}
 					</div>
 				</main>

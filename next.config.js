@@ -62,7 +62,11 @@ const securityHeaders = [
 ]
 
 const nextConfig = {
-  webpack: config => {
+  webpack: (config, { isServer }) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@splinetool/react-spline/next': '@splinetool/react-spline'
+    };
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },
