@@ -1,30 +1,30 @@
-import React, { ReactNode } from "react";
+import React, { ReactNode } from 'react'
 
 export default function Table({
-	children,
-	headers,
+  children,
+  headers,
 }: {
-	children: ReactNode;
-	headers: string[];
+  children: ReactNode
+  headers: string[]
 }) {
-	return (
-		<div className="rounded-md  border-zinc-200 dark:border-zinc-800  w-full overflow-y-auto border  dark:bg-gradient-dark">
-			<div className="w-[900px] lg:w-full bg-white dark:bg-inherit rounded-md space-y-5 py-5">
-				<div className=" grid grid-cols-5 px-5 py-2  border-b pb-5 dark:border-zinc-600">
-					{headers.map((header, index) => {
-						return (
-							<h1
-								key={index}
-								className="font-medium text-sm dark:text-slate-500"
-							>
-								{header}
-							</h1>
-						);
-					})}
-				</div>
+  return (
+    <div className="dark:bg-gradient-dark w-full overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+      <div className="w-[900px] space-y-5 rounded-md bg-white py-5 dark:bg-inherit lg:w-full">
+        <div className="grid grid-cols-5 border-b px-5 py-2 pb-5 dark:border-zinc-600">
+          {headers.map((header, index) => {
+            return (
+              <h1
+                key={index}
+                className="text-sm font-medium dark:text-slate-500"
+              >
+                {header}
+              </h1>
+            )
+          })}
+        </div>
 
-				{children}
-			</div>
-		</div>
-	);
+        {children}
+      </div>
+    </div>
+  )
 }

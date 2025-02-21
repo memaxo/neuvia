@@ -2,27 +2,27 @@ name: Code Quality
 
 on:
   push:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   pull_request:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
 
 jobs:
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - uses: pnpm/action-setup@v2
         with:
           version: 8
-          
+
       - name: Get pnpm store directory
         shell: bash
         run: |
@@ -35,15 +35,15 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-          
+
       - name: Install dependencies
         run: pnpm ci:deps
-        
+
       - name: Run ESLint
         run: pnpm ci:lint
-        
+
       - name: Check types
         run: pnpm ci:type-check
-        
+
       - name: Check formatting
-        run: pnpm ci:format 
+        run: pnpm ci:format

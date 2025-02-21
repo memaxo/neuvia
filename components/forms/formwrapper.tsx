@@ -1,5 +1,5 @@
-import clsx from 'clsx';
-import React from 'react';
+import React from 'react'
+import clsx from 'clsx'
 
 export default function FormWrapper({
   children,
@@ -9,22 +9,22 @@ export default function FormWrapper({
   return (
     <section
       className={clsx(
-        'flex flex-col w-full h-full',
-        'px-6 lg:px-[100px] pt-7 lg:pt-12 pb-8 lg:pb-4',
-        'bg-white lg:bg-transparent rounded-lg lg:rounded-none shadow-lg lg:shadow-none'
+        'flex h-full w-full flex-col',
+        'px-6 pb-8 pt-7 lg:px-[100px] lg:pb-4 lg:pt-12',
+        'rounded-lg bg-white shadow-lg lg:rounded-none lg:bg-transparent lg:shadow-none'
       )}
     >
-      <h1 className="text-2xl lg:text-[34px] font-bold text-marine-blue">
+      <h1 className="text-marine-blue text-2xl font-bold lg:text-[34px]">
         {heading}
       </h1>
       <p className="text-cool-gray mt-1">{description}</p>
       {children}
     </section>
-  );
+  )
 }
 
 interface FormWrapperProps {
-  children: React.ReactNode;
-  heading: string;
-  description: string;
+  children: React.ReactNode
+  heading: string
+  description: string
 }

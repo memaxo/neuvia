@@ -1,5 +1,6 @@
 # Security Policy
-See nextconfig.js for CSP and header config. 
+
+See nextconfig.js for CSP and header config.
 
 ## Reporting a Vulnerability
 

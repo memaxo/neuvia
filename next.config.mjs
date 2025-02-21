@@ -2,9 +2,9 @@
  * @type {import('next').NextConfig}
  */
 
-import withPlugins from 'next-compose-plugins'
-import withMDX from '@next/mdx'
 import withPWA from '@ducanh2912/next-pwa'
+import withMDX from '@next/mdx'
+import withPlugins from 'next-compose-plugins'
 
 const ContentSecurityPolicy = `
   default-src 'self';
@@ -77,7 +77,7 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@splinetool/react-spline/next': '@splinetool/react-spline'
+      '@splinetool/react-spline/next': '@splinetool/react-spline',
     }
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
@@ -124,7 +124,7 @@ const nextConfig = {
         hostname: 'images.unsplash.com',
         port: '',
         pathname: '/**',
-      }
+      },
     ],
   },
   async headers() {
@@ -140,15 +140,11 @@ const nextConfig = {
 
 // Apply plugins with proper typing
 const withMDXConfig = withMDX()
-const withPWAConfig = withPWA({ 
+const withPWAConfig = withPWA({
   dest: 'public',
   register: true,
-  skipWaiting: true
+  skipWaiting: true,
 })
 
 // Export the final config with all plugins applied
-export default withPlugins([
-  [withMDXConfig],
-  [withPWAConfig]
-], nextConfig)
-
+export default withPlugins([[withMDXConfig], [withPWAConfig]], nextConfig)

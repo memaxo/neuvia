@@ -12,7 +12,7 @@ export const useScrollAnchor = () => {
     if (messagesRef.current) {
       messagesRef.current.scrollIntoView({
         block: 'end',
-        behavior: 'smooth'
+        behavior: 'smooth',
       })
     }
   }, [])
@@ -21,7 +21,7 @@ export const useScrollAnchor = () => {
     if (messagesRef.current) {
       if (isAtBottom && !isVisible) {
         messagesRef.current.scrollIntoView({
-          block: 'end'
+          block: 'end',
         })
       }
     }
@@ -41,7 +41,7 @@ export const useScrollAnchor = () => {
       }
 
       current.addEventListener('scroll', handleScroll, {
-        passive: true
+        passive: true,
       })
 
       return () => {
@@ -62,7 +62,7 @@ export const useScrollAnchor = () => {
             }
           })
         },
-        { rootMargin: "-20% 0px -35% 0px" }
+        { rootMargin: '-20% 0px -35% 0px' }
       )
 
       observer.observe(visibilityRef.current)
@@ -79,6 +79,6 @@ export const useScrollAnchor = () => {
     visibilityRef,
     scrollToBottom,
     isAtBottom,
-    isVisible
+    isVisible,
   }
 }

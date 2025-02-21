@@ -6,7 +6,7 @@ The user initially arrives at the landing page, which is the root URL (/). This 
 
 If the user is already logged in, accessing the root URL (/) automatically redirects them to the dashboard (/dashboard).
 
-If a user clicks "Login" or navigates directly to /auth, they are presented with the authentication page.  This page offers options to log in using email/password, Google, or GitHub. Successful login redirects the user to the dashboard (/dashboard). If the user fails to log in, an error message is displayed, and they remain on the /auth page. The /auth/callback route is used for handling the OAuth flow, exchanging a code for a session.
+If a user clicks "Login" or navigates directly to /auth, they are presented with the authentication page. This page offers options to log in using email/password, Google, or GitHub. Successful login redirects the user to the dashboard (/dashboard). If the user fails to log in, an error message is displayed, and they remain on the /auth page. The /auth/callback route is used for handling the OAuth flow, exchanging a code for a session.
 
 If a user is not logged in, and chooses sign-up, it directs the user to /onboarding.
 
@@ -24,7 +24,7 @@ Activity--> /dashboard/activity
 
 The "Add Patient" page (/dashboard/patients/new) presents a form for creating a new patient record. The form includes fields such as full name, date of birth, assigned sex at birth, and preferred language. Submitting the form creates a new patient and likely redirects to the patient's detail page.
 
-The "Patients" page (/dashboard/patients) displays a list of patients (currently a placeholder in the MVP).  A search bar allows filtering the patient list. Clicking on a patient in the list navigates to the individual patient's detail page (e.g., /dashboard/patients/[id], where [id] is the patient's unique identifier).
+The "Patients" page (/dashboard/patients) displays a list of patients (currently a placeholder in the MVP). A search bar allows filtering the patient list. Clicking on a patient in the list navigates to the individual patient's detail page (e.g., /dashboard/patients/[id], where [id] is the patient's unique identifier).
 
 The individual patient detail page (e.g., /dashboard/patients/[id]) shows the patient's information and provides an interface for uploading documents. Uploaded documents trigger the processing pipeline (chunking, embedding, summarization). The page displays summaries, key findings, and any generated clinical insights.
 

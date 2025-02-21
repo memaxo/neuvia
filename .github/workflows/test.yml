@@ -2,9 +2,9 @@ name: Test
 
 on:
   push:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
   pull_request:
-    branches: [ develop, staging, main ]
+    branches: [develop, staging, main]
 
 jobs:
   test:
@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         shard: [1, 2, 3]
-        
+
     services:
       postgres:
         image: postgres:15
@@ -28,19 +28,19 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - uses: pnpm/action-setup@v2
         with:
           version: 8
-          
+
       - name: Get pnpm store directory
         shell: bash
         run: |
@@ -53,7 +53,7 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-            
+
       - name: Setup Supabase cache
         uses: actions/cache@v3
         with:
@@ -61,24 +61,24 @@ jobs:
           key: ${{ runner.os }}-supabase-${{ hashFiles('supabase/**/*') }}
           restore-keys: |
             ${{ runner.os }}-supabase-
-          
+
       - name: Install dependencies
         run: pnpm ci:deps
-        
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
           version: latest
-          
+
       - name: Start Supabase Local Development
         run: pnpm db:start
-        
+
       - name: Run tests
         run: pnpm ci:test --shard=${{ matrix.shard }}/3
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
-          
+
       - name: Stop Supabase Local Development
         if: always()
-        run: pnpm db:stop 
+        run: pnpm db:stop

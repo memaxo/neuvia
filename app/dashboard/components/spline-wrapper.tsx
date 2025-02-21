@@ -1,29 +1,37 @@
-"use client"
+'use client'
 
 import { Suspense, useEffect } from 'react'
-import Spline from '@splinetool/react-spline/next'
+import Spline from '@splinetool/react-spline'
 import type { Application } from '@splinetool/runtime'
 
 interface SplineWrapperProps {
-  scene: string
-  className?: string
-  onLoad?: (splineApp: Application) => void
+  readonly scene: string
+  readonly className?: string
+  readonly onLoad?: (splineApp: Application) => void
 }
 
-export default function SplineWrapper({ scene, className, onLoad }: SplineWrapperProps) {
+export default function SplineWrapper({
+  scene,
+  className,
+  onLoad,
+}: Readonly<SplineWrapperProps>) {
   useEffect(() => {
     console.log('SplineWrapper mounted with scene:', scene)
   }, [scene])
 
   return (
-    <Suspense fallback={
-      <div className={`w-full h-full bg-black/80 backdrop-blur-lg animate-pulse ${className}`} />
-    }>
-      <div className="relative w-full h-full">
+    <Suspense
+      fallback={
+        <div
+          className={`size-full animate-pulse bg-black/80 backdrop-blur-lg ${className}`}
+        />
+      }
+    >
+      <div className="relative size-full">
         <Spline
           scene={scene}
           className={`absolute inset-0 ${className}`}
-          onLoad={(splineApp) => {
+          onLoad={(splineApp: Application) => {
             console.log('Spline onLoad called')
             onLoad?.(splineApp)
           }}
@@ -31,4 +39,4 @@ export default function SplineWrapper({ scene, className, onLoad }: SplineWrappe
       </div>
     </Suspense>
   )
-} 
+}

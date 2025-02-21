@@ -1,27 +1,32 @@
-import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
-import { prefetchQuery } from '@supabase-cache-helpers/postgrest-react-query'
-import { useSupabaseServer } from "@/utils/supabase/server"
-import { cookies } from 'next/headers'
-import Country from './country'
 import { getCountryById } from '@/queries/country-by-id'
+import { createSupbaseServerClientReadOnly } from '@/utils/supaone'
+import { prefetchQuery } from '@supabase-cache-helpers/postgrest-react-query'
+import {
+  dehydrate,
+  HydrationBoundary,
+  QueryClient,
+} from '@tanstack/react-query'
+import Country from './country'
 
-function useCountryData() {
-  const supabase = useSupabaseServer()
-  return supabase
-}
-
-export default async function CountryPage({ params }: { params: { id: number } }) {
+export default async function CountryPage({
+  params,
+}: {
+  params: { id: string }
+}) {
   const queryClient = new QueryClient()
-  const cookieStore = cookies()
-  const supabase = useCountryData()
+  const supabase = await createSupbaseServerClientReadOnly()
+  const countryId = parseInt(params.id)
+  if (isNaN(countryId)) {
+    throw new Error('Invalid country ID')
+  }
 
-  await prefetchQuery(queryClient, getCountryById(supabase, params.id))
+  await prefetchQuery(queryClient, getCountryById(supabase, countryId))
 
   return (
     // Neat! Serialization is now as easy as passing props.
     // HydrationBoundary is a Client Component, so hydration will happen there.
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <Country id={params.id} />
+      <Country id={countryId} />
     </HydrationBoundary>
   )
 }

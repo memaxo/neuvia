@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { TrendPoint } from "../types"
+import { TrendPoint } from '../types'
 
 interface SparklineProps {
   data: TrendPoint[]
@@ -9,32 +9,46 @@ interface SparklineProps {
 }
 
 export function Sparkline({ data, color, height = 30 }: SparklineProps) {
-  const values = data.map(d => d.value)
+  const values = data.map((d) => d.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = max - min
-  
+
   // Create points for the sparkline
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * 100
-    const y = ((d.value - min) / range) * height
-    return `${x},${height - y}`
-  }).join(' ')
+  const points = data
+    .map((d, i) => {
+      const x = (i / (data.length - 1)) * 100
+      const y = ((d.value - min) / range) * height
+      return `${x},${height - y}`
+    })
+    .join(' ')
 
   return (
     <svg
       width="100%"
       height={height}
       preserveAspectRatio="none"
-      className="overflow-visible group"
+      className="group overflow-visible"
     >
       {/* Enhanced gradient definitions */}
       <defs>
-        <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0" x2="0" y1="0" y2="1">
+        <linearGradient
+          id={`gradient-${color.replace('#', '')}`}
+          x1="0"
+          x2="0"
+          y1="0"
+          y2="1"
+        >
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
-        <linearGradient id={`hover-gradient-${color.replace('#', '')}`} x1="0" x2="0" y1="0" y2="1">
+        <linearGradient
+          id={`hover-gradient-${color.replace('#', '')}`}
+          x1="0"
+          x2="0"
+          y1="0"
+          y2="1"
+        >
           <stop offset="0%" stopColor={color} stopOpacity="0.4" />
           <stop offset="100%" stopColor={color} stopOpacity="0.1" />
         </linearGradient>
@@ -44,7 +58,7 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
       <path
         d={`M0,${height} ${points} ${100},${height} Z`}
         fill={`url(#gradient-${color.replace('#', '')})`}
-        className="transition-all duration-300 opacity-50 group-hover:opacity-75 group-hover:fill-[url(#hover-gradient-${color.replace('#', '')})]"
+        className="group-hover:fill-[url(#hover-gradient-${color.replace('#', '')})] opacity-50 transition-all duration-300 group-hover:opacity-75"
       />
 
       {/* Background line with enhanced effect */}
@@ -54,9 +68,9 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
         stroke={color}
         strokeWidth="1"
         strokeOpacity="0.1"
-        className="transition-all duration-300 group-hover:stroke-opacity-20"
+        className="group-hover:stroke-opacity-20 transition-all duration-300"
       />
-      
+
       {/* Enhanced foreground line */}
       <polyline
         points={points}
@@ -65,15 +79,18 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:stroke-width-2 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
+        className="group-hover:stroke-width-2 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
       />
-      
+
       {/* Enhanced data points with animations */}
       {data.map((d, i) => {
         const x = (i / (data.length - 1)) * 100
         const y = height - ((d.value - min) / range) * height
         return (
-          <g key={i} className="opacity-0 group-hover:opacity-100 transition-all duration-300">
+          <g
+            key={i}
+            className="opacity-0 transition-all duration-300 group-hover:opacity-100"
+          >
             <circle
               cx={`${x}%`}
               cy={y}
@@ -86,22 +103,22 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
               x={`${x}%`}
               y={y - 8}
               textAnchor="middle"
-              className="text-[10px] fill-white/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              className="fill-white/70 text-[10px] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
             >
               {d.value}
             </text>
           </g>
         )
       })}
-      
+
       {/* Enhanced end point with glow effect */}
       <circle
         cx={`${100}%`}
         cy={height - ((data[data.length - 1].value - min) / range) * height}
         r="2"
         fill={color}
-        className="drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:r-3 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
+        className="group-hover:r-3 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
       />
     </svg>
   )
-} 
+}

@@ -1,7 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
- 
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -9,31 +9,31 @@
 
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
- 
+
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
- 
+
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
- 
+
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
- 
+
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
- 
+
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
- 
+
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
- 
+
     --radius: 0.5rem;
- 
+
     --chart-1: 230 98% 65%;
     --chart-2: 32 100% 50%;
     --chart-3: 215 25% 27%;
@@ -48,32 +48,32 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
- 
+
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
- 
+
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
- 
+
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
- 
+
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
- 
+
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
- 
+
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
- 
+
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
- 
+
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
- 
+
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
@@ -93,7 +93,7 @@
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
- 
+
 @layer base {
   * {
     @apply border-border;
@@ -105,13 +105,18 @@
 
 @layer utilities {
   .bg-gradient-dark {
-    background: linear-gradient(to bottom right, rgb(30, 41, 99), rgb(43, 59, 140), rgb(10, 25, 47));
+    background: linear-gradient(
+      to bottom right,
+      rgb(30, 41, 99),
+      rgb(43, 59, 140),
+      rgb(10, 25, 47)
+    );
   }
-  
+
   .animate-fade-in {
     animation: fadeIn 1s ease-in forwards;
   }
-  
+
   .animate-slide-up {
     animation: slideUp 1s ease-out forwards;
   }
@@ -130,21 +135,21 @@
 
   /* Wave gradient layers */
   .layer-1 {
-    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
+    background: linear-gradient(270deg, #2b3b8c, #5b2fb8, #4b6bfd);
     background-size: 200% 200%;
     animation: waveMotion 30s ease-in-out infinite;
     opacity: 0.4;
   }
 
   .layer-2 {
-    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
+    background: linear-gradient(270deg, #2b3b8c, #5b2fb8, #4b6bfd);
     background-size: 200% 200%;
     animation: waveMotion 40s linear infinite reverse;
     opacity: 0.3;
   }
 
   .layer-3 {
-    background: linear-gradient(270deg, #2B3B8C, #5B2FB8, #4B6BFD);
+    background: linear-gradient(270deg, #2b3b8c, #5b2fb8, #4b6bfd);
     background-size: 200% 200%;
     animation: waveMotion 50s ease-in-out infinite;
     opacity: 0.2;
@@ -155,7 +160,7 @@
     @apply border border-white/5;
     @apply transition-all duration-300;
     @apply hover:translate-y-[-2px];
-    box-shadow: 
+    box-shadow:
       inset 0 1px 1px 0 rgba(0, 0, 0, 0.1),
       inset 0 -1px 1px 0 rgba(0, 0, 0, 0.1),
       0 4px 14px 0 rgba(0, 0, 0, 0.1);
@@ -163,7 +168,7 @@
 
   .card-premium:hover {
     @apply border-white/10;
-    box-shadow: 
+    box-shadow:
       inset 0 1px 1px 0 rgba(0, 0, 0, 0.15),
       inset 0 -1px 1px 0 rgba(0, 0, 0, 0.15),
       0 12px 24px -4px rgba(0, 0, 0, 0.2);
@@ -182,7 +187,7 @@
   }
 
   .card-premium-title {
-    @apply text-sm font-medium bg-gradient-to-r from-[#4B6BFD] to-[#0066FF] bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-[#4B6BFD] to-[#0066FF] bg-clip-text text-sm font-medium text-transparent;
   }
 
   .card-premium-action {
@@ -229,7 +234,7 @@
   }
 
   .header-dropdown-item {
-    @apply flex items-center px-2 py-1.5 rounded-md;
+    @apply flex items-center rounded-md px-2 py-1.5;
     @apply text-sm text-white/80 hover:text-white;
     @apply hover:bg-white/5;
     @apply transition-colors duration-200;
@@ -258,15 +263,15 @@
   }
 
   .stat-trend {
-    @apply flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-black/20;
+    @apply flex items-center gap-1 rounded-full bg-black/20 px-1.5 py-0.5 text-[10px];
   }
 
   .stat-trend-positive {
-    @apply text-emerald-400 bg-emerald-500/10;
+    @apply bg-emerald-500/10 text-emerald-400;
   }
 
   .stat-trend-negative {
-    @apply text-rose-400 bg-rose-500/10;
+    @apply bg-rose-500/10 text-rose-400;
   }
 
   .stat-trend-icon {
@@ -343,7 +348,8 @@
 }
 
 @keyframes pulseSubtle {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -352,7 +358,8 @@
 }
 
 @keyframes glowSubtle {
-  0%, 100% {
+  0%,
+  100% {
     filter: brightness(1);
   }
   50% {
@@ -521,7 +528,8 @@
 }
 
 @keyframes pulseSubtle {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -532,7 +540,8 @@
 }
 
 @keyframes glowSubtle {
-  0%, 100% {
+  0%,
+  100% {
     filter: brightness(1);
   }
   50% {

@@ -1,19 +1,21 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/react';
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import './globals.css'
-import { ThemeProvider } from "@/components/theme-provider"
-import { CookieButton } from "@/components/cookie-button"
-import { fontSans } from "@/lib/font"
 import { siteConfig } from '@/config/site'
+import { fontSans } from '@/lib/font'
+import { cn } from '@/lib/utils'
+import { CookieButton } from '@/components/cookie-button'
 import { ReactQueryClientProvider } from '@/components/react-query-client-provider'
-import { Toaster } from "@/components/ui/toaster"
-import { SiteHeader } from "@/components/site-header"
-import { SiteFooter } from "@/components/site-footer"
-import { TailwindIndicator } from "@/components/tailwind-indicator"
-import { cn } from "@/lib/utils"
+import { SiteFooter } from '@/components/site-footer'
+import { SiteHeader } from '@/components/site-header'
+import { TailwindIndicator as _ } from '@/components/tailwind-indicator'
+import { ThemeProvider } from '@/components/theme-provider'
+import { Toaster } from '@/components/ui/toaster'
+
 const inter = Inter({ subsets: ['latin'] })
+const _inter = inter
 
 export const metadata: Metadata = {
   title: {
@@ -37,9 +39,30 @@ export const metadata: Metadata = {
     },
   },
   referrer: 'origin-when-cross-origin',
-  keywords: ['NextJS 14 TypeScript', 'Supabase SSR', 'TanStack React Query', 'vercel', 'openai', 'MVP Template', 'Neuvia SaaS PWA template', 'Zod', 'Shadcn-UI', 'Tailwind CSS', 'SaaS', 'NextJS Supabase Postgres Tailwind TanStack', 'NextJS CSP',
-             'PWA', 'NextJS SaaS PWA Template', 'CRUD ops', 'secure headers', 'NextJS templates with user authentication, RBAC, and CRUD ops', 'NextJS templates with data validation and database integration',
-            'Rust API runtime for vercel serverless functions', 'NextJS secure headers', 'NextJS NextMDX'],
+  keywords: [
+    'NextJS 14 TypeScript',
+    'Supabase SSR',
+    'TanStack React Query',
+    'vercel',
+    'openai',
+    'MVP Template',
+    'Neuvia SaaS PWA template',
+    'Zod',
+    'Shadcn-UI',
+    'Tailwind CSS',
+    'SaaS',
+    'NextJS Supabase Postgres Tailwind TanStack',
+    'NextJS CSP',
+    'PWA',
+    'NextJS SaaS PWA Template',
+    'CRUD ops',
+    'secure headers',
+    'NextJS templates with user authentication, RBAC, and CRUD ops',
+    'NextJS templates with data validation and database integration',
+    'Rust API runtime for vercel serverless functions',
+    'NextJS secure headers',
+    'NextJS NextMDX',
+  ],
   authors: [{ name: 'Robert Mourey Jr' }],
   creator: 'Robert Mourey Jr',
   publisher: 'Robert Mourey Jr',
@@ -50,9 +73,9 @@ export const metadata: Metadata = {
   },
   generator: 'NextJS',
   icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon-16x16.png",
-    apple: "/apple-touch-icon.png",
+    icon: '/favicon.ico',
+    shortcut: '/favicon-16x16.png',
+    apple: '/apple-touch-icon.png',
   },
 
   robots: {
@@ -72,7 +95,7 @@ export const metadata: Metadata = {
     title: siteConfig.name,
     description: siteConfig.description,
     siteName: siteConfig.name,
-    url: "https://neuvia.vercel.app",
+    url: 'https://neuvia.vercel.app',
     images: [
       {
         url: 'https://neuvia.vercel.app/og-image.jpg',
@@ -108,54 +131,54 @@ export const metadata: Metadata = {
     ],
   },
 }
-export const viewport: Viewport =  {
+export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "black" },
+    { media: '(prefers-color-scheme: light)', color: 'white' },
+    { media: '(prefers-color-scheme: dark)', color: 'black' },
   ],
 }
 interface RootLayoutProps {
   children: React.ReactNode
 }
 
-
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <ReactQueryClientProvider>
-    <html lang="en" suppressHydrationWarning>
-      <body className={cn(
-            "min-h-screen bg-background font-sans antialiased",
+      <html lang="en" suppressHydrationWarning>
+        <body
+          className={cn(
+            'min-h-screen bg-background font-sans antialiased',
             fontSans.variable
           )}
         >
-<ThemeProvider
+          <ThemeProvider
             attribute="class"
             defaultTheme="system"
             enableSystem
             disableTransitionOnChange
           >
-             <div className="relative flex min-h-screen flex-col">
+            <div className="relative flex min-h-screen flex-col">
               <SiteHeader />
-              <div className="flex-1">{children}<Toaster/><Analytics/><SpeedInsights/></div>
-              
-   </div>           
-<SiteFooter/>
+              <div className="flex-1">
+                {children}
+                <Toaster />
+                <Analytics />
+                <SpeedInsights />
+              </div>
+            </div>
+            <SiteFooter />
 
-
-{/*
+            {/*
 enter your api info from termly.io or a provider of your choice
 <Script
   type="text/javascript"
   src="https://app.termly.io/resource-blocker/123456789abcdefg"/>
 
 */}
-   <CookieButton />    
+            <CookieButton />
           </ThemeProvider>
-        
-
-
-</body>
-    </html>
+        </body>
+      </html>
     </ReactQueryClientProvider>
   )
 }

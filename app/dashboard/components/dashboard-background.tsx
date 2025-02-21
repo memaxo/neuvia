@@ -1,18 +1,25 @@
-"use client"
+'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import type { Application } from '@splinetool/runtime'
 
 // Create a client-side wrapper for Spline with error boundary
 const SplineWrapper = dynamic(
-  () => import('./spline-wrapper').catch(err => {
-    console.error('Error loading Spline:', err)
-    return () => <div className="w-full h-full bg-red-500/20">Failed to load 3D scene</div>
-  }),
+  () =>
+    import('./spline-wrapper').catch((err) => {
+      console.error('Error loading Spline:', err)
+      return () => (
+        <div className="h-full w-full bg-red-500/20">
+          Failed to load 3D scene
+        </div>
+      )
+    }),
   {
     ssr: false,
-    loading: () => <div className="w-full h-full bg-black/80 backdrop-blur-lg animate-pulse" />
+    loading: () => (
+      <div className="h-full w-full animate-pulse bg-black/80 backdrop-blur-lg" />
+    ),
   }
 )
 
@@ -38,24 +45,24 @@ export default function DashboardBackground() {
   }
 
   if (!isMounted) {
-    return <div className="w-full h-full bg-black/80 backdrop-blur-lg" />
+    return <div className="h-full w-full bg-black/80 backdrop-blur-lg" />
   }
 
   if (loadError) {
     return (
-      <div className="w-full h-full bg-red-500/20 flex items-center justify-center">
+      <div className="flex h-full w-full items-center justify-center bg-red-500/20">
         <p className="text-red-500">Error loading 3D scene: {loadError}</p>
       </div>
     )
   }
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative h-full w-full">
       <SplineWrapper
         scene="https://prod.spline.design/xUUjAFVfSxeg2fVu/scene.splinecode"
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
         onLoad={handleSplineLoad}
       />
     </div>
   )
-} 
+}

@@ -1,11 +1,11 @@
 export default function FormActions({ children }: FormActionsProps) {
-    return (
-      <div className="mt-auto flex justify-between items-center lg:static fixed lg:bottom-auto bottom-0 lg:inset-auto inset-x-0 lg:z-0 z-10 lg:bg-transparent bg-white lg:drop-shadow-none drop-shadow-2xl lg:p-0 p-4">
-        {children}
-      </div>
-    );
-  }
-  
-  interface FormActionsProps {
-    children: React.ReactNode;
-  }
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-10 mt-auto flex items-center justify-between bg-white p-4 drop-shadow-2xl lg:static lg:inset-auto lg:bottom-auto lg:z-0 lg:bg-transparent lg:p-0 lg:drop-shadow-none">
+      {children}
+    </div>
+  )
+}
+
+interface FormActionsProps {
+  children: React.ReactNode
+}

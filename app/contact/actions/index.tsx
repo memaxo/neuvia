@@ -1,34 +1,29 @@
-"use server";
+'use server'
 
-import { createSupbaseServerClient } from "@/utils/supaone";
-
-import { redirect } from "next/navigation";
+import { redirect } from 'next/navigation'
+import { createSupbaseServerClient } from '@/utils/supaone'
 
 type formData = {
-    name: string;
-    email: string;
-    message: string;
+  name: string
+  email: string
+  message: string
 }
 
+export async function updateInqueries(data: formData) {
+  const supabase = await createSupbaseServerClient()
 
-export async function updateInqueries(data:formData) {
-      const supabase = await createSupbaseServerClient();
+  try {
+    const { data: inqueries, error } = await supabase
+      .from('inqueries')
+      .insert({ name: data.name, email: data.email, message: data.message })
+      .select()
 
-try {
+    const result = JSON.stringify(data)
+    return result
 
-const { data: inqueries, error } = await supabase
-  .from('inqueries')
-  .insert(
-    { name: data.name, email: data.email, message: data.message})
-  .select()
-
-const result = JSON.stringify(data)
-  return result;
-
-
-if (error) throw error
-      alert('Message sent!')
-    } catch (error) {
-      alert('Error updating the data!')
-    }
+    if (error) throw error
+    alert('Message sent!')
+  } catch (error) {
+    alert('Error updating the data!')
+  }
 }

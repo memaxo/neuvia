@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next'
- 
+
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
@@ -15,7 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
 
-   {
+    {
       url: 'https://onyx-rho-pink.vercel.app/onboarding',
       lastModified: new Date(),
       changeFrequency: 'weekly',

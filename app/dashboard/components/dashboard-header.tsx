@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import { Settings, User } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import Link from 'next/link'
+import { Settings, User } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,28 +10,21 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { NotificationCenter } from "./notification-center"
+} from '@/components/ui/dropdown-menu'
+import { NotificationCenter } from './notification-center'
 
 export function DashboardHeader() {
   return (
-    <header className="flex h-12 items-center gap-2 px-3 bg-black/30 backdrop-blur-lg border-b border-white/5">
+    <header className="flex h-12 items-center gap-2 border-b border-white/5 bg-black/30 px-3 backdrop-blur-lg">
       <div className="flex-1" />
       <div className="flex items-center gap-2">
         <NotificationCenter />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="header-button"
-        >
+        <Button variant="ghost" size="sm" className="header-button">
           <Settings className="header-icon" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              className="header-button"
-            >
+            <Button variant="ghost" className="header-button">
               <User className="header-icon" />
             </Button>
           </DropdownMenuTrigger>
@@ -64,4 +57,4 @@ export function DashboardHeader() {
       </div>
     </header>
   )
-} 
+}

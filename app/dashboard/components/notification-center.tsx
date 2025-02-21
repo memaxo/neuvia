@@ -1,48 +1,48 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import Link from "next/link"
-import { 
-  Bell,
+import { useState } from 'react'
+import Link from 'next/link'
+import { formatDistanceToNow } from 'date-fns'
+import {
   AlertCircle,
-  RefreshCw,
-  Clock,
-  MessageSquare,
-  X,
+  Bell,
   Check,
   ChevronRight,
-  Filter
-} from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+  Clock,
+  Filter,
+  MessageSquare,
+  RefreshCw,
+  X,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuContent,
   DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { mockNotifications, NotificationType, Notification } from "./types"
+} from '@/components/ui/tooltip'
+import { mockNotifications, Notification, NotificationType } from './types'
 
 const notificationIcons: Record<NotificationType, any> = {
   alert: AlertCircle,
   update: RefreshCw,
   reminder: Clock,
-  message: MessageSquare
+  message: MessageSquare,
 }
 
 const notificationColors: Record<NotificationType, string> = {
-  alert: "text-red-400 bg-red-400/10",
-  update: "text-blue-400 bg-blue-400/10",
-  reminder: "text-yellow-400 bg-yellow-400/10",
-  message: "text-purple-400 bg-purple-400/10"
+  alert: 'text-red-400 bg-red-400/10',
+  update: 'text-blue-400 bg-blue-400/10',
+  reminder: 'text-yellow-400 bg-yellow-400/10',
+  message: 'text-purple-400 bg-purple-400/10',
 }
 
 export function NotificationCenter() {
@@ -54,55 +54,59 @@ export function NotificationCenter() {
       alert: true,
       update: true,
       reminder: true,
-      message: true
-    }
+      message: true,
+    },
   })
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  const unreadCount = notifications.filter((n) => !n.read).length
 
-  const filteredNotifications = notifications.filter(notification => {
+  const filteredNotifications = notifications.filter((notification) => {
     if (!filters.showRead && notification.read) return false
     return filters.types[notification.type]
   })
 
   const markAsRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     )
   }
 
   const markAllAsRead = () => {
-    setNotifications(prev =>
-      prev.map(n => ({ ...n, read: true }))
-    )
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }
 
-  const NotificationItem = ({ notification }: { notification: Notification }) => {
+  const NotificationItem = ({
+    notification,
+  }: {
+    notification: Notification
+  }) => {
     const Icon = notificationIcons[notification.type]
-    
+
     return (
       <div
         className={cn(
-          "group relative flex items-start gap-4 p-4 rounded-lg",
-          "transition-all duration-200",
-          notification.read ? "opacity-75" : "opacity-100",
-          "hover:bg-spline-blue/10"
+          'group relative flex items-start gap-4 rounded-lg p-4',
+          'transition-all duration-200',
+          notification.read ? 'opacity-75' : 'opacity-100',
+          'hover:bg-spline-blue/10'
         )}
       >
-        <div className={cn(
-          "flex-none p-2 rounded-full",
-          notificationColors[notification.type]
-        )}>
+        <div
+          className={cn(
+            'flex-none rounded-full p-2',
+            notificationColors[notification.type]
+          )}
+        >
           <Icon className="h-4 w-4" />
         </div>
-        
-        <div className="flex-1 min-w-0">
+
+        <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-medium text-white/90">
                 {notification.title}
               </p>
-              <p className="text-xs text-white/60 mt-1">
+              <p className="mt-1 text-xs text-white/60">
                 {notification.message}
               </p>
             </div>
@@ -121,10 +125,12 @@ export function NotificationCenter() {
               </Button>
             )}
           </div>
-          
-          <div className="flex items-center gap-4 mt-2">
+
+          <div className="mt-2 flex items-center gap-4">
             <span className="text-xs text-white/40">
-              {formatDistanceToNow(new Date(notification.timestamp), { addSuffix: true })}
+              {formatDistanceToNow(new Date(notification.timestamp), {
+                addSuffix: true,
+              })}
             </span>
             {notification.relatedTo && (
               <span className="text-xs text-white/40">
@@ -135,7 +141,7 @@ export function NotificationCenter() {
         </div>
 
         {notification.actionUrl && (
-          <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/40 transition-colors" />
+          <ChevronRight className="h-4 w-4 text-white/20 transition-colors group-hover:text-white/40" />
         )}
       </div>
     )
@@ -154,7 +160,7 @@ export function NotificationCenter() {
             >
               <Bell className="h-5 w-5 text-white/70" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-[10px] font-medium flex items-center justify-center text-white">
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
                   {unreadCount}
                 </span>
               )}
@@ -166,9 +172,11 @@ export function NotificationCenter() {
         </Tooltip>
 
         {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-96 rounded-lg bg-black/90 backdrop-blur-lg border border-white/5 shadow-lg">
-            <div className="flex items-center justify-between p-4 border-b border-white/5">
-              <h3 className="text-sm font-medium text-white/90">Notifications</h3>
+          <div className="absolute right-0 top-full mt-2 w-96 rounded-lg border border-white/5 bg-black/90 shadow-lg backdrop-blur-lg">
+            <div className="flex items-center justify-between border-b border-white/5 p-4">
+              <h3 className="text-sm font-medium text-white/90">
+                Notifications
+              </h3>
               <div className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -183,8 +191,8 @@ export function NotificationCenter() {
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuCheckboxItem
                       checked={filters.showRead}
-                      onCheckedChange={(checked) => 
-                        setFilters(prev => ({ ...prev, showRead: checked }))
+                      onCheckedChange={(checked) =>
+                        setFilters((prev) => ({ ...prev, showRead: checked }))
                       }
                     >
                       Show Read
@@ -195,9 +203,9 @@ export function NotificationCenter() {
                         key={type}
                         checked={enabled}
                         onCheckedChange={(checked) =>
-                          setFilters(prev => ({
+                          setFilters((prev) => ({
                             ...prev,
-                            types: { ...prev.types, [type]: checked }
+                            types: { ...prev.types, [type]: checked },
                           }))
                         }
                       >
@@ -206,25 +214,25 @@ export function NotificationCenter() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                
+
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-xs text-white/40 hover:text-white/60"
                   onClick={markAllAsRead}
                 >
-                  <Check className="h-3 w-3 mr-1" />
+                  <Check className="mr-1 h-3 w-3" />
                   Mark all as read
                 </Button>
               </div>
             </div>
-            
+
             <div className="max-h-[480px] overflow-y-auto">
               {filteredNotifications.length > 0 ? (
-                filteredNotifications.map(notification => (
+                filteredNotifications.map((notification) => (
                   <Link
                     key={notification.id}
-                    href={notification.actionUrl || "#"}
+                    href={notification.actionUrl || '#'}
                     className="block"
                   >
                     <NotificationItem notification={notification} />
@@ -241,4 +249,4 @@ export function NotificationCenter() {
       </div>
     </TooltipProvider>
   )
-} 
+}

@@ -1,5 +1,4 @@
-import { Icons } from "@/components/icons"
-
+import { Icons } from '@/components/icons'
 
 export interface NavItem {
   title: string
@@ -14,9 +13,9 @@ export interface NavItemWithChildren extends NavItem {
   items: NavItemWithChildren[]
 }
 
-export interface MainNavItem extends NavItem {}
-
-export interface SidebarNavItem extends NavItemWithChildren {}
+// Re-export base types with more descriptive names
+export type MainNavItem = NavItem
+export type SidebarNavItem = NavItemWithChildren
 
 export interface FooterItem extends NavItem {
   items?: FooterItem[]

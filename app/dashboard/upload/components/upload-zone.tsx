@@ -1,22 +1,22 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { Upload, FileType, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { useState } from 'react'
+import { FileType, Upload, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from '@/components/ui/tooltip'
 
 interface FileUpload {
   id: string
   name: string
   size: number
   progress: number
-  status: "uploading" | "complete" | "error"
+  status: 'uploading' | 'complete' | 'error'
 }
 
 export function UploadZone() {
@@ -49,16 +49,16 @@ export function UploadZone() {
   }
 
   const handleFiles = (files: File[]) => {
-    const newUploads = files.map(file => ({
+    const newUploads = files.map((file) => ({
       id: Math.random().toString(36).substring(7),
       name: file.name,
       size: file.size,
       progress: 0,
-      status: "uploading" as const
+      status: 'uploading' as const,
     }))
-    setUploads(prev => [...prev, ...newUploads])
+    setUploads((prev) => [...prev, ...newUploads])
     // Simulate upload progress
-    newUploads.forEach(upload => {
+    newUploads.forEach((upload) => {
       simulateUpload(upload.id)
     })
   }
@@ -67,13 +67,13 @@ export function UploadZone() {
     let progress = 0
     const interval = setInterval(() => {
       progress += 10
-      setUploads(prev => 
-        prev.map(upload => 
-          upload.id === id 
-            ? { 
-                ...upload, 
+      setUploads((prev) =>
+        prev.map((upload) =>
+          upload.id === id
+            ? {
+                ...upload,
                 progress,
-                status: progress === 100 ? "complete" : "uploading"
+                status: progress === 100 ? 'complete' : 'uploading',
               }
             : upload
         )
@@ -83,7 +83,7 @@ export function UploadZone() {
   }
 
   const removeUpload = (id: string) => {
-    setUploads(prev => prev.filter(upload => upload.id !== id))
+    setUploads((prev) => prev.filter((upload) => upload.id !== id))
   }
 
   return (
@@ -94,42 +94,40 @@ export function UploadZone() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "relative group border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300",
-          isDragging 
-            ? "border-cyan-500/50 bg-cyan-500/5" 
-            : "border-white/10 hover:border-cyan-500/30 bg-black/20"
+          'group relative rounded-xl border-2 border-dashed p-8 text-center transition-all duration-300',
+          isDragging
+            ? 'border-cyan-500/50 bg-cyan-500/5'
+            : 'border-white/10 bg-black/20 hover:border-cyan-500/30'
         )}
       >
         {/* Enhanced gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl" />
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
         <div className="relative z-10">
           <div className="mb-4">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 p-4 group-hover:border-cyan-500/20 transition-all duration-300 group-hover:shadow-[0_0_30px_rgba(0,255,255,0.2)]">
-              <Upload className="w-full h-full text-cyan-400 group-hover:text-cyan-300 transition-colors duration-300" />
+            <div className="mx-auto h-16 w-16 rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-4 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_30px_rgba(0,255,255,0.2)]">
+              <Upload className="h-full w-full text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
             </div>
           </div>
-          
-          <h3 className="text-lg font-medium text-white/90 mb-2">
+
+          <h3 className="mb-2 text-lg font-medium text-white/90">
             Drop files to upload
           </h3>
-          <p className="text-sm text-white/70 mb-4">
+          <p className="mb-4 text-sm text-white/70">
             or click to browse from your computer
           </p>
-          
+
           <Button
-            onClick={() => document.getElementById("file-upload")?.click()}
-            className="relative overflow-hidden group/btn bg-gradient-to-r from-cyan-500 to-blue-500 
-                     hover:from-cyan-600 hover:to-blue-600 text-white shadow-lg
-                     hover:shadow-[0_0_30px_rgba(0,255,255,0.3)] transition-all duration-300"
+            onClick={() => document.getElementById('file-upload')?.click()}
+            className="group/btn relative overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]"
           >
             <FileType className="mr-2 h-4 w-4" />
             Select Files
             <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute top-0 -left-full w-full h-[1px] bg-gradient-to-r from-transparent via-white/60 to-transparent group-hover/btn:animate-scan" />
+              <div className="group-hover/btn:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
             </div>
           </Button>
-          
+
           <input
             id="file-upload"
             type="file"
@@ -137,7 +135,7 @@ export function UploadZone() {
             className="hidden"
             onChange={handleFileSelect}
           />
-          
+
           <p className="mt-4 text-sm text-white/50">
             Supported formats: DICOM, NIfTI, JPEG, PNG
           </p>
@@ -147,37 +145,37 @@ export function UploadZone() {
       {/* Upload Progress */}
       {uploads.length > 0 && (
         <div className="space-y-3">
-          {uploads.map(upload => (
+          {uploads.map((upload) => (
             <div
               key={upload.id}
-              className="relative group p-4 rounded-xl bg-black/20 border border-white/5 
-                       hover:border-cyan-500/30 hover:bg-black/40 transition-all duration-300"
+              className="group relative rounded-xl border border-white/5 bg-black/20 p-4 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/40"
             >
               {/* Enhanced gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl" />
+              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/10">
+                    <div className="rounded-lg bg-blue-500/10 p-2">
                       <FileType className="h-4 w-4 text-blue-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-white/90">{upload.name}</p>
+                      <p className="text-sm font-medium text-white/90">
+                        {upload.name}
+                      </p>
                       <p className="text-xs text-white/50">
                         {(upload.size / 1024 / 1024).toFixed(2)} MB
                       </p>
                     </div>
                   </div>
-                  
+
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 bg-black/40 hover:bg-black/60 text-white/60 hover:text-white 
-                                   transition-all hover:scale-110"
+                          className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                           onClick={() => removeUpload(upload.id)}
                         >
                           <X className="h-4 w-4" />
@@ -191,15 +189,15 @@ export function UploadZone() {
                 </div>
 
                 {/* Progress bar */}
-                <div className="h-1.5 rounded-full bg-black/40 overflow-hidden">
+                <div className="h-1.5 overflow-hidden rounded-full bg-black/40">
                   <div
                     className={cn(
-                      "h-full rounded-full transition-all duration-300",
-                      upload.status === "complete"
-                        ? "bg-gradient-to-r from-green-500 to-green-600"
-                        : upload.status === "error"
-                        ? "bg-gradient-to-r from-red-500 to-red-600"
-                        : "bg-gradient-to-r from-cyan-500 to-blue-500"
+                      'h-full rounded-full transition-all duration-300',
+                      upload.status === 'complete'
+                        ? 'bg-gradient-to-r from-green-500 to-green-600'
+                        : upload.status === 'error'
+                          ? 'bg-gradient-to-r from-red-500 to-red-600'
+                          : 'bg-gradient-to-r from-cyan-500 to-blue-500'
                     )}
                     style={{ width: `${upload.progress}%` }}
                   />
@@ -207,14 +205,20 @@ export function UploadZone() {
 
                 {/* Status */}
                 <div className="mt-1 flex items-center justify-between text-xs">
-                  <span className={cn(
-                    upload.status === "complete" ? "text-green-400" :
-                    upload.status === "error" ? "text-red-400" :
-                    "text-white/50"
-                  )}>
-                    {upload.status === "complete" ? "Complete" :
-                     upload.status === "error" ? "Error" :
-                     "Uploading..."}
+                  <span
+                    className={cn(
+                      upload.status === 'complete'
+                        ? 'text-green-400'
+                        : upload.status === 'error'
+                          ? 'text-red-400'
+                          : 'text-white/50'
+                    )}
+                  >
+                    {upload.status === 'complete'
+                      ? 'Complete'
+                      : upload.status === 'error'
+                        ? 'Error'
+                        : 'Uploading...'}
                   </span>
                   <span className="text-white/50">{upload.progress}%</span>
                 </div>
@@ -225,4 +229,4 @@ export function UploadZone() {
       )}
     </div>
   )
-} 
+}

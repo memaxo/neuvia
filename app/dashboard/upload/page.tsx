@@ -1,8 +1,8 @@
-import { Upload, FileType, AlertCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { UploadZone } from "./components/upload-zone"
-import { RecentUploads } from "./components/recent-uploads"
-import { UploadGuidelines } from "./components/upload-guidelines"
+import { Upload as _, FileType as __, AlertCircle as ___ } from 'lucide-react'
+import { Button as ____ } from '@/components/ui/button'
+import { RecentUploads } from './components/recent-uploads'
+import { UploadGuidelines } from './components/upload-guidelines'
+import { UploadZone } from './components/upload-zone'
 
 export default function UploadPage() {
   return (
@@ -10,7 +10,7 @@ export default function UploadPage() {
       {/* Header Section */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 text-transparent bg-clip-text drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+          <h1 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
             Upload Scans
           </h1>
           <p className="mt-2 text-sm text-white/70">
@@ -20,13 +20,13 @@ export default function UploadPage() {
       </div>
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Upload Zone */}
-        <div className="xl:col-span-2 space-y-6">
+        <div className="space-y-6 xl:col-span-2">
           {/* Upload Area */}
-          <div className="relative overflow-hidden rounded-2xl backdrop-blur-xl bg-black/30 border border-white/10">
-            <div className="p-6 border-b border-white/5">
-              <h2 className="text-xl font-semibold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 text-transparent bg-clip-text">
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
+            <div className="border-b border-white/5 p-6">
+              <h2 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-semibold text-transparent">
                 Upload Files
               </h2>
             </div>
@@ -36,9 +36,9 @@ export default function UploadPage() {
           </div>
 
           {/* Recent Uploads */}
-          <div className="relative overflow-hidden rounded-2xl backdrop-blur-xl bg-black/30 border border-white/10">
-            <div className="p-6 border-b border-white/5">
-              <h2 className="text-xl font-semibold bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 text-transparent bg-clip-text">
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
+            <div className="border-b border-white/5 p-6">
+              <h2 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-semibold text-transparent">
                 Recent Uploads
               </h2>
             </div>
@@ -57,4 +57,4 @@ export default function UploadPage() {
       </div>
     </div>
   )
-} 
+}

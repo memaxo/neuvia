@@ -1,14 +1,14 @@
-import React from "react"
-import MemberTable from "./components/MemberTable"
-import SearchMembers from "./components/SearchMembers"
-import CreateMember from "./components/create/CreateMember"
-import { DashboardHeader } from "../../components/dashboard-header"
+import React from 'react'
+import { DashboardHeader } from '../../components/dashboard-header'
+import CreateMember from './components/create/CreateMember'
+import MemberTable from './components/MemberTable'
+import SearchMembers from './components/SearchMembers'
 
 export default function MembersPage() {
   return (
     <div className="flex-1 space-y-8">
       <DashboardHeader />
-      
+
       <div className="space-y-6">
         {/* Header section */}
         <div className="flex items-center justify-between">
@@ -22,11 +22,11 @@ export default function MembersPage() {
         {/* Search and table */}
         <div className="space-y-4">
           <SearchMembers />
-          <div className="bg-teal-800/50 rounded-lg">
+          <div className="rounded-lg bg-teal-800/50">
             <MemberTable />
           </div>
         </div>
       </div>
     </div>
   )
-} 
+}

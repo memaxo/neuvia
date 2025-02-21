@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import { Appointment } from "../types"
-import { format, isSameDay } from "date-fns"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { format, isSameDay } from 'date-fns'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Appointment } from '../types'
 
 interface MiniCalendarProps {
   appointments: Appointment[]
@@ -19,8 +19,10 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
 
   return (
     <div className="space-y-0.5">
-      <div className="flex items-center justify-between mb-1">
-        <h4 className="text-xs font-medium text-white/70">Upcoming Appointments</h4>
+      <div className="mb-1 flex items-center justify-between">
+        <h4 className="text-xs font-medium text-white/70">
+          Upcoming Appointments
+        </h4>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -39,36 +41,42 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
         </div>
       </div>
       {upcomingDays.map((date) => {
-        const dayAppointments = appointments.filter(apt => 
+        const dayAppointments = appointments.filter((apt) =>
           isSameDay(new Date(apt.date), date)
         )
-        
+
         return (
           <div
             key={date.toISOString()}
             className={cn(
-              "flex items-start gap-1.5 py-1 px-1.5 rounded",
-              isSameDay(date, today) ? "bg-[#4B6BFD]/10" : "hover:bg-black/20"
+              'flex items-start gap-1.5 rounded px-1.5 py-1',
+              isSameDay(date, today) ? 'bg-[#4B6BFD]/10' : 'hover:bg-black/20'
             )}
           >
-            <div className="flex-none w-6 text-center">
-              <div className="text-[10px] text-white/40">{format(date, 'EEE')}</div>
-              <div className="text-[10px] font-medium text-white/70">{format(date, 'd')}</div>
+            <div className="w-6 flex-none text-center">
+              <div className="text-[10px] text-white/40">
+                {format(date, 'EEE')}
+              </div>
+              <div className="text-[10px] font-medium text-white/70">
+                {format(date, 'd')}
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1">
               {dayAppointments.length > 0 ? (
                 <div className="space-y-0.5">
-                  {dayAppointments.map(apt => (
+                  {dayAppointments.map((apt) => (
                     <div
                       key={apt.id}
-                      className="text-[10px] text-white/60 truncate hover:text-white/80"
+                      className="truncate text-[10px] text-white/60 hover:text-white/80"
                     >
                       {apt.patientName} - {apt.type}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-[10px] text-white/40 italic">No appointments</div>
+                <div className="text-[10px] italic text-white/40">
+                  No appointments
+                </div>
               )}
             </div>
           </div>
@@ -76,4 +84,4 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
       })}
     </div>
   )
-} 
+}

@@ -2,10 +2,10 @@ name: Deploy
 
 on:
   push:
-    branches: [ staging, main ]
+    branches: [staging, main]
   workflow_dispatch:
 
-concurrency: 
+concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -14,23 +14,23 @@ jobs:
     name: Deploy to Vercel
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-    
+
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - uses: pnpm/action-setup@v2
         with:
           version: 8
-          
+
       - name: Get pnpm store directory
         shell: bash
         run: |
@@ -43,7 +43,7 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
-            
+
       - name: Setup Next.js cache
         uses: actions/cache@v3
         with:
@@ -52,43 +52,43 @@ jobs:
           key: ${{ runner.os }}-nextjs-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-
-          
+
       - name: Install dependencies
         run: pnpm ci:deps
-        
+
       - name: Install Vercel CLI
         run: pnpm install --global vercel@latest
-        
+
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-        
+
       - name: Build Project
         run: pnpm ci:build
-        
+
       - name: Deploy to Staging
         if: github.ref == 'refs/heads/staging'
         id: deploy-staging
         run: |
           DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-        
+
       - name: Deploy to Production
         if: github.ref == 'refs/heads/main'
         id: deploy-production
         run: |
           DEPLOYMENT_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-        
+
       - name: Update Database Types
         if: github.ref == 'refs/heads/main'
         run: pnpm db:types
-        
+
       - name: Push Database Changes
         if: github.ref == 'refs/heads/main'
         run: pnpm db:push
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          
+
       - name: Create Deployment Comment
         uses: actions/github-script@v7
         with:
@@ -98,9 +98,9 @@ jobs:
             const url = ref === 'refs/heads/main' 
               ? '${{ steps.deploy-production.outputs.deployment_url }}'
               : '${{ steps.deploy-staging.outputs.deployment_url }}';
-            
+
             const body = `🚀 Deployed to ${environment}: ${url}`;
-            
+
             if (context.eventName === 'pull_request') {
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
@@ -109,17 +109,17 @@ jobs:
                 body
               });
             }
-            
+
   rollback:
     name: Rollback on Failure
     needs: [deploy]
     if: failure()
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-    
+
     steps:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
-        
+
       - name: Rollback to Previous Deployment
-        run: vercel rollback --token=${{ secrets.VERCEL_TOKEN }} 
+        run: vercel rollback --token=${{ secrets.VERCEL_TOKEN }}
