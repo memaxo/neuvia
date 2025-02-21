@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   },
   referrer: 'origin-when-cross-origin',
   keywords: [
-    'NextJS 14 TypeScript',
+    'NextJS 15 TypeScript',
     'Supabase SSR',
     'TanStack React Query',
     'vercel',

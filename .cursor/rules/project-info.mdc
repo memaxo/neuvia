@@ -3,7 +3,7 @@ description: Description of neuvia app structure
 globs: 
 ---
 1. **Core Technology Stack**:
-- NextJS 14+ with App Router in TypeScript
+- NextJS 15 with App Router in TypeScript
 - Supabase for backend services
 - TanStack React Query for data management
 - Shadcn-UI and Radix-UI for UI components

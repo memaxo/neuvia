@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { Route } from 'next'
 import {
   Activity,
   ChevronLeft,
@@ -10,7 +12,6 @@ import {
   FileText,
   LayoutDashboard,
   LineChart,
-  Menu,
   Settings,
   Users,
 } from 'lucide-react'
@@ -23,164 +24,237 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { SearchBar } from './search-bar'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 
-const sidebarLinks = [
+interface SidebarProps {
+  children: React.ReactNode
+  defaultCollapsed?: boolean
+  collapsible?: 'icon' | 'offcanvas' | 'none'
+  className?: string
+}
+
+interface SidebarComposition {
+  Header: typeof Header
+  Content: typeof Content
+}
+
+const Header = ({ children }: { children: React.ReactNode }) => {
+  return <div className="flex items-center justify-between p-4">{children}</div>
+}
+Header.displayName = "SidebarHeader"
+
+const Content = ({ children }: { children: React.ReactNode }) => {
+  return <div className="flex-1 overflow-auto py-2">{children}</div>
+}
+Content.displayName = "SidebarContent"
+
+const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
+  ({
+    children,
+    defaultCollapsed = false,
+    collapsible = 'icon',
+    className,
+  }: SidebarProps) => {
+    const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
+    
+    return (
+      <aside 
+        className={cn(
+          "group/sidebar relative flex h-full flex-col overflow-hidden border-r bg-background",
+          className
+        )}
+        data-collapsed={isCollapsed}
+        data-collapsible={collapsible}
+      >
+        {children}
+        {collapsible === 'icon' && (
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="absolute right-4 top-4 opacity-0 transition-opacity group-hover/sidebar:opacity-100"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span className="sr-only">Toggle Sidebar</span>
+          </button>
+        )}
+      </aside>
+    )
+  },
+  { Header, Content, displayName: "Sidebar" }
+)
+
+interface SidebarLink {
+  title: string
+  href: Route
+  icon: (props: { className?: string }) => JSX.Element
+  description: string
+}
+
+const sidebarLinks: SidebarLink[] = [
   {
     title: 'Dashboard',
-    href: '/dashboard',
+    href: '/dashboard' as Route,
     icon: LayoutDashboard,
     description: 'Overview and quick actions',
   },
   {
     title: 'Patients',
-    href: '/dashboard/patients',
+    href: '/dashboard/patients' as Route,
     icon: Users,
     description: 'Manage patient records',
   },
   {
     title: 'Reports',
-    href: '/dashboard/reports',
+    href: '/dashboard/reports' as Route,
     icon: FileText,
     description: 'View and generate reports',
   },
   {
     title: 'Analysis',
-    href: '/dashboard/analysis',
+    href: '/dashboard/analysis' as Route,
     icon: LineChart,
     description: 'Data analysis and insights',
   },
   {
     title: 'Activity',
-    href: '/dashboard/activity',
+    href: '/dashboard/activity' as Route,
     icon: Activity,
-    description: 'Recent system activity',
+    description: 'Recent activity and logs',
   },
   {
     title: 'Settings',
-    href: '/dashboard/settings',
+    href: '/dashboard/settings' as Route,
     icon: Settings,
-    description: 'System configuration',
+    description: 'Account and app settings',
   },
 ]
 
 export function DashboardSidebar() {
-  const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const pathname = usePathname()
 
   return (
-    <div
-      className={cn(
-        'sticky top-0 flex h-screen flex-col',
-        'bg-black/20 backdrop-blur-xl',
-        isCollapsed ? 'w-[80px]' : 'w-[280px]'
-      )}
-    >
-      {/* Logo section */}
-      <div className="flex items-center justify-between border-b border-white/5 p-4 md:p-6">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="relative h-10 w-10 rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
-            <Activity className="h-full w-full text-cyan-400" />
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-          </div>
-          {!isCollapsed && (
-            <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-lg font-bold text-transparent">
-              Neuvia
-            </span>
-          )}
-        </Link>
+    <Sheet>
+      <SheetTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="group relative overflow-hidden bg-black/20 text-white/70 hover:bg-black/40 hover:text-white"
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="flex h-10 w-10 items-center justify-center p-0 hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 md:hidden"
         >
-          {isCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
-          </div>
+          <ChevronRight className="h-4 w-4" />
+          <span className="sr-only">Toggle sidebar</span>
         </Button>
-      </div>
-
-      {/* Search bar */}
-      {!isCollapsed && (
-        <div className="p-4">
-          <SearchBar />
-        </div>
-      )}
-
-      {/* Navigation links */}
-      <nav className="flex-1 overflow-y-auto p-2">
-        {sidebarLinks.map((link) => {
-          const isActive = pathname === link.href
-          return (
-            <TooltipProvider key={link.href}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    href={link.href}
-                    className={cn(
-                      'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
-                      'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
-                      isActive
-                        ? 'border border-cyan-500/30 bg-black/40'
-                        : 'border border-transparent',
-                      isCollapsed ? 'justify-center' : ''
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl',
-                        'border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20',
-                        'transition-colors duration-300 group-hover:border-cyan-500/20'
-                      )}
-                    >
-                      <link.icon
-                        className={cn(
-                          'h-5 w-5 transition-colors duration-300',
-                          isActive
-                            ? 'text-cyan-400'
-                            : 'text-white/70 group-hover:text-cyan-400'
-                        )}
-                      />
-                    </div>
-                    {!isCollapsed && (
-                      <div className="min-w-0 flex-1">
-                        <span
+      </SheetTrigger>
+      <SheetContent side="left" className="flex w-[300px] flex-col p-0">
+        <SheetHeader className="border-b border-border p-4">
+          <SheetTitle>Dashboard</SheetTitle>
+        </SheetHeader>
+        <nav className="flex-1 overflow-y-auto p-2">
+          {sidebarLinks.map((link) => {
+            const isActive = pathname === link.href
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
+                  'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
+                  isActive
+                    ? 'border border-cyan-500/30 bg-black/40'
+                    : 'border border-transparent'
+                )}
+              >
+                <link.icon className="h-5 w-5 shrink-0" />
+                <div className="flex flex-col">
+                  <span>{link.title}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {link.description}
+                  </span>
+                </div>
+              </Link>
+            )
+          })}
+        </nav>
+      </SheetContent>
+      <div className="hidden md:flex">
+        <Sidebar
+          defaultCollapsed={false}
+          collapsible="icon"
+          className="min-h-screen border-r"
+        >
+          <Sidebar.Header>
+            <Button
+              variant="ghost"
+              className="h-10 w-10"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+            >
+              {isCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+              <span className="sr-only">Toggle sidebar</span>
+            </Button>
+          </Sidebar.Header>
+          <Sidebar.Content>
+            <div className="px-2">
+              <SearchBar />
+            </div>
+            <nav className="flex-1 overflow-y-auto p-2">
+              {sidebarLinks.map((link) => {
+                const isActive = pathname === link.href
+                return (
+                  <TooltipProvider key={link.href}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={link.href}
                           className={cn(
-                            'block text-sm font-medium transition-colors duration-300',
+                            'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
+                            'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                             isActive
-                              ? 'text-white'
-                              : 'text-white/70 group-hover:text-white'
+                              ? 'border border-cyan-500/30 bg-black/40'
+                              : 'border border-transparent',
+                            isCollapsed ? 'justify-center' : ''
                           )}
                         >
-                          {link.title}
-                        </span>
-                        <span className="block text-xs text-white/50">
-                          {link.description}
-                        </span>
-                      </div>
-                    )}
-                  </Link>
-                </TooltipTrigger>
-                {isCollapsed && (
-                  <TooltipContent side="right">
-                    <div className="space-y-1">
-                      <p className="font-medium">{link.title}</p>
-                      <p className="text-xs text-white/70">
-                        {link.description}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
-          )
-        })}
-      </nav>
-    </div>
+                          <link.icon
+                            className={cn('h-5 w-5 shrink-0', {
+                              'text-muted-foreground': !isActive,
+                            })}
+                          />
+                          {!isCollapsed && (
+                            <div className="flex flex-col">
+                              <span>{link.title}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {link.description}
+                              </span>
+                            </div>
+                          )}
+                        </Link>
+                      </TooltipTrigger>
+                      {isCollapsed && (
+                        <TooltipContent side="right">
+                          <div className="flex flex-col gap-1">
+                            <span>{link.title}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {link.description}
+                            </span>
+                          </div>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )
+              })}
+            </nav>
+          </Sidebar.Content>
+        </Sidebar>
+      </div>
+    </Sheet>
   )
 }

@@ -7,14 +7,11 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
-import { cn } from '@/lib/utils'
-import { Icons } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,

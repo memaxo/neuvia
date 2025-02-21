@@ -79,10 +79,16 @@ export async function signInWithGithub() {
     },
   })
 
+  if (error) {
+    console.error('Error signing in with Github:', error.message)
+    return JSON.stringify({ error })
+  }
+
   if (data.url) {
     redirect(data.url)
   }
 }
+
 export async function signInWithTwitter() {
   const supabase = await createSupbaseServerClient()
 
@@ -113,10 +119,16 @@ export async function signInWithTwitter() {
     },
   })
 
+  if (error) {
+    console.error('Error signing in with Twitter:', error.message)
+    return JSON.stringify({ error })
+  }
+
   if (data.url) {
     redirect(data.url)
   }
 }
+
 export async function logout() {
   const supabase = await createSupbaseServerClient()
   await supabase.auth.signOut()

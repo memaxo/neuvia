@@ -18,15 +18,20 @@ module.exports = {
     '@next/next/no-typos': 'error',
     '@next/next/no-sync-scripts': 'error',
     'react/jsx-key': 'error',
-    'tailwindcss/no-custom-classname': 'off',
     '@typescript-eslint/no-unused-vars': [
       'error',
       {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
       },
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
+    'react/display-name': 'warn',
+    'tailwindcss/no-custom-classname': 'warn',
+    'tailwindcss/enforces-shorthand': 'warn',
+    'tailwindcss/migration-from-tailwind-2': 'warn',
+    'tailwindcss/no-contradicting-classname': 'error',
   },
   settings: {
     tailwindcss: {

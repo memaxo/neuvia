@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AuthTokenResponse } from '@supabase/supabase-js'
 import { useForm } from 'react-hook-form'
@@ -9,102 +10,149 @@ import { z } from 'zod'
 import { cn } from '@/lib/utils'
 import { Icons } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { toast } from '@/components/ui/use-toast'
-import { loginWithEmailAndPassword, signInWithGithub } from '../actions'
+import { loginWithEmailAndPassword, signInWithGithub, signUpWithEmailAndPassword } from '../actions'
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLDivElement> {}
 
+const formSchema = z.object({
+  email: z.string().email({ message: 'Please enter a valid email address' }),
+  password: z.string().min(8, { message: 'Password must be at least 8 characters' }),
+  confirm: z.string()
+}).refine((data) => data.password === data.confirm, {
+  message: "Passwords don't match",
+  path: ["confirm"]
+})
+
 export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
-  const LoginSchema = z.object({
-    email: z.string().email({ message: 'Please enter a valid email address' }),
-    password: z.string().min(1, { message: 'Password cannot be empty' }),
-  })
+  const [isLoading, setIsLoading] = useState(false)
 
-  const [isPending, startTransition] = React.useTransition()
-
-  const form = useForm<z.infer<typeof LoginSchema>>({
-    resolver: zodResolver(LoginSchema),
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       email: '',
       password: '',
+      confirm: ''
     },
   })
 
-  async function onSubmit(data: z.infer<typeof LoginSchema>) {
-    startTransition(async () => {
-      try {
-        const { error } = JSON.parse(
-          await loginWithEmailAndPassword(data)
-        ) as AuthTokenResponse
-
-        if (error) {
-          toast({
-            title: 'Login failed',
-            description: error.message,
-            variant: 'destructive',
-          })
-        } else {
-          toast({
-            title: 'Login successful',
-            description: 'Welcome back!',
-          })
-        }
-      } catch (error) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsLoading(true)
+    try {
+      const result = await signUpWithEmailAndPassword(values)
+      const parsed = JSON.parse(result)
+      
+      if (parsed.error) {
         toast({
-          title: 'An error occurred',
-          description: 'Please try again later',
+          title: 'Error',
+          description: parsed.error.message,
           variant: 'destructive',
         })
+        return
       }
-    })
+
+      toast({
+        title: 'Success',
+        description: 'Check your email to confirm your account',
+      })
+    } catch (_error) {
+      toast({
+        title: 'Error',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
     <div className={cn('grid gap-6', className)} {...props}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              placeholder="name@example.com"
-              type="email"
-              autoCapitalize="none"
-              autoComplete="email"
-              autoCorrect="off"
-              disabled={isPending}
-              {...form.register('email')}
-            />
-            {form.formState.errors.email && (
-              <p className="text-sm text-red-500">
-                {form.formState.errors.email.message}
-              </p>
-            )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <>
+                    <FormLabel htmlFor="email">Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        id="email"
+                        placeholder="name@example.com"
+                        type="email"
+                        autoCapitalize="none"
+                        autoComplete="email"
+                        autoCorrect="off"
+                        disabled={isLoading}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </>
+                )}
+              />
+            </div>
+            <div className="grid gap-2">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <>
+                    <FormLabel htmlFor="password">Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        id="password"
+                        type="password"
+                        disabled={isLoading}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </>
+                )}
+              />
+            </div>
+            <div className="grid gap-2">
+              <FormField
+                control={form.control}
+                name="confirm"
+                render={({ field }) => (
+                  <>
+                    <FormLabel htmlFor="confirm">Confirm Password</FormLabel>
+                    <FormControl>
+                      <Input
+                        id="confirm"
+                        type="password"
+                        disabled={isLoading}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </>
+                )}
+              />
+            </div>
+            <Button disabled={isLoading} type="submit">
+              {isLoading ? (
+                <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Sign Up
+            </Button>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              disabled={isPending}
-              {...form.register('password')}
-            />
-            {form.formState.errors.password && (
-              <p className="text-sm text-red-500">
-                {form.formState.errors.password.message}
-              </p>
-            )}
-          </div>
-          <Button disabled={isPending} type="submit">
-            {isPending ? (
-              <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
-            ) : null}
-            Sign In
-          </Button>
-        </div>
-      </form>
+        </form>
+      </Form>
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t" />
@@ -118,22 +166,23 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       <Button
         variant="outline"
         type="button"
-        disabled={isPending}
+        disabled={isLoading}
         onClick={() => {
-          startTransition(async () => {
-            try {
-              await signInWithGithub()
-            } catch (error) {
-              toast({
-                title: 'Error signing in with GitHub',
-                description: 'Please try again later',
-                variant: 'destructive',
-              })
-            }
-          })
+          setIsLoading(true)
+          try {
+            signInWithGithub()
+          } catch (error) {
+            toast({
+              title: 'Error signing in with GitHub',
+              description: 'Please try again later',
+              variant: 'destructive',
+            })
+          } finally {
+            setIsLoading(false)
+          }
         }}
       >
-        {isPending ? (
+        {isLoading ? (
           <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
         ) : (
           <Icons.gitHub className="mr-2 h-4 w-4" />
