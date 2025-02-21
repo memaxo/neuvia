@@ -1,4 +1,4 @@
-import { RunnableSequence, RunnableMap } from "@langchain/core/runnables";
+import { RunnableSequence, RunnableMap, Runnable } from "@langchain/core/runnables";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { EventEmitter } from "events";
@@ -17,9 +17,20 @@ import {
   wrapError
 } from "../errors";
 import {
-  reportPlannerInstructions,
-  sectionWriterInstructions
-} from "../prompts";
+  createPromptWithSystem,
+  SYSTEM_MESSAGES
+} from "../prompts/index";
+import {
+  ReportPlanSchema,
+  SectionContentSchema,
+  SectionGradeSchema,
+  FinalSectionSchema,
+  type ReportPlan,
+  type SectionContent,
+  type SectionGrade,
+  type FinalSection,
+  type ReportSection
+} from "../prompts/schemas";
 
 export type SectionOutput = {
   title: string;
@@ -54,16 +65,34 @@ export interface ParallelOutput {
   context: string;
 }
 
+interface Section {
+  title: string;
+  content?: string;
+  sources?: string[];
+  status: "pending" | "researching" | "writing" | "complete";
+}
+
+interface StructuredModels {
+  planModel: Runnable<any, ReportPlan>;
+  contentModel: Runnable<any, SectionContent>;
+  gradeModel: Runnable<any, SectionGrade>;
+  finalModel: Runnable<any, FinalSection>;
+}
+
 /**
  * Main research chain that orchestrates the research process
  */
 export class ResearchChain extends EventEmitter {
-  private readonly model: ChatOpenAI | ChatAnthropic;
+  private readonly models: StructuredModels;
   private readonly cache: ResearchCache;
   private readonly searchRepository: SearchRepository;
+  private readonly planPrompt: PromptTemplate;
+  private readonly contentPrompt: PromptTemplate;
+  private readonly graderPrompt: PromptTemplate;
+  private readonly finalPrompt: PromptTemplate;
 
   constructor(
-    private readonly config: ResearchConfig,
+    private readonly config: ResearchConfig & { reportStructure?: string },
     cacheConfig?: CacheConfig
   ) {
     super();
@@ -72,8 +101,26 @@ export class ResearchChain extends EventEmitter {
       // Initialize enhanced caching
       this.cache = new ResearchCache(cacheConfig);
 
+      // Initialize prompts
+      this.planPrompt = createPromptWithSystem(
+        "Create a research plan for {topic} with organization {report_organization}",
+        "RESEARCHER"
+      );
+      this.contentPrompt = createPromptWithSystem(
+        "Write content for section {title} using sources: {sources}",
+        "WRITER"
+      );
+      this.graderPrompt = createPromptWithSystem(
+        "Grade section {title} with content: {content}",
+        "FACT_CHECKER"
+      );
+      this.finalPrompt = createPromptWithSystem(
+        "Write a {type} section using context: {context}",
+        "WRITER"
+      );
+
       // Initialize the appropriate model with caching
-      this.model = this.initializeModel();
+      this.models = this.initializeModels();
       
       // Initialize search repository
       this.searchRepository = new SearchRepository(
@@ -85,7 +132,7 @@ export class ResearchChain extends EventEmitter {
     }
   }
 
-  private initializeModel() {
+  private initializeModels(): StructuredModels {
     const modelConfig = {
       cache: this.cache.getClient(),
       maxRetries: 3,
@@ -94,9 +141,17 @@ export class ResearchChain extends EventEmitter {
       temperature: 0.3
     };
 
-    return this.config.model === SupportedModels.GPT4
+    const baseModel = this.config.model === SupportedModels.GPT4
       ? new ChatOpenAI(modelConfig)
       : new ChatAnthropic(modelConfig);
+
+    // Create models with structured output
+    return {
+      planModel: baseModel.withStructuredOutput(ReportPlanSchema),
+      contentModel: baseModel.withStructuredOutput(SectionContentSchema),
+      gradeModel: baseModel.withStructuredOutput(SectionGradeSchema),
+      finalModel: baseModel.withStructuredOutput(FinalSectionSchema)
+    };
   }
 
   async execute(topic: string): Promise<ResearchOutput> {
@@ -166,45 +221,25 @@ export class ResearchChain extends EventEmitter {
   private createInitializeState() {
     return async (input: ChainInput): Promise<ResearchState> => {
       try {
-        // Note: validInput is used to validate the input shape
-        PlanInputSchema.parse(input);
-        
-        const prompt = new PromptTemplate({
-          template: reportPlannerInstructions,
-          inputVariables: ["topic", "report_organization", "context", "feedback"]
-        });
-
-        // FIXME: Report organization should come from ResearchConfig.reportStructure
-        // This is a temporary placeholder until the config is updated
-        const formattedPrompt = await prompt.format({
+        const formattedPrompt = await this.planPrompt.format({
           topic: input.topic,
-          report_organization: "",
-          context: "",
-          feedback: ""
+          report_organization: this.config.reportStructure || ""
         });
 
-        const response = await this.model.invoke([
-          new SystemMessage("You are a research planner."),
+        const response = await this.models.planModel.invoke([
+          new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
           new HumanMessage(formattedPrompt)
-        ]);
-
-        if (!response || typeof response.content !== 'string') {
-          throw new ValidationError("Invalid model response", response);
-        }
-
-        const sections = response.content
-          .split("\n")
-          .filter((line: string) => line.trim())
-          .map((title: string) => ({
-            title,
-            status: "pending" as const,
-            sources: []
-          }));
+        ]) as ReportPlan;
 
         return {
           topic: input.topic,
           depth: this.config.maxSourcesPerQuery,
-          sections
+          sections: response.sections.map(section => ({
+            title: section.name,
+            status: "pending" as const,
+            sources: [],
+            content: section.content
+          }))
         };
       } catch (error) {
         throw new ResearchProcessError(
@@ -219,9 +254,9 @@ export class ResearchChain extends EventEmitter {
   /**
    * Research individual sections with improved content generation
    */
-  private async researchSections(state: ResearchState): Promise<ResearchState["sections"]> {
+  private async researchSections(state: ResearchState): Promise<Section[]> {
     const researched = await Promise.all(
-      state.sections.map(async section => {
+      state.sections.map(async (section: Section) => {
         try {
           this.emitProgress({
             sectionId: section.title,
@@ -231,13 +266,13 @@ export class ResearchChain extends EventEmitter {
 
           // Check cache first
           const cacheKey = { topic: state.topic, section: section.title };
-          const cached = await this.cache.get<SectionOutput>(cacheKey);
+          const cached = await this.cache.get<SectionContent>(cacheKey);
           
           if (cached) {
             return {
               ...section,
               content: cached.content,
-              sources: cached.citations.map((c: { url: string }) => c.url),
+              sources: cached.citations.map(c => c.url),
               status: "complete" as const
             };
           }
@@ -248,13 +283,17 @@ export class ResearchChain extends EventEmitter {
           );
 
           // Generate content with improved prompt
-          const content = await this.generateContent(section.title, results);
+          const formattedPrompt = await this.contentPrompt.format({
+            title: section.title,
+            sources: results.map(s => `${s.content} (${s.url})`).join("\n\n")
+          });
 
-          // Validate content against schema
-          const validContent = SectionSchema.parse(content);
+          const response = await this.models.contentModel.invoke([
+            new SystemMessage(SYSTEM_MESSAGES.WRITER),
+            new HumanMessage(formattedPrompt)
+          ]) as SectionContent;
 
-          // Cache the validated result
-          await this.cache.set(cacheKey, validContent);
+          await this.cache.set(cacheKey, response);
 
           this.emitProgress({
             sectionId: section.title,
@@ -264,8 +303,8 @@ export class ResearchChain extends EventEmitter {
 
           return {
             ...section,
-            content: validContent.content,
-            sources: validContent.citations.map((c: { url: string }) => c.url),
+            content: response.content,
+            sources: response.citations.map(c => c.url),
             status: "complete" as const
           };
         } catch (error) {
@@ -296,15 +335,25 @@ export class ResearchChain extends EventEmitter {
    */
   private async simplifiedResearch(input: { topic: string }): Promise<ResearchState> {
     try {
-      const validInput = PlanInputSchema.parse(input);
+      const formattedPrompt = await this.planPrompt.format({
+        topic: input.topic,
+        report_organization: "Simple overview"
+      });
+
+      const response = await this.models.planModel.invoke([
+        new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
+        new HumanMessage(formattedPrompt)
+      ]) as ReportPlan;
+
       return {
-        topic: validInput.topic,
+        topic: input.topic,
         depth: 1,
-        sections: [{
-          title: "Overview",
-          status: "pending",
-          sources: []
-        }]
+        sections: response.sections.slice(0, 1).map(section => ({
+          title: section.name,
+          status: "pending" as const,
+          sources: [],
+          content: section.content
+        }))
       };
     } catch (error) {
       throw new ValidationError("Invalid input for simplified research", error);
@@ -315,13 +364,26 @@ export class ResearchChain extends EventEmitter {
    * Synthesize final results
    */
   private createSynthesizeResults() {
-    return async (
-      parallel: ParallelOutput
-    ): Promise<ResearchState> => {
+    return async (parallel: ParallelOutput): Promise<ResearchState> => {
+      const formattedPrompt = await this.finalPrompt.format({
+        type: "conclusion",
+        context: parallel.context
+      });
+
+      const response = await this.models.finalModel.invoke([
+        new SystemMessage(SYSTEM_MESSAGES.WRITER),
+        new HumanMessage(formattedPrompt)
+      ]) as FinalSection;
+
       return {
         topic: "",  // Will be filled from previous state
         depth: this.config.maxSourcesPerQuery,
-        sections: parallel.sections
+        sections: [...parallel.sections, {
+          title: response.title,
+          content: response.content,
+          status: "complete" as const,
+          sources: []
+        }]
       };
     };
   }
@@ -365,18 +427,17 @@ export class ResearchChain extends EventEmitter {
       });
 
       const prompt = new PromptTemplate({
-        template: sectionWriterInstructions,
-        inputVariables: ["section_topic", "section_content", "context"]
+        template: this.contentPrompt.template,
+        inputVariables: ["title", "sources"]
       });
 
       const formattedPrompt = await prompt.format({
-        section_topic: title,
-        section_content: "",
-        context: input.sources
+        title,
+        sources: input.sources
       });
 
-      const response = await this.model.invoke([
-        new SystemMessage("You are a section content writer."),
+      const response = await this.models.contentModel.invoke([
+        new SystemMessage(SYSTEM_MESSAGES.WRITER),
         new HumanMessage(formattedPrompt)
       ]);
 
