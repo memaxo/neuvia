@@ -4,7 +4,7 @@ This document details the technical stack and dependencies used in the Neuvia Me
 
 ### 1. Core Technologies
 
-- **Next.js (v14.2.24):** The primary framework for building the application. Next.js is used for server-side rendering (SSR), static site generation (SSG), routing, API routes, and overall application structure. The version suggests usage of the App Router.
+- **Next.js (v15.1.7):** The primary framework for building the application. Next.js is used for server-side rendering (SSR), static site generation (SSG), routing, API routes, and overall application structure. The version suggests usage of the App Router.
 - **React (v18.3.1):** The JavaScript library for building the user interface. The application uses a component-based architecture, with extensive use of functional components and hooks.
 - **TypeScript (v5.5.4):** The primary programming language, providing static typing for improved code quality and maintainability.
 - **Tailwind CSS (v3.3.0):** A utility-first CSS framework for styling the application. It's used extensively throughout the UI components.

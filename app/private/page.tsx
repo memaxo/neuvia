@@ -1,12 +1,9 @@
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/utils/supa-server-actions'
+import { getUser } from '@/app/auth/actions'
 
 export default async function PrivatePage() {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
-
-  const { data, error } = await supabase.auth.getUser()
+  const { data, error } = await getUser()
+  
   if (error || !data?.user) {
     redirect('/')
   }

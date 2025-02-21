@@ -6,26 +6,7 @@ import withPWA from '@ducanh2912/next-pwa'
 import withMDX from '@next/mdx'
 import withPlugins from 'next-compose-plugins'
 
-const ContentSecurityPolicy = `
-  default-src 'self';
-  script-src 'self' 'unsafe-eval' 'unsafe-inline' *.supabase.co googleapis.com;
-  style-src 'self' 'unsafe-inline';
-  img-src * blob: data:;
-  media-src *.supabase.co quantumone.b-cdn.net *.unsplash.com youtube.com;
-  connect-src *;
-  font-src 'self' googleapis.com;
-  frame-src *.supabase.co youtube.com;
-  object-src 'none';
-  base-uri 'self';
-  form-action 'self';
-`
-
 const securityHeaders = [
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
-  {
-    key: 'Content-Security-Policy',
-    value: ContentSecurityPolicy.replace(/\n/g, ''),
-  },
   // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
   {
     key: 'Referrer-Policy',
@@ -77,15 +58,14 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@splinetool/react-spline/next': '@splinetool/react-spline',
+      '@splinetool/react-spline/next': '@splinetool/react-spline'
     }
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },
   experimental: {
     typedRoutes: true,
-    mdxRs: true,
-    appDir: true,
+    mdxRs: true
   },
   images: {
     remotePatterns: [
@@ -144,6 +124,67 @@ const withPWAConfig = withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+  workbox: {
+    exclude: [/middleware-manifest\.json$/],
+    runtimeCaching: [
+      {
+        urlPattern: /^https:\/\/fonts\.(?:gstatic)\.com\/.*/i,
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'google-fonts-webfonts',
+          expiration: {
+            maxEntries: 4,
+            maxAgeSeconds: 365 * 24 * 60 * 60 // 365 days
+          }
+        }
+      },
+      {
+        urlPattern: /^https:\/\/fonts\.(?:googleapis)\.com\/.*/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'google-fonts-stylesheets',
+          expiration: {
+            maxEntries: 4,
+            maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+          }
+        }
+      },
+      {
+        urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'static-font-assets',
+          expiration: {
+            maxEntries: 4,
+            maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+          }
+        }
+      },
+      {
+        urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'static-image-assets',
+          expiration: {
+            maxEntries: 64,
+            maxAgeSeconds: 24 * 60 * 60 // 24 hours
+          }
+        }
+      },
+      {
+        urlPattern: /\/_next\/image\?url=.+$/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'next-image',
+          expiration: {
+            maxEntries: 64,
+            maxAgeSeconds: 24 * 60 * 60 // 24 hours
+          }
+        }
+      }
+    ]
+  }
 })
 
 // Export the final config with all plugins applied

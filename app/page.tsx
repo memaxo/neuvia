@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import type { Route } from 'next'
 import { readUserSession } from '@/utils/actions'
 import { CheckCircle, Shield } from 'lucide-react'
 import { siteConfig } from '@/config/site'
@@ -18,13 +19,13 @@ export default async function IndexPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 z-0">
+      {/* Background with integrated loading/error states */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/90 to-black/40">
         <BackgroundSpline />
       </div>
 
-      {/* Semi-transparent overlay for better text contrast */}
-      <div className="absolute inset-0 z-[1] bg-black/40 backdrop-blur-sm"></div>
+      {/* Semi-transparent overlay - adjusted z-index and opacity for better visual hierarchy */}
+      <div className="absolute inset-0 z-[1] bg-black/30 backdrop-blur-[2px]"></div>
 
       {/* Content */}
       <div className="container relative z-10 mx-auto flex flex-grow flex-col px-4 md:px-6">
@@ -61,7 +62,7 @@ export default async function IndexPage() {
               style={{ animationDelay: '0.2s' }}
             >
               <Link
-                href={siteConfig.links.signup}
+                href={siteConfig.links.signup as Route}
                 className={buttonVariants({
                   className:
                     'group relative transform overflow-hidden rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 px-10 py-7 text-xl font-bold text-white shadow-[0_0_30px_rgba(0,255,255,0.3)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:from-cyan-400 hover:via-blue-400 hover:to-purple-500 hover:shadow-[0_0_40px_rgba(0,255,255,0.5)]',

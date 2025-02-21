@@ -1,19 +1,16 @@
 import React from 'react'
-import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/utils/supa-server-actions'
 import { type User } from '@supabase/supabase-js'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import { siteConfig } from '@/config/site'
-import { Contact } from '@/components/forms/contact'
+import { ContactForm } from '@/components/forms/contact'
 import { Icons } from '@/components/icons'
+import { getUser } from '@/app/auth/actions'
 
 export default async function ContactPage() {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
-
-  const { data, error } = await supabase.auth.getUser()
+  const { data, error } = await getUser()
+  
   if (error || !data?.user) {
     redirect('/auth')
   }
@@ -31,7 +28,7 @@ export default async function ContactPage() {
             Rather talk? Call us at +1-555-867-5309.
           </p>
         </div>
-        <Contact />
+        <ContactForm />
       </div>
     </div>
   )

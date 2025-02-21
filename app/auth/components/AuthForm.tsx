@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AuthTokenResponse } from '@supabase/supabase-js'
 import { Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
@@ -20,6 +19,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
 import { loginWithEmailAndPassword, signInWithGoogle } from '../actions'
+import type { AuthResponse } from '../actions'
 
 const LoginSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -27,21 +27,12 @@ const LoginSchema = z.object({
   rememberMe: z.boolean().default(false).optional(),
 })
 
-const passwordRequirements = [
-  'At least 8 characters long',
-  'Contains at least one number',
-  'Contains at least one special character',
-  'Contains uppercase and lowercase letters',
-]
+type LoginFormData = z.infer<typeof LoginSchema>
 
-export default function AuthForm() {
+export function AuthForm() {
   const [isPending, startTransition] = useTransition()
   const [showPassword, setShowPassword] = useState(false)
-  const [showPasswordRequirements, setShowPasswordRequirements] =
-    useState(false)
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
-
-  const form = useForm<z.infer<typeof LoginSchema>>({
+  const form = useForm<LoginFormData>({
     resolver: zodResolver(LoginSchema),
     defaultValues: {
       email: '',
@@ -50,52 +41,79 @@ export default function AuthForm() {
     },
   })
 
-  function onSubmit(data: z.infer<typeof LoginSchema>) {
-    startTransition(async () => {
-      const { error } = JSON.parse(
-        await loginWithEmailAndPassword(data)
-      ) as AuthTokenResponse
+  const handleAuthResponse = ({ data, error }: AuthResponse) => {
+    if (error) {
+      toast({
+        title: 'Authentication failed',
+        description: error.message,
+        variant: 'destructive',
+      })
+      return false
+    }
+    
+    toast({
+      title: 'Success',
+      description: 'Welcome back!',
+    })
+    return true
+  }
 
-      if (error) {
+  const onSubmit = async (formData: LoginFormData) => {
+    startTransition(async () => {
+      try {
+        const response = await loginWithEmailAndPassword(formData)
+        handleAuthResponse(response)
+      } catch (error) {
         toast({
+          title: 'An error occurred',
+          description: 'Please try again later',
           variant: 'destructive',
-          title: 'Login failed',
-          description: error.message,
         })
-      } else {
+      }
+    })
+  }
+
+  const handleGoogleSignIn = async () => {
+    startTransition(async () => {
+      try {
+        const response = await signInWithGoogle()
+        if (response.data?.url) {
+          window.location.href = response.url
+        } else {
+          handleAuthResponse(response)
+        }
+      } catch (error) {
         toast({
-          title: 'Welcome back! 🎉',
-          description: 'Successfully logged in to your account.',
+          title: 'An error occurred',
+          description: 'Please try again later',
+          variant: 'destructive',
         })
       }
     })
   }
 
   return (
-    <div className="w-full">
+    <div className="grid gap-6">
       <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="w-full space-y-4"
-        >
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-medium text-foreground/70">
-                  Email
-                </FormLabel>
+                <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <div className="group relative">
-                    <Input
-                      placeholder="email@example.com"
-                      className="border-border/50 bg-background/20 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
-                      {...field}
-                    />
-                  </div>
+                  <Input
+                    placeholder="name@example.com"
+                    type="email"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoCorrect="off"
+                    disabled={isPending}
+                    {...field}
+                  />
                 </FormControl>
-                <FormMessage className="animate-fade-down text-sm text-destructive" />
+                <FormMessage />
               </FormItem>
             )}
           />
@@ -104,136 +122,118 @@ export default function AuthForm() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="font-medium text-foreground/70">
-                  Password
-                </FormLabel>
+                <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <div className="group relative">
+                  <div className="relative">
                     <Input
                       placeholder="Enter your password"
                       type={showPassword ? 'text' : 'password'}
-                      className="border-border/50 bg-background/20 pr-10 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
+                      autoComplete="current-password"
+                      disabled={isPending}
                       {...field}
-                      onFocus={() => setShowPasswordRequirements(true)}
-                      onBlur={() => setShowPasswordRequirements(false)}
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/10 hover:text-foreground focus:text-foreground"
+                      disabled={isPending}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
+                        <EyeOff className="h-4 w-4" aria-hidden="true" />
                       ) : (
-                        <Eye className="h-4 w-4" />
+                        <Eye className="h-4 w-4" aria-hidden="true" />
                       )}
-                    </button>
+                      <span className="sr-only">
+                        {showPassword ? 'Hide password' : 'Show password'}
+                      </span>
+                    </Button>
                   </div>
                 </FormControl>
-                <FormMessage className="animate-fade-down text-sm text-destructive" />
-                {showPasswordRequirements && (
-                  <div className="animate-fade-down mt-2 space-y-1.5 rounded-md border border-border/50 bg-background/40 p-3 text-xs text-muted-foreground">
-                    {passwordRequirements.map((req, index) => (
-                      <p key={index} className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-foreground/30"></span>
-                        {req}
-                      </p>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-1 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      /* Implement forgot password */
-                    }}
-                    className="rounded-md px-2 py-1 text-sm text-primary/90 transition-colors hover:bg-primary/5 hover:text-primary"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                <FormMessage />
               </FormItem>
             )}
           />
-
           <FormField
             control={form.control}
             name="rememberMe"
             render={({ field }) => (
-              <FormItem className="flex items-center space-x-2 space-y-0">
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                 <FormControl>
                   <Checkbox
                     checked={field.value}
                     onCheckedChange={field.onChange}
-                    className="border-border/50 transition-colors data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                   />
                 </FormControl>
-                <FormLabel className="cursor-pointer text-sm text-muted-foreground transition-colors hover:text-foreground">
-                  Remember me
-                </FormLabel>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>Remember me</FormLabel>
+                </div>
               </FormItem>
             )}
           />
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border/50" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card/30 px-2 text-muted-foreground backdrop-blur-sm">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isGoogleLoading}
-            onClick={() => {
-              setIsGoogleLoading(true)
-              signInWithGoogle()
-            }}
-            className="w-full border-border/50 bg-background/20 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 hover:border-border hover:bg-background/30 focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isGoogleLoading ? (
-              <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <svg
-                className="mr-2 h-4 w-4"
-                aria-hidden="true"
-                focusable="false"
-                data-prefix="fab"
-                data-icon="google"
-                role="img"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 488 512"
-              >
-                <path
-                  fill="currentColor"
-                  d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"
-                ></path>
-              </svg>
-            )}
-            Continue with Google
-          </Button>
-
           <Button
             type="submit"
+            className="w-full"
             disabled={isPending}
-            className="w-full transform rounded-lg bg-gradient-to-r from-primary to-primary-foreground py-5 font-medium text-primary-foreground transition-all duration-300 hover:-translate-y-0.5 hover:from-primary/90 hover:to-primary-foreground/90 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:transform-none"
           >
-            {isPending ? (
-              <div className="flex items-center justify-center gap-2">
-                <AiOutlineLoading3Quarters className="animate-spin" />
-                <span className="animate-pulse">Signing in...</span>
-              </div>
-            ) : (
-              'Sign In'
+            {isPending && (
+              <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
             )}
+            Sign In
           </Button>
         </form>
       </Form>
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-background px-2 text-muted-foreground">
+            Or continue with
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        type="button"
+        disabled={isPending}
+        onClick={handleGoogleSignIn}
+      >
+        {isPending ? (
+          <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <svg
+            className="mr-2 h-4 w-4"
+            aria-hidden="true"
+            focusable="false"
+            data-prefix="fab"
+            data-icon="github"
+            role="img"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
+            <path d="M1 1h22v22H1z" fill="none" />
+          </svg>
+        )}
+        Google
+      </Button>
     </div>
   )
 }

@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import Script from 'next/script'
+import { headers } from 'next/headers'
 import './globals.css'
 import { siteConfig } from '@/config/site'
 import { fontSans } from '@/lib/font'
@@ -13,6 +15,7 @@ import { SiteHeader } from '@/components/site-header'
 import { TailwindIndicator as _ } from '@/components/tailwind-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { TrustedTypesProvider } from '@/components/trusted-types-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 const _inter = inter
@@ -141,10 +144,24 @@ interface RootLayoutProps {
   children: React.ReactNode
 }
 
-export default function RootLayout({ children }: RootLayoutProps) {
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const headersList = await headers()
+  const nonce = headersList.get('x-nonce') ?? ''
+
   return (
     <ReactQueryClientProvider>
       <html lang="en" suppressHydrationWarning>
+        <head>
+          <TrustedTypesProvider />
+          <Script
+            id="nonce-propagation"
+            strategy="beforeInteractive"
+            nonce={nonce}
+            dangerouslySetInnerHTML={{
+              __html: `window.__NONCE__ = ${JSON.stringify(nonce)}`
+            }}
+          />
+        </head>
         <body
           className={cn(
             'min-h-screen bg-background font-sans antialiased',

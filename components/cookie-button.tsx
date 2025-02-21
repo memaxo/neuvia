@@ -13,10 +13,10 @@ export function CookieButton() {
           variant: 'ghost',
         })}
       >
-        <a href="#" className={cn('yourConsentManager')}>
+        <Link href="#" className={cn('yourConsentManager')}>
           <Icons.cookie className="h-5 w-5" />
-        </a>
-        <span className="sr-only">Cookie Preferences</span>
+          <span className="sr-only">Cookie Preferences</span>
+        </Link>
       </div>
     </div>
   )
