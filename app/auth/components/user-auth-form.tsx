@@ -19,56 +19,55 @@ interface UserAuthFormProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
   const LoginSchema = z.object({
-    email: z.string().email(),
-    password: z.string().min(1, { message: "Password can not be empty" }),
+    email: z.string().email({ message: "Please enter a valid email address" }),
+    password: z.string().min(1, { message: "Password cannot be empty" }),
   });
   
-  const [isLoading, setIsLoading] = React.useState<boolean>(false)
   const [isPending, startTransition] = React.useTransition();
   
   const form = useForm<z.infer<typeof LoginSchema>>({
-		resolver: zodResolver(LoginSchema),
-		defaultValues: {
-			email: "",
-			password: "",
-		},
-	});
-  async function onSubmit(data: z.infer<typeof LoginSchema>) {
-    
-    setIsLoading(true)
-    startTransition(async () => {
-			const { error } = JSON.parse(
-				await loginWithEmailAndPassword(data)
-			) as AuthTokenResponse;
+    resolver: zodResolver(LoginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
 
-			if (error) {
-				toast({
-					title: "Login failed!",
-					description: (
-						<pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-							<code className="text-white">{error.message}</code>
-						</pre>
-					),
-				});
-			} else {
-				toast({
-					title: "Successful login 🎉",
-				});
-			}
-		});
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 3000)
+  async function onSubmit(data: z.infer<typeof LoginSchema>) {
+    startTransition(async () => {
+      try {
+        const { error } = JSON.parse(
+          await loginWithEmailAndPassword(data)
+        ) as AuthTokenResponse;
+
+        if (error) {
+          toast({
+            title: "Login failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Login successful",
+            description: "Welcome back!",
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "An error occurred",
+          description: "Please try again later",
+          variant: "destructive",
+        });
+      }
+    });
   }
 
   return (
     <div className={cn("grid gap-6", className)} {...props}>
       <form onSubmit={form.handleSubmit(onSubmit)}>
-        <div className="grid gap-2">
-          <div className="grid gap-1">
-            <Label className="sr-only" htmlFor="email">
-              Email
-            </Label>
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               placeholder="name@example.com"
@@ -76,18 +75,35 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
-              disabled={isLoading}
+              disabled={isPending}
+              {...form.register("email")}
             />
+            {form.formState.errors.email && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.email.message}
+              </p>
+            )}
           </div>
-          <Button
-				className="w-full flex items-center gap-2"
-				variant="outline"
-			>
-				Sign In{" "}
-				<AiOutlineLoading3Quarters
-					className={cn(" animate-spin", { hidden: !isPending })}
-				/>
-        </Button>
+          <div className="grid gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              disabled={isPending}
+              {...form.register("password")}
+            />
+            {form.formState.errors.password && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.password.message}
+              </p>
+            )}
+          </div>
+          <Button disabled={isPending} type="submit">
+            {isPending ? (
+              <AiOutlineLoading3Quarters className="animate-spin mr-2 h-4 w-4" />
+            ) : null}
+            Sign In
+          </Button>
         </div>
       </form>
       <div className="relative">
@@ -100,14 +116,31 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
           </span>
         </div>
       </div>
-      <Button variant="outline" type="button" disabled={isLoading}>
-        {isLoading ? (
-          <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+      <Button
+        variant="outline"
+        type="button"
+        disabled={isPending}
+        onClick={() => {
+          startTransition(async () => {
+            try {
+              await signInWithGithub();
+            } catch (error) {
+              toast({
+                title: "Error signing in with GitHub",
+                description: "Please try again later",
+                variant: "destructive",
+              });
+            }
+          });
+        }}
+      >
+        {isPending ? (
+          <AiOutlineLoading3Quarters className="animate-spin mr-2 h-4 w-4" />
         ) : (
           <Icons.gitHub className="mr-2 h-4 w-4" />
-        )}{" "}
+        )}
         GitHub
       </Button>
     </div>
-  )
+  );
 }

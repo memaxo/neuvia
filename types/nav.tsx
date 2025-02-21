@@ -17,3 +17,7 @@ export interface NavItemWithChildren extends NavItem {
 export interface MainNavItem extends NavItem {}
 
 export interface SidebarNavItem extends NavItemWithChildren {}
+
+export interface FooterItem extends NavItem {
+  items?: FooterItem[]
+}

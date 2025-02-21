@@ -4,7 +4,8 @@ import { User, Mail, Phone, Building, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
+import { _cn as cn } from "@/lib/utils"
+import Image from "next/image"
 
 export function AccountSettings() {
   return (
@@ -12,14 +13,14 @@ export function AccountSettings() {
       {/* Profile Photo */}
       <div className="flex items-center gap-6">
         <div className="relative group">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-white/10 p-1">
-            <div className="w-full h-full rounded-xl bg-black/40 overflow-hidden">
-              <img
-                src="https://avatars.githubusercontent.com/u/1234567?v=4"
-                alt="Profile"
-                className="w-full h-full object-cover"
-              />
-            </div>
+          <div className="relative w-20 h-20 rounded-full overflow-hidden">
+            <Image
+              src="/placeholder.jpg"
+              alt="Profile picture"
+              className="w-full h-full object-cover"
+              width={80}
+              height={80}
+            />
           </div>
           <button className="absolute bottom-0 right-0 p-1.5 rounded-lg bg-black/60 border border-white/10 text-white/70 hover:text-white transition-colors duration-300">
             <Camera className="h-4 w-4" />

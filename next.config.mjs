@@ -1,10 +1,11 @@
-/** @type {import('next').NextConfig} */
+/**
+ * @type {import('next').NextConfig}
+ */
 
-const withPlugins = require("next-compose-plugins")
-const withMDX = require('@next/mdx')()
-const withPWA = require("@ducanh2912/next-pwa").default({
-  dest: "public",
-});
+import withPlugins from 'next-compose-plugins'
+import withMDX from '@next/mdx'
+import withPWA from '@ducanh2912/next-pwa'
+
 const ContentSecurityPolicy = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline' *.supabase.co googleapis.com;
@@ -62,19 +63,32 @@ const securityHeaders = [
 ]
 
 const nextConfig = {
+  eslint: {
+    // Only run ESLint on these directories during production builds
+    dirs: ['app', 'components', 'lib', 'utils', 'hooks', 'types'],
+    // Warning: Disabling this will allow production builds to successfully complete even with ESLint errors
+    ignoreDuringBuilds: false,
+  },
+  typescript: {
+    // Dangerously allow production builds to successfully complete even if
+    // your project has type errors.
+    ignoreBuildErrors: false,
+  },
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@splinetool/react-spline/next': '@splinetool/react-spline'
-    };
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },
   experimental: {
+    typedRoutes: true,
     mdxRs: true,
+    appDir: true,
   },
-    images : {
-      remotePatterns: [
+  images: {
+    remotePatterns: [
       {
         protocol: 'https',
         hostname: 'quantumone.b-cdn.net',
@@ -99,7 +113,6 @@ const nextConfig = {
         port: '',
         pathname: '/embed/HR6a2aHhY_c?si=L2O3Cf7pQ-0HHhsP',
       },
-
       {
         protocol: 'https',
         hostname: 'quantumone.b-cdn.net',
@@ -111,29 +124,31 @@ const nextConfig = {
         hostname: 'images.unsplash.com',
         port: '',
         pathname: '/**',
-      },
-
-      {
-
-        protocol: 'https',
-        hostname: 'api.web3modal.com',
-        port: '',
-      
-      },
+      }
     ],
   },
-   async headers() {
-      return [
-        {
-          source: '/(.*)',
-          headers: securityHeaders,
-        },
-      ]
-    },
-
-
-   pageExtensions: ['ts', 'tsx', 'mdx', 'js', 'jsx', 'rs'],
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: securityHeaders,
+      },
+    ]
+  },
+  pageExtensions: ['ts', 'tsx', 'mdx', 'js', 'jsx', 'rs'],
 }
 
-module.exports = withMDX(nextConfig)
+// Apply plugins with proper typing
+const withMDXConfig = withMDX()
+const withPWAConfig = withPWA({ 
+  dest: 'public',
+  register: true,
+  skipWaiting: true
+})
+
+// Export the final config with all plugins applied
+export default withPlugins([
+  [withMDXConfig],
+  [withPWAConfig]
+], nextConfig)
 

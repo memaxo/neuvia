@@ -3,50 +3,53 @@
 import { logout } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import React, { useTransition } from "react";
+import React, { useEffect, useState, useTransition } from "react";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
-import { readUserSession } from "@/utils/actions";
-import { redirect } from "next/navigation";
+import useSupabaseBrowser from "@/utils/supabase-browser";
 
-export default async function AuthButton() {
+export default function AuthButton() {
+    const [session, setSession] = useState<boolean>(false);
+    const [isPending, startTransition] = useTransition();
+    const supabase = useSupabaseBrowser();
 
-         const { data: userSession } = await readUserSession();
-
-        
-        const [isPending, startTransition] = useTransition();
-        const onSubmit = async () => {
-                startTransition(async () => {
-                        await logout();
-                });
+    useEffect(() => {
+        // Check current session
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            setSession(!!session);
         };
-
         
-if (userSession.session) {
-             
-        
-return (
-                <form action={onSubmit}>
-                        <Button
-                                className="w-full flex items-center gap-2"
-                                variant="outline"
-                        >
-                                SignOut{" "}
-                                <AiOutlineLoading3Quarters
-                                        className={cn(" animate-spin", { hidden: !isPending })}
-                                />
-                        </Button>
-                </form>
-        );
-}
+        checkSession();
 
-else  {
+        // Subscribe to auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(!!session);
+        });
 
- return (
+        return () => subscription.unsubscribe();
+    }, [supabase]);
 
-     <div className="hidden" />
- 
- );
+    const onSubmit = async () => {
+        startTransition(async () => {
+            await logout();
+        });
+    };
 
-}
+    if (!session) {
+        return <div className="hidden" />;
+    }
 
+    return (
+        <form action={onSubmit}>
+            <Button
+                className="w-full flex items-center gap-2"
+                variant="outline"
+            >
+                SignOut{" "}
+                <AiOutlineLoading3Quarters
+                    className={cn("animate-spin", { hidden: !isPending })}
+                />
+            </Button>
+        </form>
+    );
 }

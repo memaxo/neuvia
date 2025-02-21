@@ -1,30 +1,60 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import type { Application } from '@splinetool/runtime'
 
-// Create a client-side wrapper for Spline
-const SplineWrapper = dynamic(() => import('./spline-wrapper'), {
-  ssr: false,
-  loading: () => <div className="w-full h-full bg-black" />
-})
+// Create a client-side wrapper for Spline with error boundary
+const SplineWrapper = dynamic(
+  () => import('./spline-wrapper').catch(err => {
+    console.error('Error loading Spline:', err)
+    return () => <div className="w-full h-full bg-red-500/20">Failed to load 3D scene</div>
+  }),
+  {
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-black/80 backdrop-blur-lg animate-pulse" />
+  }
+)
 
 export default function DashboardBackground() {
   const [isMounted, setIsMounted] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const splineRef = useRef<Application | null>(null)
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
+  const handleSplineLoad = (splineApp: Application) => {
+    try {
+      console.log('Spline loaded:', splineApp)
+      splineRef.current = splineApp
+      // You can add any initialization logic here
+      // For example, finding specific objects or setting up animations
+    } catch (error) {
+      console.error('Error in Spline load handler:', error)
+      setLoadError(error instanceof Error ? error.message : 'Unknown error')
+    }
+  }
+
   if (!isMounted) {
-    return <div className="w-full h-full bg-black" />
+    return <div className="w-full h-full bg-black/80 backdrop-blur-lg" />
+  }
+
+  if (loadError) {
+    return (
+      <div className="w-full h-full bg-red-500/20 flex items-center justify-center">
+        <p className="text-red-500">Error loading 3D scene: {loadError}</p>
+      </div>
+    )
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="relative w-full h-full">
       <SplineWrapper
         scene="https://prod.spline.design/xUUjAFVfSxeg2fVu/scene.splinecode"
-        className="w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full object-cover"
+        onLoad={handleSplineLoad}
       />
     </div>
   )

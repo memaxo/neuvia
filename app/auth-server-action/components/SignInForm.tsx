@@ -1,10 +1,10 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
-import { AiOutlineLoading3Quarters } from "react-icons/ai";
-import { loginWithEmailAndPassword } from '@/app/auth/actions'
-import { AuthTokenResponse } from "@supabase/supabase-js";
+"use client";
+
 import { useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
 import {
 	Form,
 	FormControl,
@@ -15,19 +15,19 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
+import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import { cn } from "@/lib/utils";
-import { ToastAction } from "@/components/ui/toast"
+import { loginWithEmailAndPassword } from "@/app/auth/actions";
+import { AuthTokenResponse } from "@supabase/supabase-js";
+
 const SignInSchema = z.object({
-	email: z.string().email(),
-	password: z.string().min(1, {
-		message: "Password is required.",
-	}),
+	email: z.string().email({ message: "Please enter a valid email address" }),
+	password: z.string().min(1, { message: "Password cannot be empty" }),
 });
 
 export default function SignInForm() {
 	const [isPending, startTransition] = useTransition();
- const form = useForm<z.infer<typeof SignInSchema>>({
+	const form = useForm<z.infer<typeof SignInSchema>>({
 		resolver: zodResolver(SignInSchema),
 		defaultValues: {
 			email: "",
@@ -35,36 +35,40 @@ export default function SignInForm() {
 		},
 	});
 
-	const onSignInSubmit = async(data: z.infer<typeof SignInSchema>) => {
-		  startTransition(async () => {
-			 const { error } = JSON.parse(
-				await loginWithEmailAndPassword(data)
-			) as AuthTokenResponse;
-		
-if (error)	{	
+	const onSignInSubmit = async (data: z.infer<typeof SignInSchema>) => {
+		startTransition(async () => {
+			try {
+				const { error } = JSON.parse(
+					await loginWithEmailAndPassword(data)
+				) as AuthTokenResponse;
 
-  toast({
-			title: "You submitted the following values:",
-			description: (
-				<pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-					<code className="text-white">
-						{JSON.stringify(data, null, 2)}
-					</code>
-				</pre>
-			),
-		});
-} else {
+				if (error) {
+					toast({
+						title: "Login failed",
+						description: error.message,
+						variant: "destructive",
+					});
+				} else {
+					toast({
+						title: "Login successful",
+						description: "Welcome back!",
+					});
+				}
+			} catch (error) {
 				toast({
-					title: "Successfully login 🎉",
+					title: "An error occurred",
+					description: "Please try again later",
+					variant: "destructive",
 				});
 			}
 		});
-	}
+	};
 
 	return (
 		<Form {...form}>
-			<form className="w-full space-y-6"
-     onSubmit={form.handleSubmit((data) => onSignInSubmit(data))}
+			<form
+				className="w-full space-y-6"
+				onSubmit={form.handleSubmit(onSignInSubmit)}
 			>
 				<FormField
 					control={form.control}
@@ -75,9 +79,9 @@ if (error)	{
 							<FormControl>
 								<Input
 									placeholder="example@gmail.com"
-									{...field}
 									type="email"
-									onChange={field.onChange}
+									disabled={isPending}
+									{...field}
 								/>
 							</FormControl>
 							<FormMessage />
@@ -92,26 +96,27 @@ if (error)	{
 							<FormLabel>Password</FormLabel>
 							<FormControl>
 								<Input
-									placeholder="password"
-									{...field}
+									placeholder="Enter your password"
 									type="password"
-									onChange={field.onChange}
+									disabled={isPending}
+									{...field}
 								/>
 							</FormControl>
-
 							<FormMessage />
 						</FormItem>
 					)}
 				/>
-						<Button
-				className="w-full flex items-center gap-2"
-				variant="outline"
-			>
-				Sign In{" "}
-				<AiOutlineLoading3Quarters
-					className={cn(" animate-spin", { hidden: !isPending })}
-				/>
-			</Button>
+				<Button
+					className="w-full flex items-center gap-2"
+					variant="outline"
+					type="submit"
+					disabled={isPending}
+				>
+					{isPending ? "Signing in..." : "Sign In"}{" "}
+					<AiOutlineLoading3Quarters
+						className={cn("animate-spin", { hidden: !isPending })}
+					/>
+				</Button>
 			</form>
 		</Form>
 	);
