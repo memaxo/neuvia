@@ -1,14 +1,16 @@
-import { randomBytes } from 'crypto'
-
 /**
  * Generates a cryptographically secure nonce for Content Security Policy
  * @returns A base64 encoded nonce string
  */
 export function generateNonce(): string {
-  // Generate 16 bytes of random data
-  const randomData = randomBytes(16)
-  // Convert to base64
-  return randomData.toString('base64')
+  // Generate random bytes using Web Crypto API
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  // Convert to base64 using btoa and ensure URL safety
+  return btoa(String.fromCharCode.apply(null, array))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 /**

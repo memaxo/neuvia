@@ -1,6 +1,6 @@
 // content security policy requirements vary from app to app head to https://nextjs.org/docs/pages/building-your-application/configuring/content-security-policy to learn how to configure nonces within middleware and or how to set policies within your next.config file
 
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { generateNonce, createCSPHeader } from '@/lib/utils/nonce'
@@ -8,7 +8,25 @@ import { generateNonce, createCSPHeader } from '@/lib/utils/nonce'
 export async function middleware(request: NextRequest) {
   try {
     const res = NextResponse.next()
-    const supabase = createMiddlewareClient({ req: request, res })
+    
+    // Create Supabase client with cookie handling
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            res.cookies.set({ name, value, ...options })
+          },
+          remove(name: string, options: CookieOptions) {
+            res.cookies.set({ name, value: '', ...options })
+          }
+        }
+      }
+    )
 
     // Generate nonce for CSP
     const nonce = generateNonce()
