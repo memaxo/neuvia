@@ -15,7 +15,6 @@ import { SiteHeader } from '@/components/site-header'
 import { TailwindIndicator as _ } from '@/components/tailwind-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
-import { TrustedTypesProvider } from '@/components/trusted-types-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 const _inter = inter
@@ -151,17 +150,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   return (
     <ReactQueryClientProvider>
       <html lang="en" suppressHydrationWarning>
-        <head>
-          <TrustedTypesProvider />
-          <Script
-            id="nonce-propagation"
-            strategy="beforeInteractive"
-            nonce={nonce}
-            dangerouslySetInnerHTML={{
-              __html: `window.__NONCE__ = ${JSON.stringify(nonce)}`
-            }}
-          />
-        </head>
+        <head />
         <body
           className={cn(
             'min-h-screen bg-background font-sans antialiased',
@@ -184,14 +173,6 @@ export default async function RootLayout({ children }: RootLayoutProps) {
               </div>
             </div>
             <SiteFooter />
-
-            {/*
-enter your api info from termly.io or a provider of your choice
-<Script
-  type="text/javascript"
-  src="https://app.termly.io/resource-blocker/123456789abcdefg"/>
-
-*/}
             <CookieButton />
           </ThemeProvider>
         </body>

@@ -30,9 +30,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import type { Report } from '@/lib/reports.types'
+import filterXSS from 'xss'
 
 const statusStyles = {
   completed: {
@@ -65,6 +66,37 @@ interface ReportsListProps {
 
 export function ReportsList({ reports, onRetry }: ReportsListProps) {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (selectedReport && contentRef.current) {
+      const sanitizedHTML = filterXSS(selectedReport.content || '', {
+        whiteList: {
+          p: ['class'],
+          div: ['class'],
+          span: ['class'],
+          h1: ['class'],
+          h2: ['class'],
+          h3: ['class'],
+          h4: ['class'],
+          h5: ['class'],
+          h6: ['class'],
+          ul: ['class'],
+          ol: ['class'],
+          li: ['class'],
+          a: ['href', 'title', 'target', 'rel'],
+          br: [],
+          strong: [],
+          em: [],
+          b: [],
+          i: [],
+        },
+        stripIgnoreTag: true,
+        stripIgnoreTagBody: ['script', 'style', 'xml']
+      })
+      contentRef.current.innerHTML = sanitizedHTML
+    }
+  }, [selectedReport])
 
   return (
     <>
@@ -264,9 +296,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                 </div>
               </div>
 
-              <div className="prose prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: selectedReport.content || '' }} />
-              </div>
+              <div className="prose prose-invert max-w-none" ref={contentRef} />
             </div>
           )}
         </DialogContent>

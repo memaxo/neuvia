@@ -119,6 +119,7 @@
     "use-debounce": "^9.0.4",
     "usehooks-ts": "^3.1.0",
     "webpack": "5.94.0",
+    "xss": "^1.0.15",
     "zod": "^3.24.0"
   },
   "devDependencies": {

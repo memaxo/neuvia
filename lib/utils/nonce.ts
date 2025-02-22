@@ -33,7 +33,7 @@ export function createCSPHeader(nonce: string): string {
       'blob:',
       '*.vercel.app'
     ],
-    'style-src': ["'self'", `'nonce-${nonce}'`],
+    'style-src': ["'self'", "'unsafe-inline'", `'nonce-${nonce}'`],
     'img-src': ["'self'", 'blob:', 'data:', '*'],
     'media-src': [
       "'self'",
@@ -53,7 +53,8 @@ export function createCSPHeader(nonce: string): string {
       'nextjs',
       'nextjs#bundler',
       'nextjs#inline-script',
-      'nextjs#script'
+      'nextjs#script',
+      'default'
     ],
     'require-trusted-types-for': ["'script'"]
   }
