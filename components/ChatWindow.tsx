@@ -165,6 +165,8 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
   );
 }
 
+const FIXED_MESSAGE_DELAY = 800; // Fixed 800ms delay between messages
+
 export function ChatWindow(props: {
   endpoint: string;
   emptyStateComponent: ReactNode;
@@ -246,7 +248,6 @@ export function ChatWindow(props: {
     const responseMessages: Message[] = json.messages;
 
     // Represent intermediate steps as system messages for display purposes
-    // TODO: Add proper support for tool messages
     const toolCallMessages = responseMessages.filter(
       (responseMessage: Message) => {
         return (
@@ -270,13 +271,12 @@ export function ChatWindow(props: {
         }),
       });
     }
+
     const newMessages = messagesWithUserReply;
     for (const message of intermediateStepMessages) {
       newMessages.push(message);
       chat.setMessages([...newMessages]);
-      await new Promise((resolve) =>
-        setTimeout(resolve, 1000 + Math.random() * 1000),
-      );
+      await new Promise((resolve) => setTimeout(resolve, FIXED_MESSAGE_DELAY));
     }
 
     chat.setMessages([
