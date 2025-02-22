@@ -28,7 +28,7 @@ export default async function IndexPage() {
       <div className="absolute inset-0 z-[1] bg-black/30 backdrop-blur-[2px]"></div>
 
       {/* Content */}
-      <div className="container relative z-10 mx-auto flex flex-grow flex-col px-4 md:px-6">
+      <div className="container relative z-10 mx-auto flex grow flex-col px-4 md:px-6">
         <div className="flex min-h-[80vh] flex-col items-center justify-center py-4">
           <div className="mx-auto max-w-4xl space-y-10 text-center">
             {/* Enhanced heading with better contrast and stronger weight */}
@@ -70,7 +70,7 @@ export default async function IndexPage() {
               >
                 <span className="relative z-10 flex items-center">
                   Watch Clinical Demo
-                  <span className="ml-2 transform transition-transform group-hover:translate-x-1">
+                  <span className="ml-2 transition-transform group-hover:translate-x-1">
                     →
                   </span>
                 </span>
@@ -89,15 +89,15 @@ export default async function IndexPage() {
                 </p>
                 <div className="flex items-center justify-center gap-8">
                   <SecurityBadge
-                    icon={<Shield className="h-5 w-5 text-cyan-400" />}
+                    icon={<Shield className="size-5 text-cyan-400" />}
                     label="SOC 2 Type II"
                   />
                   <SecurityBadge
-                    icon={<Shield className="h-5 w-5 text-cyan-400" />}
+                    icon={<Shield className="size-5 text-cyan-400" />}
                     label="HIPAA Compliant"
                   />
                   <SecurityBadge
-                    icon={<CheckCircle className="h-5 w-5 text-cyan-400" />}
+                    icon={<CheckCircle className="size-5 text-cyan-400" />}
                     label="FDA-Cleared"
                   />
                 </div>

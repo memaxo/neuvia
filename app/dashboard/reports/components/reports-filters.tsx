@@ -73,7 +73,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 <div className="relative z-10 flex items-center gap-3">
                   <div className={cn('rounded-lg p-2', `bg-${filter.color}-500/10`)}>
-                    <filter.icon className={cn('h-4 w-4', `text-${filter.color}-400`)} />
+                    <filter.icon className={cn('size-4', `text-${filter.color}-400`)} />
                   </div>
                   <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
                     {filter.label}
@@ -115,7 +115,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 <div className="relative z-10 flex items-center gap-3">
                   <div className="rounded-lg bg-blue-500/10 p-2">
-                    <Calendar className="h-4 w-4 text-blue-400" />
+                    <Calendar className="size-4 text-blue-400" />
                   </div>
                   <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
                     {filter.label}
@@ -157,7 +157,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 <div className="relative z-10 flex items-center gap-3">
                   <div className="rounded-lg bg-purple-500/10 p-2">
-                    <FileText className="h-4 w-4 text-purple-400" />
+                    <FileText className="size-4 text-purple-400" />
                   </div>
                   <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
                     {filter.label}

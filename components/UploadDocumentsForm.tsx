@@ -28,9 +28,9 @@ export function UploadDocumentsForm() {
     setIsLoading(false);
   };
   return (
-    <form onSubmit={ingest} className="flex flex-col gap-4 w-full">
+    <form onSubmit={ingest} className="flex w-full flex-col gap-4">
       <Textarea
-        className="grow p-4 rounded bg-transparent min-h-[512px]"
+        className="min-h-[512px] grow rounded bg-transparent p-4"
         value={document}
         onChange={(e) => setDocument(e.target.value)}
       />
@@ -41,7 +41,7 @@ export function UploadDocumentsForm() {
         >
           <svg
             aria-hidden="true"
-            className="w-6 h-6 text-white animate-spin dark:text-white fill-sky-800"
+            className="size-6 animate-spin fill-sky-800 text-white dark:text-white"
             viewBox="0 0 100 101"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"

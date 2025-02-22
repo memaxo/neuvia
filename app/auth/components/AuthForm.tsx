@@ -141,9 +141,9 @@ export function AuthForm() {
                       disabled={isPending}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        <EyeOff className="size-4" aria-hidden="true" />
                       ) : (
-                        <Eye className="h-4 w-4" aria-hidden="true" />
+                        <Eye className="size-4" aria-hidden="true" />
                       )}
                       <span className="sr-only">
                         {showPassword ? 'Hide password' : 'Show password'}
@@ -178,7 +178,7 @@ export function AuthForm() {
             disabled={isPending}
           >
             {isPending && (
-              <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
+              <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
             )}
             Sign In
           </Button>
@@ -201,10 +201,10 @@ export function AuthForm() {
         onClick={handleGoogleSignIn}
       >
         {isPending ? (
-          <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
+          <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
         ) : (
           <svg
-            className="mr-2 h-4 w-4"
+            className="mr-2 size-4"
             aria-hidden="true"
             focusable="false"
             data-prefix="fab"

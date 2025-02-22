@@ -19,7 +19,7 @@ export default function SplineWrapper({
     <Suspense
       fallback={
         <div
-          className={`pointer-events-none absolute inset-0 overflow-hidden animate-pulse bg-black/80 backdrop-blur-lg ${className}`}
+          className={`pointer-events-none absolute inset-0 animate-pulse overflow-hidden bg-black/80 backdrop-blur-lg ${className}`}
         />
       }
     >

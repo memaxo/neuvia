@@ -131,7 +131,7 @@ export function PatientList() {
                     <div className="flex items-start gap-4">
                       <div className="relative">
                         <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]">
-                          <StatusIcon className="h-5 w-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+                          <StatusIcon className="size-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
                         </div>
                       </div>
 
@@ -177,9 +177,9 @@ export function PatientList() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                             >
-                              <Calendar className="h-4 w-4" />
+                              <Calendar className="size-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -192,9 +192,9 @@ export function PatientList() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                             >
-                              <FileText className="h-4 w-4" />
+                              <FileText className="size-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
@@ -207,9 +207,9 @@ export function PatientList() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                             >
-                              <MoreVertical className="h-4 w-4" />
+                              <MoreVertical className="size-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
@@ -269,7 +269,7 @@ export function PatientList() {
 
                   {/* Enhanced scanning line effect */}
                   <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                    <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
                   </div>
                 </div>
               </div>

@@ -54,7 +54,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
     : { data_retention_policy: '', regulatory_flags: [] };
 
   return (
-    <div className="space-y-6 p-6 bg-card rounded-lg">
+    <div className="space-y-6 rounded-lg bg-card p-6">
       <h2 className="text-xl font-bold text-foreground">Report Detail</h2>
       <div className="space-y-4">
         {/* Clinical Content */}
@@ -66,7 +66,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
         <div>
           <h3 className="text-lg font-medium text-foreground">Differential Diagnoses</h3>
           {differentialDiagnoses.length > 0 ? (
-            <ul className="list-disc pl-5 space-y-1">
+            <ul className="list-disc space-y-1 pl-5">
               {differentialDiagnoses.map((diagnosis: DifferentialDiagnosis, idx: number) => (
                 <li key={idx} className="text-sm text-foreground">
                   {diagnosis.condition} - {Math.round(diagnosis.confidence * 100)}% confidence
@@ -107,7 +107,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
               </ul>
             </div>
           )}
-          <p className="text-sm text-muted-foreground mt-2">
+          <p className="mt-2 text-sm text-muted-foreground">
             Reviewed: {validationMetadata.reviewer_attestation.reviewed ? 'Yes' : 'No'}
           </p>
         </div>

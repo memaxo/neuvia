@@ -59,28 +59,28 @@ export default function MemberTable() {
             >
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-700/50">
-                    <User className="h-4 w-4 text-slate-300" />
+                  <div className="flex size-8 items-center justify-center rounded-full bg-teal-700/50">
+                    <User className="size-4 text-slate-300" />
                   </div>
                   <span className="text-slate-200">{member.name}</span>
                 </div>
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-teal-400" />
+                  <Shield className="size-4 text-teal-400" />
                   <span className="text-slate-200">{member.role}</span>
                 </div>
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-slate-300" />
+                  <Calendar className="size-4 text-slate-300" />
                   <span className="text-slate-200">{member.joined}</span>
                 </div>
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <CircleIcon
-                    className={`h-3 w-3 ${
+                    className={`size-3 ${
                       member.status === 'Active'
                         ? 'text-green-400'
                         : 'text-amber-400'
@@ -96,14 +96,14 @@ export default function MemberTable() {
                     size="sm"
                     className="text-slate-300 hover:bg-teal-700 hover:text-slate-100"
                   >
-                    <Pencil1Icon className="h-4 w-4" />
+                    <Pencil1Icon className="size-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <TrashIcon className="size-4" />
                   </Button>
                 </div>
               </td>

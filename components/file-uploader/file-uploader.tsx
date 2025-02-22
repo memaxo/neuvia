@@ -201,7 +201,7 @@ export function FileUploader({
               <div className="flex flex-col items-center justify-center gap-4 sm:px-5">
                 <div className="rounded-full border border-dashed p-3">
                   <Upload
-                    className="h-7 w-7 text-muted-foreground"
+                    className="size-7 text-muted-foreground"
                     aria-hidden="true"
                   />
                 </div>
@@ -213,7 +213,7 @@ export function FileUploader({
               <div className="flex flex-col items-center justify-center gap-4 sm:px-5">
                 <div className="rounded-full border border-dashed p-3">
                   <Upload
-                    className="h-7 w-7 text-muted-foreground"
+                    className="size-7 text-muted-foreground"
                     aria-hidden="true"
                   />
                 </div>
@@ -266,11 +266,11 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
             alt={file.name}
             width={48}
             height={48}
-            className="h-12 w-12 shrink-0 rounded-md object-cover"
+            className="size-12 shrink-0 rounded-md object-cover"
           />
         ) : (
           <FileText
-            className="h-12 w-12 text-muted-foreground"
+            className="size-12 text-muted-foreground"
             aria-hidden="true"
           />
         )}
@@ -290,10 +290,10 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
         type="button"
         variant="outline"
         size="icon"
-        className="h-7 w-7"
+        className="size-7"
         onClick={onRemove}
       >
-        <X className="h-4 w-4" aria-hidden="true" />
+        <X className="size-4" aria-hidden="true" />
         <span className="sr-only">Remove file</span>
       </Button>
     </div>

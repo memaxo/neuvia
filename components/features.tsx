@@ -51,8 +51,8 @@ export default function Features() {
 
               <div className="relative z-10">
                 <div className="mb-4 flex items-center gap-5">
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 transition-colors duration-300 group-hover:border-cyan-500/20">
-                    <feature.icon className="h-6 w-6 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 transition-colors duration-300 group-hover:border-cyan-500/20">
+                    <feature.icon className="size-6 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
                   </div>
                   <h3 className="text-xl font-bold text-white transition-colors duration-300 group-hover:text-cyan-50">
                     {feature.name}
@@ -64,7 +64,7 @@ export default function Features() {
               </div>
 
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+                <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
               </div>
             </div>
           ))}

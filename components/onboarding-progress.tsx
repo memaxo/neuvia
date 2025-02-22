@@ -12,7 +12,7 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
           <ul className="relative flex w-full justify-between">
             <li>
               <Link
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 1 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 1 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
                 href="/signup?=page1"
               >
                 1
@@ -20,7 +20,7 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
             </li>
             <li>
               <Link
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 2 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 2 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
                 href="/signup?=page2"
               >
                 2
@@ -28,7 +28,7 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
             </li>
             <li>
               <Link
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 3 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 3 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
                 href="/signup?=page3"
               >
                 3
@@ -36,7 +36,7 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
             </li>
             <li>
               <Link
-                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 4 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 4 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
                 href="/signup?=page4"
               >
                 4

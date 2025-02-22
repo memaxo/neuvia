@@ -44,7 +44,7 @@ export function UploadGuidelines() {
       <div className="border-b border-white/5 p-6">
         <div className="flex items-center gap-3">
           <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
-            <Info className="h-5 w-5 text-cyan-400" />
+            <Info className="size-5 text-cyan-400" />
           </div>
           <h2 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-semibold text-transparent">
             Upload Guidelines
@@ -79,7 +79,7 @@ export function UploadGuidelines() {
                     <div className="relative z-10">
                       <div className="flex items-start gap-3">
                         <div className="rounded-lg bg-cyan-500/10 p-1.5 text-cyan-400">
-                          <CheckCircle className="h-4 w-4" />
+                          <CheckCircle className="size-4" />
                         </div>
                         <div>
                           <div className="font-medium text-white/90 transition-colors duration-300 group-hover:text-white">
@@ -94,7 +94,7 @@ export function UploadGuidelines() {
 
                     {/* Enhanced scanning line effect */}
                     <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                      <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
                     </div>
                   </div>
                 ))}
@@ -107,7 +107,7 @@ export function UploadGuidelines() {
         <div className="relative mt-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-red-500/20 p-1.5">
-              <AlertCircle className="h-4 w-4 text-red-400" />
+              <AlertCircle className="size-4 text-red-400" />
             </div>
             <div className="text-sm text-red-200/70">
               Ensure all uploads comply with HIPAA regulations and patient

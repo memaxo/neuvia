@@ -77,7 +77,7 @@ export function NotificationSettings() {
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
-                    <type.icon className="h-4 w-4 text-cyan-400" />
+                    <type.icon className="size-4 text-cyan-400" />
                   </div>
                   <div>
                     <div className="font-medium text-white/90">
@@ -93,7 +93,7 @@ export function NotificationSettings() {
 
               {/* Enhanced scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               </div>
             </div>
           ))}
@@ -133,7 +133,7 @@ export function NotificationSettings() {
 
               {/* Enhanced scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               </div>
             </div>
           ))}
@@ -144,7 +144,7 @@ export function NotificationSettings() {
       <div className="relative rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-yellow-500/20 p-1.5">
-            <AlertCircle className="h-4 w-4 text-yellow-400" />
+            <AlertCircle className="size-4 text-yellow-400" />
           </div>
           <div className="text-sm text-yellow-200/70">
             Critical notifications related to patient safety and system security
@@ -158,7 +158,7 @@ export function NotificationSettings() {
         <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
           Save Preferences
           <div className="absolute inset-0 overflow-hidden">
-            <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
+            <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
           </div>
         </Button>
       </div>

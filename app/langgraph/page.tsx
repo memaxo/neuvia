@@ -71,13 +71,13 @@ function Message(props: {
     >
       <div
         className={cn(
-          `rounded-[24px] flex`,
+          `flex rounded-[24px]`,
           props.message.type === "human"
-            ? "bg-secondary text-secondary-foreground px-4 py-2"
+            ? "bg-secondary px-4 py-2 text-secondary-foreground"
             : null,
         )}
       >
-        <div className="whitespace-pre-wrap flex flex-col">
+        <div className="flex flex-col whitespace-pre-wrap">
           {typeof props.message.content === "string"
             ? props.message.content
             : props.message.content.map((part) => {
@@ -88,9 +88,9 @@ function Message(props: {
       </div>
 
       {props.message.type === "human" && (
-        <div className="ml-auto flex justify-end items-center gap-2 mt-2">
+        <div className="ml-auto mt-2 flex items-center justify-end gap-2">
           <button
-            className="text-muted-foreground text-right text-sm"
+            className="text-right text-sm text-muted-foreground"
             type="button"
             onClick={() => setIsEditing(true)}
           >
@@ -123,17 +123,17 @@ function BranchPicker(props: {
   const index = props.branches.indexOf(props.current);
 
   return (
-    <div className="flex items-center gap-2 text-sm justify-end">
+    <div className="flex items-center justify-end gap-2 text-sm">
       <button
         type="button"
-        className="flex-shrink-0"
+        className="shrink-0"
         onClick={() => {
           const nextIndex = Math.max(0, index - 1);
           const next = props.branches[nextIndex];
           props.onSelect(next);
         }}
       >
-        <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+        <ChevronLeft className="size-4 text-muted-foreground" />
       </button>
 
       <span className="text-muted-foreground">
@@ -142,14 +142,14 @@ function BranchPicker(props: {
 
       <button
         type="button"
-        className="flex-shrink-0"
+        className="shrink-0"
         onClick={() => {
           const nextIndex = Math.min(props.branches.length - 1, index + 1);
           const next = props.branches[nextIndex];
           props.onSelect(next);
         }}
       >
-        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        <ChevronRight className="size-4 text-muted-foreground" />
       </button>
     </div>
   );
@@ -200,12 +200,12 @@ function ClientLanggraphPage() {
     <ChatLayout
       content={
         thread.messages.length ? (
-          <div className="flex flex-col gap-4 max-w-[768px] mx-auto mb-16">
-            <div className="flex justify-between gap-2 items-center">
+          <div className="mx-auto mb-16 flex max-w-screen-md flex-col gap-4">
+            <div className="flex items-center justify-between gap-2">
               <span>Timestamp: {thread.values.timestamp}</span>
             </div>
 
-            <div className="flex justify-between gap-2 items-center">
+            <div className="flex items-center justify-between gap-2">
               <span>Thread ID: {threadId}</span>
               <Button
                 variant="outline"

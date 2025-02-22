@@ -138,9 +138,9 @@ export function QuickStats() {
                           )}
                         >
                           {stat.trend.isPositive ? (
-                            <ArrowUpIcon className="h-3.5 w-3.5" />
+                            <ArrowUpIcon className="size-3.5" />
                           ) : (
-                            <ArrowDownIcon className="h-3.5 w-3.5" />
+                            <ArrowDownIcon className="size-3.5" />
                           )}
                           <span className="text-sm font-medium">
                             {stat.trend.value}%
@@ -194,14 +194,14 @@ export function QuickStats() {
                           className="group/btn relative overflow-hidden rounded-xl bg-black/40 px-4 py-2 text-white/80 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-black/60 hover:text-white hover:shadow-[0_0_30px_rgba(0,255,255,0.2)]"
                         >
                           <span className="relative z-10 flex items-center gap-2">
-                            <stat.action.icon className="h-4 w-4" />
+                            <stat.action.icon className="size-4" />
                             <span className="font-medium">
                               {stat.action.label}
                             </span>
                           </span>
                           {/* Enhanced scanning line effect */}
                           <div className="absolute inset-0 overflow-hidden">
-                            <div className="group-hover/btn:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                            <div className="group-hover/btn:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
                           </div>
                         </Button>
                       </Link>
@@ -233,7 +233,7 @@ export function QuickStats() {
 
                 {/* Enhanced scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
                 </div>
               </div>
             </TooltipProvider>

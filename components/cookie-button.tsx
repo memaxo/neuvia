@@ -14,7 +14,7 @@ export function CookieButton() {
         })}
       >
         <Link href="#" className={cn('yourConsentManager')}>
-          <Icons.cookie className="h-5 w-5" />
+          <Icons.cookie className="size-5" />
           <span className="sr-only">Cookie Preferences</span>
         </Link>
       </div>

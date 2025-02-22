@@ -58,10 +58,10 @@ export function MainNav({ items }: MainNavProps) {
   return (
     <div
       className={cn(
-        'fixed left-0 right-0 top-0 z-50 px-4 py-3 transition-all duration-300',
+        'fixed inset-x-0 top-0 z-50 px-4 py-3 transition-all duration-300',
         isScrolled &&
           'border-b border-border/50 bg-background/80 shadow-lg backdrop-blur-lg dark:bg-background/40',
-        'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border/50 after:to-transparent'
+        'after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border/50 after:to-transparent'
       )}
     >
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between">
@@ -83,7 +83,7 @@ export function MainNav({ items }: MainNavProps) {
                 width={28}
                 height={28}
                 className={cn(
-                  'transform rounded-full transition-all duration-300',
+                  'rounded-full transition-all duration-300',
                   'group-hover:scale-110 group-hover:brightness-110',
                   'dark:brightness-110',
                   isLoaded && 'animate-scale-in'
@@ -165,7 +165,7 @@ export function MainNav({ items }: MainNavProps) {
                   ),
                 })}
               >
-                <LogOut className="mr-2 h-4 w-4" />
+                <LogOut className="mr-2 size-4" />
                 Logout
               </button>
             </>
@@ -207,9 +207,9 @@ export function MainNav({ items }: MainNavProps) {
                   'dark:before:from-indigo-500 dark:before:via-purple-500 dark:before:to-blue-500',
                   'before:rounded-full before:transition-[transform,opacity] before:duration-500',
                   'before:opacity-0 before:hover:opacity-100',
-                  'before:scale-x-[1.1] before:hover:scale-100',
+                  'before:scale-x-110 before:hover:scale-100',
                   'before:origin-left',
-                  'after:absolute after:inset-[-1px]',
+                  'after:absolute after:-inset-px',
                   'after:rounded-[100px] after:bg-gradient-to-r',
                   'after:from-blue-400/40 after:via-indigo-400/40 after:to-purple-400/40',
                   'dark:after:from-blue-300/30 dark:after:via-indigo-300/30 dark:after:to-purple-300/30',
@@ -228,7 +228,7 @@ export function MainNav({ items }: MainNavProps) {
                     <span className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-0 transition-opacity delay-100 duration-500 group-hover:opacity-100" />
                   </span>
                   <svg
-                    className="h-4 w-4 transform transition-all duration-300 group-hover:translate-x-1 group-hover:scale-110"
+                    className="size-4 transition-all duration-300 group-hover:translate-x-1 group-hover:scale-110"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -243,7 +243,7 @@ export function MainNav({ items }: MainNavProps) {
                   </svg>
                 </span>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(79,70,229,0.1),transparent_50%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.1),transparent_50%)]" />
-                <div className="absolute left-[-100%] top-0 h-full w-[120%] rotate-45 bg-gradient-to-r from-transparent via-white/20 to-transparent transition-all duration-700 ease-out group-hover:left-[100%]" />
+                <div className="absolute -left-full top-0 h-full w-[120%] rotate-45 bg-gradient-to-r from-transparent via-white/20 to-transparent transition-all duration-700 ease-out group-hover:left-full" />
               </Link>
             </>
           )}

@@ -20,7 +20,7 @@ export default async function ContactPage() {
       <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col items-center space-y-2 text-center">
           <Link href="/" className="mb-8 flex items-center space-x-2">
-            <Icons.logo className="h-6 w-6" />
+            <Icons.logo className="size-6" />
             <span className="inline-block font-bold">{siteConfig.name}</span>
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">Contact Us</h1>

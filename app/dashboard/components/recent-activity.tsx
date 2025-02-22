@@ -64,7 +64,7 @@ export function RecentActivity() {
       <div className="p-6">
         <div className="relative">
           {/* Timeline line with gradient */}
-          <div className="absolute bottom-0 left-[27px] top-0 w-px bg-gradient-to-b from-cyan-500/20 via-blue-500/20 to-purple-500/20" />
+          <div className="absolute inset-y-0 left-[27px] w-px bg-gradient-to-b from-cyan-500/20 via-blue-500/20 to-purple-500/20" />
 
           <div className="space-y-4">
             {activities.map((activity) => {
@@ -87,8 +87,8 @@ export function RecentActivity() {
 
                   {/* Icon container with enhanced styling */}
                   <div className="relative z-10">
-                    <div className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 transition-colors duration-300 group-hover:border-cyan-500/20">
-                      <Icon className="h-4 w-4 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+                    <div className="flex size-[32px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 transition-colors duration-300 group-hover:border-cyan-500/20">
+                      <Icon className="size-4 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
                     </div>
                   </div>
 
@@ -109,7 +109,7 @@ export function RecentActivity() {
 
                   {/* Enhanced scanning line effect */}
                   <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                    <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
                   </div>
                 </div>
               )

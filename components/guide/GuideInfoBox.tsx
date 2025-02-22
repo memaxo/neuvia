@@ -2,12 +2,12 @@ import { ReactNode } from "react";
 
 export function GuideInfoBox(props: { children: ReactNode }) {
   return (
-    <div className="max-w-[768px] w-full overflow-hidden flex-col gap-5 flex text-md my-16 mx-auto">
-      <div className="text-4xl text-center">
+    <div className="text-md mx-auto my-16 flex w-full max-w-screen-md flex-col gap-5 overflow-hidden">
+      <div className="text-center text-4xl">
         ▲ <span className="font-semibold">+</span> 🦜🔗
       </div>
 
-      <div className="text-sm max-w-[600px] mx-auto text-center">
+      <div className="mx-auto max-w-[600px] text-center text-sm">
         {props.children}
       </div>
     </div>

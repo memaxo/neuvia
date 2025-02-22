@@ -27,9 +27,9 @@ export function PatientDataForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-card rounded-lg">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-lg bg-card p-4">
       <div>
-        <Label htmlFor="symptoms" className="block mb-1">Symptoms</Label>
+        <Label htmlFor="symptoms" className="mb-1 block">Symptoms</Label>
         <Input 
           id="symptoms" 
           value={symptoms} 
@@ -39,7 +39,7 @@ export function PatientDataForm() {
         />
       </div>
       <div>
-        <Label htmlFor="medicalHistory" className="block mb-1">Medical History</Label>
+        <Label htmlFor="medicalHistory" className="mb-1 block">Medical History</Label>
         <Textarea 
           id="medicalHistory" 
           value={medicalHistory} 
@@ -49,7 +49,7 @@ export function PatientDataForm() {
         />
       </div>
       <div>
-        <Label htmlFor="currentMedications" className="block mb-1">Current Medications</Label>
+        <Label htmlFor="currentMedications" className="mb-1 block">Current Medications</Label>
         <Input 
           id="currentMedications" 
           value={currentMedications} 
@@ -59,7 +59,7 @@ export function PatientDataForm() {
         />
       </div>
       <div>
-        <Label htmlFor="allergies" className="block mb-1">Allergies</Label>
+        <Label htmlFor="allergies" className="mb-1 block">Allergies</Label>
         <Input 
           id="allergies" 
           value={allergies} 
@@ -69,7 +69,7 @@ export function PatientDataForm() {
         />
       </div>
       <div>
-        <Label htmlFor="vitalSigns" className="block mb-1">Vital Signs</Label>
+        <Label htmlFor="vitalSigns" className="mb-1 block">Vital Signs</Label>
         <Input 
           id="vitalSigns" 
           value={vitalSigns} 

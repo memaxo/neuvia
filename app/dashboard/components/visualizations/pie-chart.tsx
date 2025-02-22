@@ -62,24 +62,27 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
           width={size}
           height={size}
           viewBox={`0 0 ${size} ${size}`}
-          className="transform transition-transform duration-300 group-hover:scale-105"
+          className="transition-transform duration-300 group-hover:scale-105"
         >
           {/* Enhanced gradient definitions */}
           <defs>
             {segments.map((segment, i) => (
               <linearGradient
                 key={`gradient-${i}`}
-                id={`segment-gradient-${i}`}
+                id={`pie-segment-${i}`}
                 gradientTransform={`rotate(${(segment.startAngle + segment.endAngle) / 2} ${size / 2} ${size / 2})`}
               >
                 <stop offset="0%" stopColor={segment.color} stopOpacity="1" />
-                <stop
-                  offset="100%"
-                  stopColor={segment.color}
-                  stopOpacity="0.7"
-                />
+                <stop offset="100%" stopColor={segment.color} stopOpacity="0.7" />
               </linearGradient>
             ))}
+            <filter id="pie-glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
 
           {/* Enhanced segments with gradients and animations */}
@@ -88,34 +91,32 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
               <TooltipTrigger asChild>
                 <path
                   d={segment.path}
-                  fill={`url(#segment-gradient-${i})`}
+                  fill={`url(#pie-segment-${i})`}
                   className={cn(
                     'cursor-pointer drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-300',
                     hoveredIndex === i
-                      ? 'scale-105 transform opacity-100'
+                      ? 'scale-105 opacity-100'
                       : hoveredIndex !== null
                         ? 'opacity-60'
                         : 'opacity-90 hover:opacity-100'
                   )}
                   onMouseEnter={() => setHoveredIndex(i)}
                   onMouseLeave={() => setHoveredIndex(null)}
-                  filter="url(#glow)"
+                  style={{ filter: 'url(#pie-glow)' }}
                 />
               </TooltipTrigger>
               <TooltipContent>
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
                     <div
-                      className="h-2 w-2 rounded-full"
+                      className="size-2 rounded-full"
                       style={{ backgroundColor: segment.color }}
                     />
                     <span className="font-medium text-white">
                       {segment.status}
                     </span>
                   </div>
-                  <p className="text-sm text-white/70">
-                    Count: {segment.count}
-                  </p>
+                  <p className="text-sm text-white/70">Count: {segment.count}</p>
                   <p className="text-sm text-white/70">
                     {segment.percentage}% of total
                   </p>
@@ -131,17 +132,6 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
             r={size / 4}
             className="fill-black/40 backdrop-blur-sm transition-all duration-300 group-hover:fill-black/50"
           />
-
-          {/* Glow filter */}
-          <defs>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
         </svg>
 
         {/* Enhanced center text */}

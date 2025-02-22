@@ -26,7 +26,7 @@ export function PatientOverview() {
           >
             <span className="relative z-10">View All</span>
             <div className="absolute inset-0 overflow-hidden">
-              <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
             </div>
           </Button>
         </div>
@@ -55,7 +55,7 @@ export function PatientOverview() {
                             <div className="group/item flex cursor-help items-center justify-between rounded-lg p-2 transition-all duration-300 hover:bg-black/40">
                               <div className="flex items-center gap-2">
                                 <div
-                                  className="h-2 w-2 rounded-full transition-transform duration-300 group-hover/item:scale-125"
+                                  className="size-2 rounded-full transition-transform duration-300 group-hover/item:scale-125"
                                   style={{ backgroundColor: item.color }}
                                 />
                                 <span className="text-sm text-white/70 transition-colors duration-300 group-hover/item:text-white">

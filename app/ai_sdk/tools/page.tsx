@@ -38,7 +38,7 @@ export default function Page() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl py-12 flex flex-col stretch gap-3">
+    <div className="stretch mx-auto flex w-full max-w-4xl flex-col gap-3 py-12">
       <form onSubmit={handleSubmit} className="flex flex-col gap-2">
         <Input
           placeholder="What's the weather in XYZ city and XYZ state"
@@ -78,10 +78,10 @@ export default function Page() {
       </form>
       <div
         ref={scrollRef}
-        className="flex flex-col gap-2 px-2 h-[650px] overflow-y-auto"
+        className="flex h-[650px] flex-col gap-2 overflow-y-auto px-2"
       >
         {data.map((item, i) => (
-          <div key={i} className="p-4 bg-[#25252f] rounded-lg">
+          <div key={i} className="rounded-lg bg-[#25252f] p-4">
             {options.streamEvents ? (
               <>
                 <strong>Event:</strong> <p className="text-sm">{item.event}</p>
@@ -101,7 +101,7 @@ export default function Page() {
       {!isLoading && data.length > 1 && (
         <>
           <hr />
-          <div className="flex flex-col w-full gap-2">
+          <div className="flex w-full flex-col gap-2">
             <strong className="text-center">Result</strong>
             <p className="break-all text-sm">
               {JSON.stringify(data[data.length - 1], null, 2)}

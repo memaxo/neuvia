@@ -39,7 +39,7 @@ export default function Home() {
   return (
     <div className="py-8">
       <GuideInfoBox>
-        <div className="flex flex-col gap-4 items-stretch">
+        <div className="flex flex-col items-stretch gap-4">
           <p>
             The below section contains two examples using the LangChain.js
             framework, along with helper functions from the experimental AI SDK
@@ -48,7 +48,7 @@ export default function Home() {
           </p>
 
           <div className="grid grid-cols-[1fr,auto] items-center gap-x-2 gap-y-6">
-            <p className="text-left m-0">
+            <p className="m-0 text-left">
               The <strong>Agents</strong> example contains an agent which
               streams data back to the client using the{" "}
               <a
@@ -69,7 +69,7 @@ export default function Home() {
               </Link>
             </Button>
 
-            <p className="text-left m-0">
+            <p className="m-0 text-left">
               The <strong>Tools</strong> example shows how to invoke a simple
               tool calling model, and stream back the result.
             </p>

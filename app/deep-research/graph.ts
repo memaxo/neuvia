@@ -69,7 +69,7 @@ export async function generateReportPlan(
 ): Promise<ReportState> {
     const topic = state.topic;
     const feedback = state.feedback_on_report_plan || "";
-    let reportStructure = config.report_structure;
+    const reportStructure = config.report_structure;
     const numberOfQueries = config.number_of_queries;
 
     // (Optional) Use an LLM for queries. We might set up an LLM like so:
@@ -190,7 +190,7 @@ export async function buildSectionWithWebResearch(
     config: ReportConfiguration
 ): Promise<Section> {
     let searchIterations = 0;
-    let completedSection = { ...section };
+    const completedSection = { ...section };
 
     // e.g. loop up to maxSearchDepth
     while (searchIterations < config.max_search_depth) {

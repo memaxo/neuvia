@@ -160,9 +160,9 @@ export default function RegisterForm() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/10 hover:text-foreground focus:text-foreground"
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
+                      <EyeOff className="size-4" />
                     ) : (
-                      <Eye className="h-4 w-4" />
+                      <Eye className="size-4" />
                     )}
                   </button>
                   <div
@@ -177,9 +177,9 @@ export default function RegisterForm() {
                   {passwordRequirements.map((req, index) => (
                     <p key={index} className="flex items-center gap-2">
                       {req.regex.test(password) ? (
-                        <Check className="h-3 w-3 text-emerald-500" />
+                        <Check className="size-3 text-emerald-500" />
                       ) : (
-                        <X className="h-3 w-3 text-destructive/70" />
+                        <X className="size-3 text-destructive/70" />
                       )}
                       <span
                         className={cn(
@@ -219,9 +219,9 @@ export default function RegisterForm() {
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/10 hover:text-foreground focus:text-foreground"
                   >
                     {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
+                      <EyeOff className="size-4" />
                     ) : (
-                      <Eye className="h-4 w-4" />
+                      <Eye className="size-4" />
                     )}
                   </button>
                   <div
@@ -238,7 +238,7 @@ export default function RegisterForm() {
         <Button
           type="submit"
           disabled={isPending}
-          className="w-full transform rounded-lg bg-gradient-to-r from-primary to-primary-foreground py-5 font-medium text-primary-foreground transition-all duration-300 hover:-translate-y-0.5 hover:from-primary/90 hover:to-primary-foreground/90 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:transform-none"
+          className="w-full rounded-lg bg-gradient-to-r from-primary to-primary-foreground py-5 font-medium text-primary-foreground transition-all duration-300 hover:-translate-y-0.5 hover:from-primary/90 hover:to-primary-foreground/90 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:transform-none"
         >
           {isPending ? (
             <div className="flex items-center justify-center gap-2">
@@ -269,10 +269,10 @@ export default function RegisterForm() {
           className="flex w-full items-center gap-2 border-border/50 bg-background/20 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 hover:border-border hover:bg-background/30 focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {isGoogleLoading ? (
-            <AiOutlineLoading3Quarters className="mr-2 h-4 w-4 animate-spin" />
+            <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
           ) : (
             <svg
-              className="mr-2 h-4 w-4"
+              className="mr-2 size-4"
               aria-hidden="true"
               focusable="false"
               data-prefix="fab"

@@ -1,5 +1,6 @@
 'use client'
 
+import { useId } from 'react'
 import { TrendPoint } from '../types'
 
 interface SparklineProps {
@@ -13,6 +14,7 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = max - min
+  const uniqueId = useId().replace(/[^a-zA-Z0-9]/g, '')
 
   // Create points for the sparkline
   const points = data
@@ -23,32 +25,27 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
     })
     .join(' ')
 
+  const gradientId = `sparkline-gradient-${uniqueId}`
+  const hoverGradientId = `sparkline-hover-gradient-${uniqueId}`
+
   return (
     <svg
       width="100%"
       height={height}
       preserveAspectRatio="none"
       className="group overflow-visible"
+      style={{
+        '--gradient-url': `url(#${gradientId})`,
+        '--hover-gradient-url': `url(#${hoverGradientId})`,
+      } as React.CSSProperties}
     >
       {/* Enhanced gradient definitions */}
       <defs>
-        <linearGradient
-          id={`gradient-${color.replace('#', '')}`}
-          x1="0"
-          x2="0"
-          y1="0"
-          y2="1"
-        >
+        <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
-        <linearGradient
-          id={`hover-gradient-${color.replace('#', '')}`}
-          x1="0"
-          x2="0"
-          y1="0"
-          y2="1"
-        >
+        <linearGradient id={hoverGradientId} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.4" />
           <stop offset="100%" stopColor={color} stopOpacity="0.1" />
         </linearGradient>
@@ -57,8 +54,7 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
       {/* Enhanced area fill with hover effect */}
       <path
         d={`M0,${height} ${points} ${100},${height} Z`}
-        fill={`url(#gradient-${color.replace('#', '')})`}
-        className="group-hover:fill-[url(#hover-gradient-${color.replace('#', '')})] opacity-50 transition-all duration-300 group-hover:opacity-75"
+        className="fill-[var(--gradient-url)] opacity-50 transition-all duration-300 group-hover:fill-[var(--hover-gradient-url)] group-hover:opacity-75"
       />
 
       {/* Background line with enhanced effect */}
@@ -113,7 +109,7 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
 
       {/* Enhanced end point with glow effect */}
       <circle
-        cx={`${100}%`}
+        cx="100%"
         cy={height - ((data[data.length - 1].value - min) / range) * height}
         r="2"
         fill={color}

@@ -44,7 +44,7 @@ export function SecuritySettings() {
             <div className="group relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 via-transparent to-purple-500/20 opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
+                <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
                   type="password"
                   placeholder="Enter current password"
@@ -60,7 +60,7 @@ export function SecuritySettings() {
             <div className="group relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 via-transparent to-purple-500/20 opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
               <div className="relative">
-                <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
+                <Key className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
                   type="password"
                   placeholder="Enter new password"
@@ -76,7 +76,7 @@ export function SecuritySettings() {
             <div className="group relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 via-transparent to-purple-500/20 opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
               <div className="relative">
-                <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
+                <Key className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
                   type="password"
                   placeholder="Confirm new password"
@@ -90,7 +90,7 @@ export function SecuritySettings() {
           <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
             Update Password
             <div className="absolute inset-0 overflow-hidden">
-              <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
             </div>
           </Button>
         </div>
@@ -118,7 +118,7 @@ export function SecuritySettings() {
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
-                    <feature.icon className="h-4 w-4 text-cyan-400" />
+                    <feature.icon className="size-4 text-cyan-400" />
                   </div>
                   <div>
                     <div className="font-medium text-white/90">
@@ -137,7 +137,7 @@ export function SecuritySettings() {
 
               {/* Enhanced scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               </div>
             </div>
           ))}
@@ -148,7 +148,7 @@ export function SecuritySettings() {
       <div className="relative rounded-xl border border-red-500/20 bg-red-500/10 p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-red-500/20 p-1.5">
-            <AlertCircle className="h-4 w-4 text-red-400" />
+            <AlertCircle className="size-4 text-red-400" />
           </div>
           <div className="text-sm text-red-200/70">
             For enhanced security, we recommend enabling two-factor

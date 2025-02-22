@@ -5,7 +5,7 @@ export default function AgentsPage() {
   const InfoCard = (
     <GuideInfoBox>
       <ul>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🤝
           <span className="ml-2">
             This template showcases a{" "}
@@ -23,7 +23,7 @@ export default function AgentsPage() {
             project.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🛠️
           <span className="ml-2">
             The agent has access to a vector store retriever as a tool as well
@@ -31,7 +31,7 @@ export default function AgentsPage() {
             about the current conversation.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           💻
           <span className="ml-2">
             You can find the prompt and model logic for this use-case in{" "}
@@ -45,14 +45,14 @@ export default function AgentsPage() {
             change the prompt to whatever you want!
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🎨
           <span className="ml-2">
             The main frontend logic is found in{" "}
             <code>app/retrieval_agents/page.tsx</code>.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🔱
           <span className="ml-2">
             Before running this example, you&apos;ll first need to set up a

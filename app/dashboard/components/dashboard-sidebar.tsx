@@ -78,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="absolute right-4 top-4 opacity-0 transition-opacity group-hover/sidebar:opacity-100"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="size-4" />
             <span className="sr-only">Toggle Sidebar</span>
           </button>
         )}
@@ -143,9 +143,9 @@ export function DashboardSidebar() {
       <SheetTrigger asChild>
         <Button
           variant="ghost"
-          className="flex h-10 w-10 items-center justify-center p-0 hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 md:hidden"
+          className="flex size-10 items-center justify-center p-0 hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 md:hidden"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="size-4" />
           <span className="sr-only">Toggle sidebar</span>
         </Button>
       </SheetTrigger>
@@ -168,7 +168,7 @@ export function DashboardSidebar() {
                     : 'border border-transparent'
                 )}
               >
-                <link.icon className="h-5 w-5 shrink-0" />
+                <link.icon className="size-5 shrink-0" />
                 <div className="flex flex-col">
                   <span>{link.title}</span>
                   <span className="text-sm text-muted-foreground">
@@ -189,13 +189,13 @@ export function DashboardSidebar() {
           <Sidebar.Header>
             <Button
               variant="ghost"
-              className="h-10 w-10"
+              className="size-10"
               onClick={() => setIsCollapsed(!isCollapsed)}
             >
               {isCollapsed ? (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="size-4" />
               ) : (
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="size-4" />
               )}
               <span className="sr-only">Toggle sidebar</span>
             </Button>
@@ -223,7 +223,7 @@ export function DashboardSidebar() {
                           )}
                         >
                           <link.icon
-                            className={cn('h-5 w-5 shrink-0', {
+                            className={cn('size-5 shrink-0', {
                               'text-muted-foreground': !isActive,
                             })}
                           />

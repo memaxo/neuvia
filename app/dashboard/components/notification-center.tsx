@@ -97,7 +97,7 @@ export function NotificationCenter() {
             notificationColors[notification.type]
           )}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="size-4" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -114,14 +114,14 @@ export function NotificationCenter() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-white/40 hover:text-white/60"
+                className="size-6 text-white/40 hover:text-white/60"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   markAsRead(notification.id)
                 }}
               >
-                <X className="h-4 w-4" />
+                <X className="size-4" />
               </Button>
             )}
           </div>
@@ -141,7 +141,7 @@ export function NotificationCenter() {
         </div>
 
         {notification.actionUrl && (
-          <ChevronRight className="h-4 w-4 text-white/20 transition-colors group-hover:text-white/40" />
+          <ChevronRight className="size-4 text-white/20 transition-colors group-hover:text-white/40" />
         )}
       </div>
     )
@@ -158,9 +158,9 @@ export function NotificationCenter() {
               className="relative"
               onClick={() => setIsOpen(!isOpen)}
             >
-              <Bell className="h-5 w-5 text-white/70" />
+              <Bell className="size-5 text-white/70" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
                   {unreadCount}
                 </span>
               )}
@@ -183,9 +183,9 @@ export function NotificationCenter() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-white/40 hover:text-white/60"
+                      className="size-8 text-white/40 hover:text-white/60"
                     >
-                      <Filter className="h-4 w-4" />
+                      <Filter className="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -221,7 +221,7 @@ export function NotificationCenter() {
                   className="text-xs text-white/40 hover:text-white/60"
                   onClick={markAllAsRead}
                 >
-                  <Check className="mr-1 h-3 w-3" />
+                  <Check className="mr-1 size-3" />
                   Mark all as read
                 </Button>
               </div>

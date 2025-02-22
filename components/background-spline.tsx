@@ -18,7 +18,7 @@ const SplineWrapper = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="pointer-events-none absolute inset-0 overflow-hidden animate-pulse bg-black/80 backdrop-blur-lg" />
+      <div className="pointer-events-none absolute inset-0 animate-pulse overflow-hidden bg-black/80 backdrop-blur-lg" />
     ),
   }
 )
@@ -61,7 +61,7 @@ export default function BackgroundSpline() {
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <SplineWrapper
         scene="https://prod.spline.design/Y6XgUDfF8whAr82F/scene.splinecode"
-        className="h-full w-full"
+        className="size-full"
         onLoad={handleSplineLoad}
       />
     </div>

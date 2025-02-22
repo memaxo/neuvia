@@ -25,16 +25,16 @@ export default async function OnboardingPage() {
       {/* Enhanced background with multiple layers */}
       <div className="absolute inset-0">
         {/* Grid pattern - theme aware */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--foreground))_1px,transparent_1px)] bg-[size:24px_24px] opacity-[0.05]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--foreground))_1px,transparent_1px)] bg-[size:24px_24px] opacity-5" />
 
         {/* Gradient overlay - theme aware */}
         <div className="animate-gradient absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5" />
 
         {/* Additional ambient glow - theme aware */}
         <div className="absolute inset-0">
-          <div className="animate-pulse-subtle absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[120px]" />
+          <div className="animate-pulse-subtle absolute left-1/2 top-1/2 size-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[120px]" />
           <div
-            className="animate-pulse-subtle absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/10 blur-[120px]"
+            className="animate-pulse-subtle absolute left-1/2 top-1/2 size-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/10 blur-[120px]"
             style={{ animationDelay: '-2s' }}
           />
         </div>

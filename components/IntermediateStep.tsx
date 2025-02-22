@@ -9,11 +9,11 @@ export function IntermediateStep(props: { message: Message }) {
   const observation = parsedInput.observation;
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="mr-auto bg-secondary border border-input rounded p-3 max-w-[80%] mb-8 whitespace-pre-wrap flex flex-col">
+    <div className="mb-8 mr-auto flex max-w-[80%] flex-col whitespace-pre-wrap rounded border border-input bg-secondary p-3">
       <button
         type="button"
         className={cn(
-          "text-left flex items-center gap-1",
+          "flex items-center gap-1 text-left",
           expanded && "w-full",
         )}
         onClick={(e) => setExpanded(!expanded)}
@@ -22,15 +22,15 @@ export function IntermediateStep(props: { message: Message }) {
           Step: <strong className="font-mono">{action.name}</strong>
         </span>
         <span className={cn(expanded && "hidden")}>
-          <ChevronDown className="w-5 h-5" />
+          <ChevronDown className="size-5" />
         </span>
         <span className={cn(!expanded && "hidden")}>
-          <ChevronUp className="w-5 h-5" />
+          <ChevronUp className="size-5" />
         </span>
       </button>
       <div
         className={cn(
-          "overflow-hidden max-h-[0px] transition-[max-height] ease-in-out text-sm",
+          "max-h-0 overflow-hidden text-sm transition-[max-height] ease-in-out",
           expanded && "max-h-[360px]",
         )}
       >

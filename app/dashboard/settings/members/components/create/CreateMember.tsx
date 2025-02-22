@@ -14,7 +14,7 @@ export default function CreateMember() {
     <Dialog>
       <DialogTrigger asChild>
         <Button className="bg-orange-600 text-white hover:bg-orange-500">
-          <UserPlus className="mr-2 h-5 w-5" />
+          <UserPlus className="mr-2 size-5" />
           Add Member
         </Button>
       </DialogTrigger>

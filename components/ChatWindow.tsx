@@ -31,7 +31,7 @@ function ChatMessages(props: {
   className?: string;
 }) {
   return (
-    <div className="flex flex-col max-w-[768px] mx-auto pb-12 w-full">
+    <div className="mx-auto flex w-full max-w-screen-md flex-col pb-12">
       {props.messages.map((m, i) => {
         if (m.role === "system") {
           return <IntermediateStep key={m.id} message={m} />;
@@ -77,15 +77,15 @@ export function ChatInput(props: {
       }}
       className={cn("flex w-full flex-col", props.className)}
     >
-      <div className="border border-input bg-secondary rounded-lg flex flex-col gap-2 max-w-[768px] w-full mx-auto">
+      <div className="mx-auto flex w-full max-w-screen-md flex-col gap-2 rounded-lg border border-input bg-secondary">
         <input
           value={props.value}
           placeholder={props.placeholder}
           onChange={props.onChange}
-          className="border-none outline-none bg-transparent p-4"
+          className="border-none bg-transparent p-4 outline-none"
         />
 
-        <div className="flex justify-between ml-4 mr-2 mb-2">
+        <div className="mb-2 ml-4 mr-2 flex justify-between">
           <div className="flex gap-3">{props.children}</div>
 
           <div className="flex gap-2 self-end">
@@ -117,7 +117,7 @@ function ScrollToBottom(props: { className?: string }) {
       className={props.className}
       onClick={() => scrollToBottom()}
     >
-      <ArrowDown className="w-4 h-4" />
+      <ArrowDown className="size-4" />
       <span>Scroll to bottom</span>
     </Button>
   );
@@ -156,7 +156,7 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
         content={props.content}
         footer={
           <div className="sticky bottom-8 px-2">
-            <ScrollToBottom className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4" />
+            <ScrollToBottom className="absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
             {props.footer}
           </div>
         }
@@ -316,7 +316,7 @@ export function ChatWindow(props: {
               <DialogTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="pl-2 pr-3 -ml-2"
+                  className="-ml-2 pl-2 pr-3"
                   disabled={chat.messages.length !== 0}
                 >
                   <Paperclip className="size-4" />

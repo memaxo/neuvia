@@ -18,7 +18,7 @@ export default async function page() {
     <div className="isolate flex min-h-screen items-center justify-center bg-background">
       {/* Static background layer */}
       <div className="fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--foreground))_1px,transparent_1px)] bg-[size:24px_24px] opacity-[0.05]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--foreground))_1px,transparent_1px)] bg-[size:24px_24px] opacity-5" />
       </div>
 
       {/* Ambient effects layer */}
@@ -28,9 +28,9 @@ export default async function page() {
 
         {/* Glow effects */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="animate-pulse-subtle absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[120px]" />
+          <div className="animate-pulse-subtle absolute left-1/2 top-1/2 size-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/20 blur-[120px]" />
           <div
-            className="animate-pulse-subtle absolute left-1/2 top-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/10 blur-[120px]"
+            className="animate-pulse-subtle absolute left-1/2 top-1/2 size-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/10 blur-[120px]"
             style={{ animationDelay: '-2s' }}
           />
         </div>

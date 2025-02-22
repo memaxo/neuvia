@@ -10,7 +10,7 @@ export function SearchBar() {
       <div className="relative">
         {/* Enhanced search input */}
         <div className="relative overflow-hidden rounded-xl backdrop-blur-sm transition-all duration-300 group-focus-within:shadow-[0_0_30px_rgba(0,255,255,0.1)]">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
+          <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
           <Input
             type="search"
             placeholder="Search patients, reports, or activities..."
@@ -25,13 +25,13 @@ export function SearchBar() {
 
           {/* Enhanced scanning line effect */}
           <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-focus-within:opacity-100">
-            <div className="group-focus-within:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+            <div className="group-focus-within:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
           </div>
         </div>
       </div>
 
       {/* Enhanced quick suggestions panel */}
-      <div className="absolute left-0 right-0 top-full mt-2 hidden group-focus-within:block">
+      <div className="absolute inset-x-0 top-full mt-2 hidden group-focus-within:block">
         <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 py-3 shadow-lg backdrop-blur-xl">
           {/* Section: Recent Searches */}
           <div className="px-3 py-1.5">
@@ -58,7 +58,7 @@ export function SearchBar() {
 
               {/* Scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover/item:opacity-100">
-                <div className="group-hover/item:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                <div className="group-hover/item:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
               </div>
             </div>
           </div>

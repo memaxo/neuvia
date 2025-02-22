@@ -96,15 +96,15 @@ export function RecentUploads() {
               <div className="flex items-start gap-4">
                 <div className="relative">
                   <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]">
-                    <FileType className="h-5 w-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+                    <FileType className="size-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 h-3 w-3">
+                  <div className="absolute -bottom-1 -right-1 size-3">
                     {upload.status === 'complete' ? (
-                      <CheckCircle className="h-full w-full text-green-400" />
+                      <CheckCircle className="size-full text-green-400" />
                     ) : upload.status === 'error' ? (
-                      <AlertCircle className="h-full w-full text-red-400" />
+                      <AlertCircle className="size-full text-red-400" />
                     ) : (
-                      <div className="h-full w-full animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                      <div className="size-full animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
                     )}
                   </div>
                 </div>
@@ -136,9 +136,9 @@ export function RecentUploads() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                       >
-                        <Eye className="h-4 w-4" />
+                        <Eye className="size-4" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -151,9 +151,9 @@ export function RecentUploads() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                       >
-                        <Download className="h-4 w-4" />
+                        <Download className="size-4" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -166,9 +166,9 @@ export function RecentUploads() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -205,7 +205,7 @@ export function RecentUploads() {
 
             {/* Enhanced scanning line effect */}
             <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
             </div>
           </div>
         </div>

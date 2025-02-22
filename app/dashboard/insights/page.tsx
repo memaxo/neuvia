@@ -8,7 +8,7 @@ export default function InsightsPage() {
 
       {/* Search bar */}
       <div className="relative max-w-2xl">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-slate-400" />
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
           placeholder="Search medical insights..."
@@ -20,7 +20,7 @@ export default function InsightsPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="rounded-lg bg-teal-800/50 p-6">
           <div className="mb-4 flex items-center gap-3">
-            <Cpu className="h-6 w-6 text-teal-400" />
+            <Cpu className="size-6 text-teal-400" />
             <h3 className="text-lg font-semibold text-slate-100">
               AI Analysis
             </h3>
@@ -32,7 +32,7 @@ export default function InsightsPage() {
 
         <div className="rounded-lg bg-teal-800/50 p-6">
           <div className="mb-4 flex items-center gap-3">
-            <FileText className="h-6 w-6 text-teal-400" />
+            <FileText className="size-6 text-teal-400" />
             <h3 className="text-lg font-semibold text-slate-100">
               Document Summary
             </h3>
@@ -44,7 +44,7 @@ export default function InsightsPage() {
 
         <div className="rounded-lg bg-teal-800/50 p-6 md:col-span-2">
           <div className="mb-4 flex items-center gap-3">
-            <AlertTriangle className="h-6 w-6 text-amber-400" />
+            <AlertTriangle className="size-6 text-amber-400" />
             <h3 className="text-lg font-semibold text-slate-100">
               Clinical Alerts
             </h3>

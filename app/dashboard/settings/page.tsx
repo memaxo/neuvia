@@ -87,7 +87,7 @@ export default function SettingsPage() {
               <div className="border-b border-white/5 p-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5">
-                    <section.icon className="h-5 w-5 text-cyan-400" />
+                    <section.icon className="size-5 text-cyan-400" />
                   </div>
                   <div>
                     <h2 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-semibold text-transparent">

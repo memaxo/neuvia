@@ -10,7 +10,7 @@ const SplineWrapper = dynamic(
     import('./spline-wrapper').catch((err) => {
       console.error('Error loading Spline:', err)
       return () => (
-        <div className="h-full w-full bg-red-500/20">
+        <div className="size-full bg-red-500/20">
           Failed to load 3D scene
         </div>
       )
@@ -18,7 +18,7 @@ const SplineWrapper = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-full w-full animate-pulse bg-black/80 backdrop-blur-lg" />
+      <div className="size-full animate-pulse bg-black/80 backdrop-blur-lg" />
     ),
   }
 )
@@ -45,22 +45,22 @@ export default function DashboardBackground() {
   }
 
   if (!isMounted) {
-    return <div className="h-full w-full bg-black/80 backdrop-blur-lg" />
+    return <div className="size-full bg-black/80 backdrop-blur-lg" />
   }
 
   if (loadError) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-red-500/20">
+      <div className="flex size-full items-center justify-center bg-red-500/20">
         <p className="text-red-500">Error loading 3D scene: {loadError}</p>
       </div>
     )
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative size-full">
       <SplineWrapper
         scene="https://prod.spline.design/xUUjAFVfSxeg2fVu/scene.splinecode"
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 size-full object-cover"
         onLoad={handleSplineLoad}
       />
     </div>

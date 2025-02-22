@@ -5,7 +5,7 @@ export default function AgentsPage() {
   const InfoCard = (
     <GuideInfoBox>
       <ul>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🔗
           <span className="ml-2">
             This template showcases how to perform retrieval with a{" "}
@@ -23,7 +23,7 @@ export default function AgentsPage() {
             project.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🪜
           <span className="ml-2">The chain works in two steps:</span>
           <ul>
@@ -44,7 +44,7 @@ export default function AgentsPage() {
             </li>
           </ul>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           💻
           <span className="ml-2">
             You can find the prompt and model logic for this use-case in{" "}
@@ -65,7 +65,7 @@ export default function AgentsPage() {
             <code>app/retrieval/page.tsx</code>.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🔱
           <span className="ml-2">
             Before running this example on your own, you&apos;ll first need to

@@ -19,11 +19,11 @@ export function SecurityBadge({ icon, label, className }: SecurityBadgeProps) {
     >
       {/* Scanning line animation */}
       <span className="absolute inset-0 overflow-hidden">
-        <span className="animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-blue-400/20 to-transparent" />
+        <span className="animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-blue-400/20 to-transparent" />
       </span>
 
       {/* Active status indicator */}
-      <span className="absolute right-2 top-2 h-1 w-1">
+      <span className="absolute right-2 top-2 size-1">
         <span className="absolute inset-0 animate-ping rounded-full bg-blue-400/50" />
         <span className="absolute inset-0 rounded-full bg-blue-400" />
       </span>

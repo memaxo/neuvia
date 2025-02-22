@@ -58,7 +58,7 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
                   <h3 className="mt-2 text-2xl font-bold text-white">{stat.value}</h3>
                 </div>
                 <div className="rounded-xl bg-cyan-500/10 p-3">
-                  <Icon className="h-6 w-6 text-cyan-400" />
+                  <Icon className="size-6 text-cyan-400" />
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2">
@@ -71,7 +71,7 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
 
             {/* Scanning line effect */}
             <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <div className="group-hover:animate-scan absolute -left-full top-0 h-[1px] w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
             </div>
           </div>
         )

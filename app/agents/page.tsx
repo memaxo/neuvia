@@ -29,7 +29,7 @@ export default function AgentsPage() {
             The agent has memory and access to a search engine and a calculator.
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           💻
           <span className="ml-2">
             You can find the prompt and model logic for this use-case in{" "}
@@ -43,7 +43,7 @@ export default function AgentsPage() {
             can the prompt to whatever you want!
           </span>
         </li>
-        <li className="hidden text-l md:block">
+        <li className="text-l hidden md:block">
           🎨
           <span className="ml-2">
             The main frontend logic is found in <code>app/agents/page.tsx</code>

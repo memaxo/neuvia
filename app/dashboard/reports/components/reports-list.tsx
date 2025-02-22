@@ -95,7 +95,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                       <div className="flex items-start gap-4">
                         <div className="relative">
                           <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]">
-                            <TypeIcon className="h-5 w-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+                            <TypeIcon className="size-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
                           </div>
                         </div>
 
@@ -140,10 +140,10 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                                    className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                     onClick={() => setSelectedReport(report)}
                                   >
-                                    <Eye className="h-4 w-4" />
+                                    <Eye className="size-4" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
@@ -156,9 +156,9 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                                    className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                   >
-                                    <Share2 className="h-4 w-4" />
+                                    <Share2 className="size-4" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
@@ -174,10 +174,10 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                                  className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                   onClick={() => onRetry(report.id)}
                                 >
-                                  <RefreshCw className="h-4 w-4" />
+                                  <RefreshCw className="size-4" />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -191,9 +191,9 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                                className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                               >
-                                <MoreVertical className="h-4 w-4" />
+                                <MoreVertical className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
