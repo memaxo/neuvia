@@ -1,4 +1,5 @@
-import Link from 'next/link'
+import React from 'react';
+import { ResearchGraph } from '@/deep-research/components/research-graph';
 import { PlusCircle } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { DashboardHeader } from './components/dashboard-header'
@@ -34,6 +35,11 @@ export default function DashboardPage() {
               <PatientShortcuts />
             </div>
           </div>
+
+          {/* Research Graph integrated into main content */}
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-xl">
+            <ResearchGraph />
+          </div>
         </div>
 
         {/* Right sidebar for activity */}
@@ -57,4 +63,6 @@ export default function DashboardPage() {
       </Link>
     </div>
   )
+  {/* Add the research process graph below the main dashboard content */}
+  <ResearchGraph />
 }

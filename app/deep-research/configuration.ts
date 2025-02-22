@@ -70,7 +70,23 @@ export const ConfigSchema = z.object({
   rateLimits: RateLimitSchema.default({
     maxRequests: 10,
     perSeconds: 60
-  })
+  }),
+  
+  /** Report organizational style */
+  report_structure: z.string().default("Standard Report Organization")
+    .describe("Defines the report’s organizational style"),
+  
+  /** Number of search queries to generate per section */
+  number_of_queries: z.number().int().min(1).default(3)
+    .describe("Number of search queries to generate per section"),
+  
+  /** Maximum iterative research rounds allowed */
+  max_search_depth: z.number().int().min(1).default(3)
+    .describe("Maximum iterative research rounds allowed"),
+  
+  /** LLM model to use for planning */
+  planner_model: z.string().default("gpt-4-turbo-preview")
+    .describe("LLM model to use for planning")
 });
 
 export type ResearchConfig = z.infer<typeof ConfigSchema>;
@@ -86,7 +102,11 @@ export const DEFAULT_CONFIG: ResearchConfig = {
   rateLimits: {
     maxRequests: 10,
     perSeconds: 60
-  }
+  },
+  report_structure: "Standard Report Organization",
+  number_of_queries: 3,
+  max_search_depth: 3,
+  planner_model: "gpt-4-turbo-preview"
 };
 
 /**

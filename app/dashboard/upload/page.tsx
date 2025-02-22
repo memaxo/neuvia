@@ -4,10 +4,36 @@ import { RecentUploads } from './components/recent-uploads'
 import { UploadGuidelines } from './components/upload-guidelines'
 import { UploadZone } from './components/upload-zone'
 
+import { Loader2 } from 'lucide-react'
+import React from 'react'
+import { toast } from 'sonner'
+import { RecentUploads } from './components/recent-uploads'
+import { UploadGuidelines } from './components/upload-guidelines'
+import { UploadZone } from './components/upload-zone'
+
 export default function UploadPage() {
+  const [isUploading, setIsUploading] = React.useState(false)
+  const [refreshKey, setRefreshKey] = React.useState(0)
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            Upload Scans
+          </h1>
+          <p className="mt-2 text-sm text-white/70">
+            Upload and manage patient scan files
+          </p>
+        </div>
+        {isUploading && (
+          <div className="flex items-center">
+            <Loader2 className="animate-spin mr-2" />
+            <span className="text-sm text-white/70">Uploading...</span>
+          </div>
+        )}
+      </div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
@@ -31,7 +57,17 @@ export default function UploadPage() {
               </h2>
             </div>
             <div className="p-6">
-              <UploadZone />
+              <UploadZone
+                onUploadStart={() => setIsUploading(true)}
+                onUploadComplete={(upload) => {
+                  setIsUploading(false);
+                  setRefreshKey(prev => prev + 1);
+                }}
+                onUploadError={(error) => {
+                  setIsUploading(false);
+                  toast.error(error.message);
+                }}
+              />
             </div>
           </div>
 
@@ -43,7 +79,7 @@ export default function UploadPage() {
               </h2>
             </div>
             <div className="p-6">
-              <RecentUploads />
+              <RecentUploads key={refreshKey} />
             </div>
           </div>
         </div>

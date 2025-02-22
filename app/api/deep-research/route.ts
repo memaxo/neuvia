@@ -17,10 +17,11 @@ export async function POST(req: NextRequest) {
     const chain = new ResearchChain(config);
     const result = await chain.execute(topic);
 
-    // Return results
+    // Return results including final report
     return NextResponse.json({
       success: true,
-      data: result
+      data: result,
+      final_report: result.state.final_report || null
     });
 
   } catch (error: unknown) {

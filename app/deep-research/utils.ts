@@ -45,7 +45,7 @@ export function deduplicateAndFormatSources(
   }
 
   // Format results
-  let formatted = "Sources:\n\n";
+  let formatted = "Clinician-Friendly Sources:\n\n";
   let counter = 1;
   for (const source of Object.values(sourcesMap)) {
     formatted += `Source ${source.title}:\n===\n`;

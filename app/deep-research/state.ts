@@ -38,6 +38,8 @@ export interface ProgressUpdate {
   sectionId: string;
   status: z.infer<typeof ResearchStateSchema>["sections"][number]["status"];
   percent: number;
+  eventType: string;
+  timestamp: number;
 }
 
 /**

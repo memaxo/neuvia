@@ -1,50 +1,64 @@
 // content security policy requirements vary from app to app head to https://nextjs.org/docs/pages/building-your-application/configuring/content-security-policy to learn how to configure nonces within middleware and or how to set policies within your next.config file
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { generateNonce, createCSPHeader } from '@/lib/utils/nonce'
 
 export async function middleware(request: NextRequest) {
   try {
-    const res = NextResponse.next()
-    
-    // Create Supabase client with cookie handling
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return request.cookies.get(name)?.value
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            res.cookies.set({ name, value, ...options })
-          },
-          remove(name: string, options: CookieOptions) {
-            res.cookies.set({ name, value: '', ...options })
-          }
-        }
-      }
-    )
+    let response = NextResponse.next()
 
     // Generate nonce for CSP
     const nonce = generateNonce()
     
     // Set CSP header with nonce
     const cspHeader = createCSPHeader(nonce)
-    res.headers.set('Content-Security-Policy', cspHeader)
-    
-    // Set nonce in header for access in components
-    res.headers.set('x-nonce', nonce)
+    response.headers.set('Content-Security-Policy', cspHeader)
+    response.headers.set('x-nonce', nonce)
 
-    // Handle Supabase session
-    await supabase.auth.getSession()
+    // Create Supabase client for auth
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll: (cookies) => {
+            cookies.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options)
+            })
+          }
+        }
+      }
+    )
 
-    return res
+    // Refresh session if needed and get current user
+    const { data: { user }, error } = await supabase.auth.getUser()
+
+    // Handle authentication errors
+    if (error) {
+      console.error('Auth error in middleware:', error)
+      // Clear any invalid session cookies
+      response.cookies.delete('sb-access-token')
+      response.cookies.delete('sb-refresh-token')
+    }
+
+    // Add user context to request headers if authenticated
+    if (user) {
+      response.headers.set('x-user-id', user.id)
+      response.headers.set('x-user-role', user.role || 'authenticated')
+    }
+
+    return response
   } catch (e) {
     console.error('Middleware error:', e)
-    return NextResponse.next()
+    // Return basic response without auth in case of errors
+    const response = NextResponse.next()
+    const nonce = generateNonce()
+    response.headers.set('Content-Security-Policy', createCSPHeader(nonce))
+    response.headers.set('x-nonce', nonce)
+    return response
   }
 }
 

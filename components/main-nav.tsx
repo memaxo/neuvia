@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import useSupabaseBrowser from '@/utils/supabase-browser'
+import { createClient } from '@/utils/supabase/client'
 import { LogOut } from 'lucide-react'
 import { NavItem } from '@/types/nav'
 import { siteConfig } from '@/config/site'
@@ -20,7 +20,7 @@ export function MainNav({ items }: MainNavProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
-  const supabase = useSupabaseBrowser()
+  const supabase = createClient()
 
   useEffect(() => {
     const checkSession = async () => {

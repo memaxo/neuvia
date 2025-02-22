@@ -1,22 +1,36 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import useSupabaseBrowser from '@/utils/supabase-browser'
+import { createClient } from '@/utils/supabase/client'
 import { type User } from '@supabase/supabase-js'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
 import Avatar from './avatar'
 
+type Profile = {
+  full_name: string | null
+  username: string | null
+  website: string | null
+  avatar_url: string | null
+  email: string | null
+}
+
+type ProfileError = {
+  message: string
+  field?: keyof Profile
+}
+
 export default function AccountForm({ user }: { user: User | null }) {
-  const supabase = useSupabaseBrowser()
+  const supabase = createClient()
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<ProfileError | null>(null)
   const [fullname, setFullname] = useState<string | null>(null)
   const [username, setUsername] = useState<string | null>(null)
   const [website, setWebsite] = useState<string | null>(null)
   const [avatar_url, setAvatarUrl] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
-  const [waddress, setWaddress] = useState<string | null>(null)
   const languages = [
     { label: 'English', value: 'en' },
     { label: 'French', value: 'fr' },
@@ -32,6 +46,7 @@ export default function AccountForm({ user }: { user: User | null }) {
   const getProfile = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
 
       const { data, error, status } = await supabase
         .from('profiles')
@@ -40,7 +55,6 @@ export default function AccountForm({ user }: { user: User | null }) {
         .single()
 
       if (error && status !== 406) {
-        console.log(error)
         throw error
       }
 
@@ -52,7 +66,8 @@ export default function AccountForm({ user }: { user: User | null }) {
         setEmail(data.email)
       }
     } catch (error) {
-      alert('Error loading user data!')
+      setError({ message: 'Error loading user data' })
+      toast.error('Error loading user data')
     } finally {
       setLoading(false)
     }
@@ -67,15 +82,10 @@ export default function AccountForm({ user }: { user: User | null }) {
     website,
     avatar_url,
     email,
-  }: {
-    username: string | null
-    fullname: string | null
-    website: string | null
-    avatar_url: string | null
-    email: string | null
-  }) {
+  }: Partial<Profile>) {
     try {
       setLoading(true)
+      setError(null)
 
       const { error } = await supabase.from('profiles').upsert({
         id: user?.id as string,
@@ -86,10 +96,13 @@ export default function AccountForm({ user }: { user: User | null }) {
         email,
         updated_at: new Date().toISOString(),
       })
+
       if (error) throw error
-      alert('Account updated!')
+      
+      toast.success('Account updated successfully')
     } catch (error) {
-      alert('Error updating the data!')
+      setError({ message: 'Error updating profile' })
+      toast.error('Error updating profile')
     } finally {
       setLoading(false)
     }
@@ -106,6 +119,11 @@ export default function AccountForm({ user }: { user: User | null }) {
           updateProfile({ fullname, username, website, email, avatar_url: url })
         }}
       />
+      {error && (
+        <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+          {error.message}
+        </div>
+      )}
       <div className="flex flex-col">
         <label
           className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"

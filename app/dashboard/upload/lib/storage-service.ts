@@ -4,7 +4,7 @@ export type DocumentType =
   | 'medical-image'  // DICOM, NIfTI, JPEG, PNG
   | 'document'       // PDF, DOCX, TXT, MD
   | 'report'         // Lab reports, clinical notes
-  | 'other'         // Other medical documents
+  | 'other'          // Other medical documents
 
 // Enhanced error types
 export type UploadError = {
@@ -347,11 +347,11 @@ export class StorageService {
         xhr.send(file)
       })
 
-      // Process file with retry
+      // Process file with retry using Gemini 2.0 Flash for document analysis
       onProgress?.(95, 'Processing file...')
-      const { validation: scanValidation } = await this.retryWithBackoff(
+      const { analysisData } = await this.retryWithBackoff(
         async () => {
-          const response = await fetch(`${this.edgeFunctionUrl}/scan-document`, {
+          const response = await fetch(`${this.edgeFunctionUrl}/analyze-document`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
@@ -360,20 +360,21 @@ export class StorageService {
             body: JSON.stringify({
               filePath: path,
               userId: (await this.supabase.auth.getUser()).data.user?.id,
-              uploadId: path
+              metadata: {
+                ...metadata,
+                analysis: true
+              }
             })
-          })
-
+          });
           if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'File validation failed')
+            const error = await response.json();
+            throw new Error(error.error || 'Document analysis failed');
           }
-
-          return response.json()
+          return response.json();
         },
         retryCount,
         currentUploadId
-      )
+      );
 
       onProgress?.(100, 'Complete')
       return {
@@ -382,11 +383,12 @@ export class StorageService {
         size: file.size,
         progress: 100,
         status: 'complete',
-        statusMessage: 'Upload complete',
+        statusMessage: 'Upload and analysis complete',
         path,
         url: await this.getDownloadUrl(path, metadata?.patientId),
         type: metadata?.documentType,
         mimeType: file.type,
+        analysisData: analysisData,
         startTime,
         lastUpdate: Date.now(),
         bytesUploaded: file.size,

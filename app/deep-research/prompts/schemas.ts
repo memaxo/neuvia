@@ -91,7 +91,8 @@ export const FinalSectionSchema = z.object({
       type: z.literal("none")
     })
   ]),
-  keyTakeaways: z.array(z.string()).optional()
+  keyTakeaways: z.array(z.string()).optional(),
+  reasoningChain: z.array(z.string()).optional()
 });
 
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;

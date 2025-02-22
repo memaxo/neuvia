@@ -155,52 +155,121 @@ export class ResearchChain extends EventEmitter {
   }
 
   async execute(topic: string): Promise<ResearchOutput> {
-    const mainChain = RunnableSequence.from([
-      // Initialize state
-      async (input: { topic: string }) => {
-        const state = await this.createInitializeState()(input);
-        return { state };
-      },
-      // Parallel research
-      async ({ state }) => {
-        const runner = RunnableMap.from({
-          sections: async () => this.researchSections(state),
-          context: async () => this.gatherContext(state)
-        }).withRetry({
-          stopAfterAttempt: 3,
-          onFailedAttempt: (error: Error) => {
-            if (error instanceof ExternalServiceError) {
-              console.error("Service error:", error.toJSON());
-            }
-          }
-        });
-        const result = await runner.invoke({});
-        return { state, parallel: result };
-      },
-      // Synthesize results
-      async ({ state, parallel }) => {
-        const finalState = await this.createSynthesizeResults()(parallel);
-        return finalState;
-      }
-    ]);
-
     try {
-      let state: ResearchState;
+      // 1) Initialize state
+      let state = this.initializeResearchState(topic);
+
+      // 2) Generate an initial plan with planModel (use planPrompt)
+      //    This is where we define sections that may need research.
       try {
-        state = await mainChain.invoke({ topic });
+        const planPromptText = await this.planPrompt.format({
+          topic,
+          report_organization: this.config.report_structure ?? "Standard Organization"
+        });
+        this.emitProgress({
+          sectionId: "PLAN_GENERATION",
+          status: "researching",
+          percent: 20,
+          eventType: "plan_generation_start",
+          timestamp: Date.now()
+        });
+
+        const planResponse = await this.models.planModel.invoke([
+          new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
+          new HumanMessage(planPromptText)
+        ]);
+
+        this.emitProgress({
+          sectionId: "PLAN_GENERATION",
+          status: "writing",
+          percent: 60,
+          eventType: "plan_generation_in_progress",
+          timestamp: Date.now()
+        });
+
+        const parsedPlan = JSON.parse(planResponse.content);
+        // Validate with zod
+        const validPlan = this.models.planModel.outputSchema.parse(parsedPlan);
+
+        // Convert plan sections to internal state
+        const newSections = validPlan.sections.map((section) => ({
+          title: section.name,
+          content: section.content || "",
+          sources: [],
+          status: "pending" as const
+        }));
+        state.sections = newSections;
+
+        this.emitProgress({
+          sectionId: "PLAN_GENERATION",
+          status: "complete",
+          percent: 100,
+          eventType: "plan_generation_complete",
+          timestamp: Date.now()
+        });
       } catch (error) {
-        // Fallback to simplified research if main chain fails
+        // If plan generation fails, fallback to simplified approach
+        console.error("Plan generation failed. Falling back to simplified approach.", error);
         state = await this.simplifiedResearch({ topic });
       }
 
+      // 3) Gather real human feedback or user callback
+      const feedback = await this.getHumanFeedback(state);
+      if (typeof feedback === "string" && feedback.toLowerCase() !== "true") {
+        // attempt re-generation of plan with feedback
+        try {
+          console.log("User provided feedback, regenerating plan ...");
+          const planPromptText = await this.planPrompt.format({
+            topic,
+            report_organization: this.config.report_structure ?? "Standard Organization"
+          });
+          const planResponse = await this.models.planModel.invoke([
+            new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
+            new HumanMessage(`${planPromptText}\n\nUser Feedback: ${feedback}`)
+          ]);
+          const parsedPlan = JSON.parse(planResponse.content);
+          const validPlan = this.models.planModel.outputSchema.parse(parsedPlan);
+
+          const newSections = validPlan.sections.map((section) => ({
+            title: section.name,
+            content: section.content || "",
+            sources: [],
+            status: "pending" as const
+          }));
+          state.sections = newSections;
+        } catch (err) {
+          console.error("Plan re-generation failed with user feedback:", err);
+        }
+      }
+
+      // 4) Parallel or sequential research
+      const runner = RunnableMap.from({
+        sections: async () => this.researchSections(state),
+        context: async () => this.gatherContext(state)
+      }).withRetry({
+        stopAfterAttempt: 3,
+        onFailedAttempt: (error: Error) => {
+          if (error instanceof ExternalServiceError) {
+            console.error("Service error:", error.toJSON());
+          }
+        }
+      });
+
+      const parallelResult = await runner.invoke({});
+      const finalState = await this.createSynthesizeResults()(parallelResult);
+
       return {
-        state,
-        progress: this.getProgressUpdates(state)
+        state: finalState,
+        progress: this.getProgressUpdates(finalState)
       };
     } catch (error) {
       const wrappedError = wrapError(error);
       return {
-        state: this.createInitialState(topic),
+        state: {
+          topic,
+          depth: this.config.maxSourcesPerQuery,
+          sections: []
+        },
         progress: [],
         error: wrappedError.message
       };
@@ -208,47 +277,7 @@ export class ResearchChain extends EventEmitter {
   }
 
   private createInitialState(topic: string): ResearchState {
-    return {
-      topic,
-      depth: this.config.maxSourcesPerQuery,
-      sections: []
-    };
-  }
-
-  /**
-   * Initialize research state with improved prompt
-   */
-  private createInitializeState() {
-    return async (input: ChainInput): Promise<ResearchState> => {
-      try {
-        const formattedPrompt = await this.planPrompt.format({
-          topic: input.topic,
-          report_organization: this.config.reportStructure || ""
-        });
-
-        const response = await this.models.planModel.invoke([
-          new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
-          new HumanMessage(formattedPrompt)
-        ]) as ReportPlan;
-
-        return {
-          topic: input.topic,
-          depth: this.config.maxSourcesPerQuery,
-          sections: response.sections.map(section => ({
-            title: section.name,
-            status: "pending" as const,
-            sources: [],
-            content: section.content
-          }))
-        };
-      } catch (error) {
-        throw new ResearchProcessError(
-          "Failed to initialize research state",
-          undefined,
-          error
-        );
-      }
-    };
+      
   }
 
   /**
@@ -261,54 +290,161 @@ export class ResearchChain extends EventEmitter {
           this.emitProgress({
             sectionId: section.title,
             status: "researching",
-            percent: 25
+            percent: 10,
+            eventType: "section_research_start",
+            timestamp: Date.now()
           });
 
-          // Check cache first
-          const cacheKey = { topic: state.topic, section: section.title };
-          const cached = await this.cache.get<SectionContent>(cacheKey);
-          
-          if (cached) {
+          // Skip sections that have no content or do not truly need research (demo: check if content is empty).
+          // For real use, you might check if the plan said "research": false
+          if (!section.content && section.status === "pending") {
+            // 1) Check cache first
+            const cacheKey = { topic: state.topic, section: section.title };
+            const cached = await this.cache.get<SectionContent>(cacheKey);
+            if (cached) {
+              this.emitProgress({
+                sectionId: section.title,
+                status: "complete",
+                percent: 100,
+                eventType: "section_from_cache",
+                timestamp: Date.now()
+              });
+              return {
+                ...section,
+                content: cached.content,
+                sources: cached.citations.map(c => c.url),
+                status: "complete" as const
+              };
+            }
+
+            // 2) Generate targeted search queries using queryWriterInstructions
+            this.emitProgress({
+              sectionId: section.title,
+              status: "researching",
+              percent: 25,
+              eventType: "generating_search_queries",
+              timestamp: Date.now()
+            });
+            const queryPrompt = queryWriterInstructions
+              .replace("{section_topic}", section.title)
+              .replace("{number_of_queries}", this.config.number_of_queries.toString());
+            const queryResponse = await this.models.planModel.invoke([
+              new SystemMessage(SYSTEM_MESSAGES.RESEARCHER),
+              new HumanMessage(queryPrompt)
+            ]);
+            const generatedQueries = JSON.parse(queryResponse.content).queries || [];
+
+            // 3) Perform web search for each generated query
+            this.emitProgress({
+              sectionId: section.title,
+              status: "researching",
+              percent: 40,
+              eventType: "search_in_progress",
+              timestamp: Date.now()
+            });
+            let aggregatedResults = [];
+            for (const q of generatedQueries) {
+              const results = await this.searchRepository.search(q.search_query);
+              aggregatedResults.push(...results);
+            }
+            this.emitProgress({
+              sectionId: section.title,
+              status: "writing",
+              percent: 50,
+              eventType: "search_complete",
+              timestamp: Date.now()
+            });
+
+            // 4) Prepare sources context
+            const sourcesContext = aggregatedResults.map(s => `${s.content} (${s.url})`).join("\n\n");
+
+            // 5) Generate section content using contentPrompt
+            const formattedPrompt = await this.contentPrompt.format({
+              title: section.title,
+              sources: sourcesContext
+            });
+            let contentResponse: SectionContent = await this.models.contentModel.invoke([
+              new SystemMessage(SYSTEM_MESSAGES.WRITER),
+              new HumanMessage(formattedPrompt)
+            ]) as SectionContent;
+
+            // 6) Grade the generated section
+            let graderPrompt = await this.graderPrompt.format({
+              title: section.title,
+              content: contentResponse.content
+            });
+            let gradeResponse: SectionGrade = await this.models.gradeModel.invoke([
+              new SystemMessage(SYSTEM_MESSAGES.FACT_CHECKER),
+              new HumanMessage(graderPrompt)
+            ]) as SectionGrade;
+
+            let iterations = 0;
+            // 7) If "fail", attempt follow-up queries
+            while (gradeResponse.grade === "fail" && iterations < 3) {
+              console.warn(`Section "${section.title}" failed grade. Attempting iteration #${iterations + 1}.`);
+              this.emitProgress({
+                sectionId: section.title,
+                status: "researching",
+                percent: 60 + iterations * 10,
+                eventType: "section_revision",
+                timestamp: Date.now()
+              });
+              const followUp = gradeResponse.followUpQueries?.[0];
+              if (followUp) {
+                // do follow-up search
+                const followUpResults = await this.searchRepository.search(followUp.query);
+                const followUpContext = followUpResults.map(s => `${s.content} (${s.url})`).join("\n\n");
+                const followUpPrompt = await this.contentPrompt.format({
+                  title: section.title,
+                  sources: followUpContext
+                });
+                contentResponse = await this.models.contentModel.invoke([
+                  new SystemMessage(SYSTEM_MESSAGES.WRITER),
+                  new HumanMessage(followUpPrompt)
+                ]) as SectionContent;
+
+                graderPrompt = await this.graderPrompt.format({
+                  title: section.title,
+                  content: contentResponse.content
+                });
+                gradeResponse = await this.models.gradeModel.invoke([
+                  new SystemMessage(SYSTEM_MESSAGES.FACT_CHECKER),
+                  new HumanMessage(graderPrompt)
+                ]) as SectionGrade;
+              }
+              iterations++;
+            }
+
+            // 8) Final content
+            await this.cache.set(cacheKey, contentResponse);
+
+            this.emitProgress({
+              sectionId: section.title,
+              status: "complete",
+              percent: 100,
+              eventType: "section_complete",
+              timestamp: Date.now()
+            });
+
             return {
               ...section,
-              content: cached.content,
-              sources: cached.citations.map(c => c.url),
+              content: contentResponse.content,
+              sources: contentResponse.citations.map(c => c.url),
               status: "complete" as const
             };
+          } else {
+            // If section already had content or was not pending
+            this.emitProgress({
+              sectionId: section.title,
+              status: "complete",
+              percent: 100,
+              eventType: "section_skipped",
+              timestamp: Date.now()
+            });
+            return section;
           }
-
-          // Perform search
-          const results = await this.searchRepository.search(
-            `${state.topic} ${section.title}`
-          );
-
-          // Generate content with improved prompt
-          const formattedPrompt = await this.contentPrompt.format({
-            title: section.title,
-            sources: results.map(s => `${s.content} (${s.url})`).join("\n\n")
-          });
-
-          const response = await this.models.contentModel.invoke([
-            new SystemMessage(SYSTEM_MESSAGES.WRITER),
-            new HumanMessage(formattedPrompt)
-          ]) as SectionContent;
-
-          await this.cache.set(cacheKey, response);
-
-          this.emitProgress({
-            sectionId: section.title,
-            status: "complete",
-            percent: 100
-          });
-
-          return {
-            ...section,
-            content: response.content,
-            sources: response.citations.map(c => c.url),
-            status: "complete" as const
-          };
         } catch (error) {
-          console.error(`Error researching section ${section.title}:`, error);
+          console.error(`Error researching section "${section.title}":`, error);
           throw new ResearchProcessError(
             `Failed to research section: ${section.title}`,
             section.title,
@@ -320,17 +456,11 @@ export class ResearchChain extends EventEmitter {
 
     return researched;
   }
-
-  /**
-   * Gather context from research
-   */
-  private async gatherContext(state: ResearchState): Promise<string> {
-    return state.sections
-      .map(s => `${s.title}\n${s.content ?? "Pending research..."}`)
-      .join("\n\n");
-  }
-
-  /**
+state: ReportState
+): Promise<string | boolean> {
+// Simulate human approval for development purposes
+return true;
+}
    * Simplified research fallback
    */
   private async simplifiedResearch(input: { topic: string }): Promise<ResearchState> {
@@ -369,21 +499,20 @@ export class ResearchChain extends EventEmitter {
         type: "conclusion",
         context: parallel.context
       });
-
       const response = await this.models.finalModel.invoke([
         new SystemMessage(SYSTEM_MESSAGES.WRITER),
         new HumanMessage(formattedPrompt)
       ]) as FinalSection;
-
+      const synthesizedSection = {
+        title: response.title,
+        content: response.content,
+        status: "complete" as const,
+        sources: []
+      };
       return {
-        topic: "",  // Will be filled from previous state
+        topic: parallel.sections[0]?.topic || "",
         depth: this.config.maxSourcesPerQuery,
-        sections: [...parallel.sections, {
-          title: response.title,
-          content: response.content,
-          status: "complete" as const,
-          sources: []
-        }]
+        sections: [...parallel.sections, synthesizedSection]
       };
     };
   }
@@ -392,7 +521,38 @@ export class ResearchChain extends EventEmitter {
    * Emit progress updates
    */
   private emitProgress(progress: ProgressUpdate): void {
-    this.emit("progress", progress);
+     // progress now includes eventType and timestamp for richer details
+     this.emit("progress", progress);
+ }
+
+  /**
+   * Initializes the research state with minimal default sections or placeholders.
+   * Later, the plan can be generated and stored in the state, allowing for user feedback.
+   */
+  private initializeResearchState(topic: string): ResearchState {
+    this.emitProgress({
+      sectionId: "INITIALIZATION",
+      status: "pending",
+      percent: 0,
+      eventType: "initialization_start",
+      timestamp: Date.now()
+    });
+
+    const baseState: ResearchState = {
+      topic,
+      depth: this.config.maxSourcesPerQuery,
+      sections: []
+    };
+
+    this.emitProgress({
+      sectionId: "INITIALIZATION",
+      status: "complete",
+      percent: 100,
+      eventType: "initialization_complete",
+      timestamp: Date.now()
+    });
+
+    return baseState;
   }
 
   /**
@@ -404,6 +564,49 @@ export class ResearchChain extends EventEmitter {
       status: section.status,
       percent: section.status === "complete" ? 100 : 0
     }));
+  }
+
+  /**
+   * Retrieves human feedback from either a provided callback in config or a console log fallback.
+   * If none is provided, returns 'true' by default, indicating user approval.
+   */
+  private async getHumanFeedback(state: ResearchState): Promise<string | boolean> {
+    this.emitProgress({
+      sectionId: "HUMAN_FEEDBACK",
+      status: "pending",
+      percent: 0,
+      eventType: "feedback_requested",
+      timestamp: Date.now()
+    });
+
+    if (this.config && typeof (this.config as any).feedbackCallback === "function") {
+      // If the user provided a callback function for feedback, call it
+      try {
+        const feedbackStr = await (this.config as any).feedbackCallback(state);
+        this.emitProgress({
+          sectionId: "HUMAN_FEEDBACK",
+          status: "complete",
+          percent: 100,
+          eventType: "feedback_received",
+          timestamp: Date.now()
+        });
+        return feedbackStr || true;
+      } catch (err) {
+        console.error("Error in feedback callback:", err);
+        return true;
+      }
+    } else {
+      // For demonstration, fallback to console simulation
+      console.log("No feedback callback provided. Defaulting to 'true' (approval).");
+      this.emitProgress({
+        sectionId: "HUMAN_FEEDBACK",
+        status: "complete",
+        percent: 100,
+        eventType: "feedback_received",
+        timestamp: Date.now()
+      });
+      return true;
+    }
   }
 
   /**

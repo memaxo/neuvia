@@ -1,94 +1,53 @@
-import { cookies } from 'next/headers'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+'use client'
+
 import { createBrowserClient } from '@supabase/ssr'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase'
 
-// Singleton instance for browser client
-let browserClient: ReturnType<typeof createBrowserClient<Database>> | undefined
-
-/**
- * Creates a Supabase client for server-side operations with full read/write capabilities
- */
-export async function createServerSupabaseClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value, ...options })
-          } catch (err) {
-            // Handle cookie error silently
-            console.error('Cookie set error:', err)
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: '', ...options })
-          } catch (err) {
-            // Handle cookie error silently
-            console.error('Cookie remove error:', err)
-          }
-        },
-      },
-    }
-  )
-}
-
-/**
- * Creates a Supabase client for server-side operations with read-only capabilities
- */
-export async function createReadOnlyServerSupabaseClient() {
-  const cookieStore = await cookies()
-
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
-}
-
-/**
- * Gets or creates a Supabase client for browser-side operations
- */
-export function getBrowserSupabaseClient() {
-  if (browserClient) {
-    return browserClient
+const clientCookies = {
+  getAll: () => {
+    if (typeof document === 'undefined') return [];
+    const cookieStr = document.cookie;
+    if (!cookieStr) return [];
+    return cookieStr.split('; ').map(cookie => {
+      const [name, ...rest] = cookie.split('=');
+      return { name, value: rest.join('='), options: {} };
+    });
+  },
+  setAll: (cookies) => {
+    if (typeof document === 'undefined') return;
+    cookies.forEach(({ name, value, options }) => {
+      let cookieStr = `${name}=${value}`;
+      if (options) {
+        if (options.path) cookieStr += `; path=${options.path}`;
+        if (options.domain) cookieStr += `; domain=${options.domain}`;
+        if (options.expires) {
+          const expires = options.expires instanceof Date ? options.expires.toUTCString() : options.expires;
+          cookieStr += `; expires=${expires}`;
+        }
+        if (options.secure) cookieStr += '; secure';
+        if (options.sameSite) cookieStr += `; samesite=${options.sameSite}`;
+      }
+      document.cookie = cookieStr;
+    });
   }
+};
 
-  browserClient = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+let supabase: ReturnType<typeof createBrowserClient<Database>>
 
-  return browserClient
-}
-
-/**
- * Creates a Supabase admin client with service role access
- */
-export function createSupabaseAdminClient() {
-  return createAdminClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  )
+export function createClient() {
+  if (!supabase) {
+    supabase = createBrowserClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true
+        },
+        cookies: clientCookies
+      }
+    )
+  }
+  return supabase
 } 

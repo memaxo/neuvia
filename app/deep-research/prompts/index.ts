@@ -27,6 +27,9 @@ export const ContentInputSchema = z.object({
 export const RESEARCH_PLAN_PROMPT = PromptTemplate.fromTemplate<z.infer<typeof ReportPlanSchema>>(`
 You are a research planning expert. Create a detailed research plan for: {topic}
 
+Report Organization: {report_organization}
+Feedback (if any): {feedback}
+
 Your output must be a valid JSON object with the following structure:
 {
   "topic": "the research topic",
@@ -49,6 +52,7 @@ Your output must be a valid JSON object with the following structure:
   "estimatedResearchTime": number in minutes,
   "suggestedApproach": "brief description of research approach"
 }
+`);
 
 Requirements:
 1. Each section should focus on a specific aspect of the topic

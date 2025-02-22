@@ -30,10 +30,10 @@ interface FileUploaderProps extends React.HTMLAttributes<HTMLDivElement> {
 
   /**
    * Function to be called when files are uploaded.
-   * @type (files: File[]) => Promise<void>
+   * @type (files: File[], progressCallback: (progress: number, file: File) => void) => Promise<void>
    * @default undefined
    */
-  onUpload?: (files: File[]) => Promise<void>
+  onUpload?: (files: File[], progressCallback: (progress: number, file: File) => void) => Promise<void>
 
   /**
    * Progress of the uploaded files.
@@ -101,20 +101,52 @@ export function FileUploader({
       setFiles(value)
     }
   }, [value])
+  
+  const [internalProgresses, setInternalProgresses] = React.useState<Record<string, number>>({});
+  React.useEffect(() => {
+    if (value) {
+      setFiles(value)
+    }
+  }, [value])
 
   const onDrop = React.useCallback(
     (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
-      if (!multiple && maxFileCount === 1 && acceptedFiles.length > 1) {
+      // Validate files based on size and MIME type
+      const validFiles = acceptedFiles.filter((file) => {
+        if (file.size > maxSize) {
+          toast.error(`${file.name}: File too large (max ${formatBytes(maxSize)})`)
+          return false
+        }
+        let isAccepted = false
+        for (const acceptedMime in accept) {
+          if (acceptedMime.endsWith('*')) {
+            const prefix = acceptedMime.slice(0, -1)
+            if (file.type.startsWith(prefix)) {
+              isAccepted = true
+              break
+            }
+          } else if (acceptedMime === file.type) {
+            isAccepted = true
+            break
+          }
+        }
+        if (!isAccepted) {
+          toast.error(`${file.name}: Unsupported file type`)
+        }
+        return isAccepted
+      })
+
+      if (!multiple && maxFileCount === 1 && validFiles.length > 1) {
         toast.error('Cannot upload more than 1 file at a time')
         return
       }
 
-      if ((files?.length ?? 0) + acceptedFiles.length > maxFileCount) {
+      if ((files?.length ?? 0) + validFiles.length > maxFileCount) {
         toast.error(`Cannot upload more than ${maxFileCount} files`)
         return
       }
 
-      const newFiles = acceptedFiles.map((file) =>
+      const newFiles = validFiles.map((file) =>
         Object.assign(file, {
           preview: URL.createObjectURL(file),
         })
@@ -136,9 +168,10 @@ export function FileUploader({
         updatedFiles.length > 0 &&
         updatedFiles.length <= maxFileCount
       ) {
-        const target =
-          updatedFiles.length > 1 ? `${updatedFiles.length} files` : 'file'
-        toast.promise(onUpload(updatedFiles), {
+        const target = updatedFiles.length > 1 ? `${updatedFiles.length} files` : 'file'
+        toast.promise(onUpload(updatedFiles, (progress, file) => {
+          setInternalProgresses(prev => ({ ...prev, [file.name]: progress }))
+        }), {
           loading: `Uploading ${target}...`,
           success: () => {
             setFiles([])
@@ -149,7 +182,7 @@ export function FileUploader({
         })
       }
     },
-    [files, maxFileCount, multiple, onUpload, onValueChange]
+    [files, maxFileCount, multiple, onUpload, onValueChange, maxSize, accept]
   )
 
   const onRemove = React.useCallback(
@@ -240,7 +273,7 @@ export function FileUploader({
                 key={index}
                 file={file}
                 onRemove={() => onRemove(index)}
-                progress={progresses?.[file.name]}
+                progress={internalProgresses[file.name] ?? progresses?.[file.name]}
               />
             ))}
           </div>

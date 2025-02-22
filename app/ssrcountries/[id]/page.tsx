@@ -1,5 +1,5 @@
 import { getCountryById } from '@/queries/country-by-id'
-import { createSupbaseServerClientReadOnly } from '@/utils/supaone'
+import { createReadOnlyClient } from '@/utils/supabase'
 import { prefetchQuery } from '@supabase-cache-helpers/postgrest-react-query'
 import {
   dehydrate,
@@ -14,7 +14,7 @@ export default async function CountryPage({
   params: { id: string }
 }) {
   const queryClient = new QueryClient()
-  const supabase = await createSupbaseServerClientReadOnly()
+  const supabase = await createReadOnlyClient()
   const countryId = parseInt(params.id)
   if (isNaN(countryId)) {
     throw new Error('Invalid country ID')

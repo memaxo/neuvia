@@ -209,6 +209,7 @@ export function UploadZone({
       } catch (error) {
         console.error('Upload error:', error)
         const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+        toast.error(errorMessage)
         setUploads((prev) =>
           prev.map((upload) =>
             upload.id === newUploads[index].id

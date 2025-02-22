@@ -34,39 +34,72 @@ interface Patient {
   riskLevel: number // 0-100
 }
 
-const patients: Patient[] = [
-  {
-    id: 1,
-    name: 'Jane Doe',
-    status: 'Recent Upload',
-    nextAppointment: 'Tomorrow, 2:00 PM',
-    lastActivity: 'Scan uploaded 2h ago',
-    riskLevel: 45,
-  },
-  {
-    id: 2,
-    name: 'John Smith',
-    status: 'High Risk',
-    nextAppointment: 'Today, 4:30 PM',
-    lastActivity: 'Analysis completed',
-    riskLevel: 85,
-  },
-  {
-    id: 3,
-    name: 'Alice Johnson',
-    status: 'At Risk',
-    nextAppointment: 'Next Week',
-    lastActivity: 'Report generated',
-    riskLevel: 65,
-  },
-  {
-    id: 4,
-    name: 'Bob Williams',
-    status: 'New Patient',
-    lastActivity: 'Profile created',
-    riskLevel: 25,
-  },
-]
+// Replace hardcoded patients with live data
+import { useState, useEffect } from 'react'
+import type { Patient } from './types'
+
+export function PatientShortcuts() {
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchPatients() {
+      try {
+        const response = await fetch('/api/patients')
+        if (!response.ok) {
+          throw new Error('Failed to fetch patients')
+        }
+        const data = await response.json()
+        setPatients(data.patients)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchPatients()
+  }, [])
+
+  if (loading) {
+    return <div className="p-4 text-center text-white/70">Loading patients...</div>
+  }
+
+  if (error) {
+    return <div className="p-4 text-center text-red-400">{error}</div>
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4">
+      {patients.map((patient) => (
+        <div
+          key={patient.id}
+          className={cn(
+            'group relative flex flex-col rounded-xl p-4 bg-black/20 backdrop-blur-sm border border-white/5 transition-all duration-300 hover:-translate-y-1 hover:bg-black/40 hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
+          )}
+        >
+          <div className="relative z-10">
+            <div className="flex items-start gap-1.5">
+              <div className="w-6 flex-none text-center">
+                <div className="text-[10px] text-white/40">
+                  {patient.name.substring(0, 3).toUpperCase()}
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-white/60 truncate">
+                  {patient.name} - {patient.status}
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-white/50">
+              Next: {patient.nextAppointment || 'No upcoming appointment'}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const statusColors = {
   'High Risk': {

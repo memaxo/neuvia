@@ -1,29 +1,46 @@
 'use server'
 
-import { redirect } from 'next/navigation'
-import { createSupbaseServerClient } from '@/utils/supaone'
+import { createClient } from '@/utils/supabase/server'
 
-type formData = {
+type FormData = {
   name: string
   email: string
   message: string
 }
 
-export async function updateInqueries(data: formData) {
-  const supabase = await createSupbaseServerClient()
+type FormResponse = {
+  success: boolean
+  data?: any
+  error?: string
+}
+
+export async function updateInqueries(data: FormData): Promise<FormResponse> {
+  const supabase = await createClient()
 
   try {
     const { data: inqueries, error } = await supabase
       .from('inqueries')
-      .insert({ name: data.name, email: data.email, message: data.message })
+      .insert({ 
+        name: data.name, 
+        email: data.email, 
+        message: data.message,
+        created_at: new Date().toISOString()
+      })
       .select()
 
-    const result = JSON.stringify(data)
-    return result
+    if (error) {
+      throw error
+    }
 
-    if (error) throw error
-    alert('Message sent!')
+    return {
+      success: true,
+      data: inqueries
+    }
   } catch (error) {
-    alert('Error updating the data!')
+    console.error('Error updating inqueries:', error)
+    return {
+      success: false,
+      error: 'Failed to send message. Please try again later.'
+    }
   }
 }

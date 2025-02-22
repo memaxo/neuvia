@@ -23,39 +23,65 @@ export function createCSPHeader(nonce: string): string {
       "'self'",
       "'strict-dynamic'",
       `'nonce-${nonce}'`,
-      // Keep unsafe-eval only for development and only if absolutely necessary
-      process.env.NODE_ENV === 'development' && process.env.ALLOW_UNSAFE_EVAL === 'true' 
-        ? "'unsafe-eval'" 
+      // In development, if you absolutely need unsafe-eval (e.g., for React DevTools),
+      // enable it via environment variable and warn about it
+      process.env.NODE_ENV === 'development' && process.env.ALLOW_UNSAFE_EVAL === 'true'
+        ? (console.warn('Warning: unsafe-eval is enabled in development mode'), "'unsafe-eval'")
         : '',
     ],
     'style-src': [
       "'self'",
       `'nonce-${nonce}'`,
-      // Required for Tailwind's JIT mode in development only
+      // Tailwind JIT mode requires unsafe-inline in dev only
       process.env.NODE_ENV === 'development' ? "'unsafe-inline'" : ''
     ],
-    'img-src': ["'self'", 'data:', 'https:'],
+    // Restrict image sources to self, data URIs, and specific HTTPS domains
+    'img-src': [
+      "'self'",
+      'data:',
+      'https://*.supabase.co',
+      'https://*.vercel.app',
+      'https://*.githubusercontent.com'
+    ],
+    // Restrict media sources to specific trusted domains
     'media-src': [
       "'self'",
       'https://*.supabase.co',
       'https://*.quantumone.b-cdn.net',
-      'https://*.unsplash.com',
-      'https://*.youtube.com'
+      'https://*.unsplash.com'
     ],
+    // Restrict API and resource connections
     'connect-src': [
       "'self'",
       'https://*.supabase.co',
       'https://*.vercel.app',
-      'https://api.openai.com'
+      'https://api.openai.com',
+      process.env.NODE_ENV === 'development' ? 'ws://localhost:*' : ''
     ],
-    'font-src': ["'self'", 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'],
-    'frame-src': ["'self'", 'https://*.supabase.co', 'https://*.youtube.com'],
+    // Restrict font sources
+    'font-src': [
+      "'self'",
+      'https://fonts.googleapis.com',
+      'https://fonts.gstatic.com'
+    ],
+    // Restrict frame sources
+    'frame-src': [
+      "'self'",
+      'https://*.supabase.co'
+    ],
+    // Prevent object injection attacks
     'object-src': ["'none'"],
+    // Prevent base tag injection
     'base-uri': ["'none'"],
+    // Restrict form submissions to same origin
     'form-action': ["'self'"],
+    // Prevent clickjacking
     'frame-ancestors': ["'none'"],
+    // Restrict manifest to same origin
     'manifest-src': ["'self'"],
+    // Force HTTPS
     'upgrade-insecure-requests': [],
+    // Configure Trusted Types
     'trusted-types': [
       'nextjs',
       'nextjs#bundler',
@@ -64,7 +90,7 @@ export function createCSPHeader(nonce: string): string {
       'default'
     ],
     'require-trusted-types-for': ["'script'"],
-    // Report violations to your endpoint
+    // Enable violation reporting
     'report-uri': [process.env.CSP_REPORT_URI || '/api/csp-report'],
     'report-to': ['csp-endpoint']
   }
