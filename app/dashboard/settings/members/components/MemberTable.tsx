@@ -1,5 +1,6 @@
 import { Pencil1Icon, TrashIcon } from '@radix-ui/react-icons'
 import { Calendar, CircleIcon, Shield, User } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Table as _ } from '@/components/ui/Table'
 
@@ -54,8 +55,8 @@ export default function MemberTable() {
         <tbody>
           {members.map((member) => (
             <tr
-              key={member.id}
               className="border-b border-teal-700/50 hover:bg-teal-800/30"
+              key={member.id}
             >
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
@@ -92,16 +93,16 @@ export default function MemberTable() {
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-2">
                   <Button
-                    variant="ghost"
-                    size="sm"
                     className="text-slate-300 hover:bg-teal-700 hover:text-slate-100"
+                    size="sm"
+                    variant="ghost"
                   >
                     <Pencil1Icon className="size-4" />
                   </Button>
                   <Button
-                    variant="ghost"
-                    size="sm"
                     className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                    size="sm"
+                    variant="ghost"
                   >
                     <TrashIcon className="size-4" />
                   </Button>

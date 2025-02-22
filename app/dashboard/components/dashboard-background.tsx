@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
 import type { Application } from '@splinetool/runtime'
+import dynamic from 'next/dynamic'
+import { useEffect, useRef, useState } from 'react'
 
 // Create a client-side wrapper for Spline with error boundary
 const SplineWrapper = dynamic(
@@ -59,9 +59,9 @@ export default function DashboardBackground() {
   return (
     <div className="relative size-full">
       <SplineWrapper
-        scene="https://prod.spline.design/xUUjAFVfSxeg2fVu/scene.splinecode"
         className="absolute inset-0 size-full object-cover"
         onLoad={handleSplineLoad}
+        scene="https://prod.spline.design/xUUjAFVfSxeg2fVu/scene.splinecode"
       />
     </div>
   )

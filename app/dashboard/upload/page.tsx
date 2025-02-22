@@ -1,15 +1,14 @@
-import { Upload as _, FileType as __, AlertCircle as ___ } from 'lucide-react'
+import { Upload as _, FileType as __, AlertCircle as ___ , Loader2 } from 'lucide-react'
+import React from 'react'
+import { toast } from 'sonner'
+
 import { Button as ____ } from '@/components/ui/button'
+
 import { RecentUploads } from './components/recent-uploads'
 import { UploadGuidelines } from './components/upload-guidelines'
 import { UploadZone } from './components/upload-zone'
 
-import { Loader2 } from 'lucide-react'
-import React from 'react'
-import { toast } from 'sonner'
-import { RecentUploads } from './components/recent-uploads'
-import { UploadGuidelines } from './components/upload-guidelines'
-import { UploadZone } from './components/upload-zone'
+
 
 export default function UploadPage() {
   const [isUploading, setIsUploading] = React.useState(false)
@@ -29,7 +28,7 @@ export default function UploadPage() {
         </div>
         {isUploading && (
           <div className="flex items-center">
-            <Loader2 className="animate-spin mr-2" />
+            <Loader2 className="mr-2 animate-spin" />
             <span className="text-sm text-white/70">Uploading...</span>
           </div>
         )}
@@ -58,7 +57,6 @@ export default function UploadPage() {
             </div>
             <div className="p-6">
               <UploadZone
-                onUploadStart={() => setIsUploading(true)}
                 onUploadComplete={(upload) => {
                   setIsUploading(false);
                   setRefreshKey(prev => prev + 1);
@@ -67,6 +65,7 @@ export default function UploadPage() {
                   setIsUploading(false);
                   toast.error(error.message);
                 }}
+                onUploadStart={() => setIsUploading(true)}
               />
             </div>
           </div>

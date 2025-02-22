@@ -1,11 +1,12 @@
 'use client'
 
 import { AlertCircle, Key, Lock, Shield, Smartphone } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 const securityFeatures = [
   {
@@ -46,9 +47,9 @@ export function SecuritySettings() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
-                  type="password"
-                  placeholder="Enter current password"
                   className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                  placeholder="Enter current password"
+                  type="password"
                 />
               </div>
             </div>
@@ -62,9 +63,9 @@ export function SecuritySettings() {
               <div className="relative">
                 <Key className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
-                  type="password"
-                  placeholder="Enter new password"
                   className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                  placeholder="Enter new password"
+                  type="password"
                 />
               </div>
             </div>
@@ -78,9 +79,9 @@ export function SecuritySettings() {
               <div className="relative">
                 <Key className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
-                  type="password"
-                  placeholder="Confirm new password"
                   className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                  placeholder="Confirm new password"
+                  type="password"
                 />
               </div>
             </div>
@@ -102,7 +103,6 @@ export function SecuritySettings() {
         <div className="space-y-3">
           {securityFeatures.map((feature) => (
             <div
-              key={feature.id}
               className={cn(
                 'group relative rounded-xl p-4',
                 'bg-black/20 backdrop-blur-sm',
@@ -111,6 +111,7 @@ export function SecuritySettings() {
                 'hover:bg-black/40',
                 'hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]'
               )}
+              key={feature.id}
             >
               {/* Enhanced gradient overlay */}
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -130,8 +131,8 @@ export function SecuritySettings() {
                   </div>
                 </div>
                 <Switch
-                  defaultChecked={feature.enabled}
                   className="data-[state=checked]:bg-cyan-500"
+                  defaultChecked={feature.enabled}
                 />
               </div>
 

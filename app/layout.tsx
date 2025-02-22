@@ -1,13 +1,12 @@
-import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import Script from 'next/script'
+import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import { headers } from 'next/headers'
+import Script from 'next/script'
+
 import './globals.css'
-import { siteConfig } from '@/config/site'
-import { fontSans } from '@/lib/font'
-import { cn } from '@/lib/utils'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { CookieButton } from '@/components/cookie-button'
 import { ReactQueryClientProvider } from '@/components/react-query-client-provider'
 import { SiteFooter } from '@/components/site-footer'
@@ -15,6 +14,9 @@ import { SiteHeader } from '@/components/site-header'
 import { TailwindIndicator as _ } from '@/components/tailwind-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { siteConfig } from '@/config/site'
+import { fontSans } from '@/lib/font'
+import { cn } from '@/lib/utils'
 
 const inter = Inter({ subsets: ['latin'] })
 const _inter = inter
@@ -160,20 +162,22 @@ export default async function RootLayout({ children }: RootLayoutProps) {
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
-            enableSystem
             disableTransitionOnChange
+            enableSystem
           >
-            <div className="relative flex min-h-screen flex-col">
-              <SiteHeader />
-              <div className="flex-1">
-                {children}
-                <Toaster />
-                <Analytics />
-                <SpeedInsights />
+            <AuthProvider>
+              <div className="relative flex min-h-screen flex-col">
+                <SiteHeader />
+                <div className="flex-1">
+                  {children}
+                  <Toaster />
+                  <Analytics />
+                  <SpeedInsights />
+                </div>
               </div>
-            </div>
-            <SiteFooter />
-            <CookieButton />
+              <SiteFooter />
+              <CookieButton />
+            </AuthProvider>
           </ThemeProvider>
         </body>
       </html>

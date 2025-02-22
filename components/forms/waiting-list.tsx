@@ -20,13 +20,13 @@ export default function Component() {
           </div>
           <div>
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="Enter your email" />
+            <Input id="email" placeholder="Enter your email" type="email" />
           </div>
           <div>
             <Label htmlFor="comments">Comments</Label>
             <Textarea id="comments" placeholder="Any additional comments" />
           </div>
-          <Button type="submit" className="w-full">
+          <Button className="w-full" type="submit">
             Join Waitlist
           </Button>
         </form>

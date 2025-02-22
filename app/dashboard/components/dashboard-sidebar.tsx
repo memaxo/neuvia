@@ -1,10 +1,5 @@
 'use client'
 
-import { useState } from 'react'
-import type { ReactNode } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import type { Route } from 'next'
 import {
   Activity,
   ChevronLeft,
@@ -15,15 +10,13 @@ import {
   Settings,
   Users,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import type { Route } from 'next'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+
 import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { SearchBar } from './search-bar'
 import {
   Sheet,
   SheetContent,
@@ -31,6 +24,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
+import { SearchBar } from './search-bar'
+
 
 interface SidebarProps {
   children: React.ReactNode
@@ -75,8 +78,8 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
         {children}
         {collapsible === 'icon' && (
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
             className="absolute right-4 top-4 opacity-0 transition-opacity group-hover/sidebar:opacity-100"
+            onClick={() => setIsCollapsed(!isCollapsed)}
           >
             <ChevronLeft className="size-4" />
             <span className="sr-only">Toggle Sidebar</span>
@@ -142,14 +145,14 @@ export function DashboardSidebar() {
     <Sheet>
       <SheetTrigger asChild>
         <Button
-          variant="ghost"
           className="flex size-10 items-center justify-center p-0 hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 md:hidden"
+          variant="ghost"
         >
           <ChevronRight className="size-4" />
           <span className="sr-only">Toggle sidebar</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="flex w-[300px] flex-col p-0">
+      <SheetContent className="flex w-[300px] flex-col p-0" side="left">
         <SheetHeader className="border-b border-border p-4">
           <SheetTitle>Dashboard</SheetTitle>
         </SheetHeader>
@@ -158,8 +161,6 @@ export function DashboardSidebar() {
             const isActive = pathname === link.href
             return (
               <Link
-                key={link.href}
-                href={link.href}
                 className={cn(
                   'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
                   'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
@@ -167,6 +168,8 @@ export function DashboardSidebar() {
                     ? 'border border-cyan-500/30 bg-black/40'
                     : 'border border-transparent'
                 )}
+                href={link.href}
+                key={link.href}
               >
                 <link.icon className="size-5 shrink-0" />
                 <div className="flex flex-col">
@@ -182,15 +185,15 @@ export function DashboardSidebar() {
       </SheetContent>
       <div className="hidden md:flex">
         <Sidebar
-          defaultCollapsed={false}
-          collapsible="icon"
           className="min-h-screen border-r"
+          collapsible="icon"
+          defaultCollapsed={false}
         >
           <Sidebar.Header>
             <Button
-              variant="ghost"
               className="size-10"
               onClick={() => setIsCollapsed(!isCollapsed)}
+              variant="ghost"
             >
               {isCollapsed ? (
                 <ChevronRight className="size-4" />
@@ -212,7 +215,6 @@ export function DashboardSidebar() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Link
-                          href={link.href}
                           className={cn(
                             'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
                             'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
@@ -221,6 +223,7 @@ export function DashboardSidebar() {
                               : 'border border-transparent',
                             isCollapsed ? 'justify-center' : ''
                           )}
+                          href={link.href}
                         >
                           <link.icon
                             className={cn('size-5 shrink-0', {

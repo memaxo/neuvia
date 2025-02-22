@@ -3,11 +3,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+
 import { generateNonce, createCSPHeader } from '@/lib/utils/nonce'
 
 export async function middleware(request: NextRequest) {
   try {
-    let response = NextResponse.next()
+    const response = NextResponse.next()
 
     // Generate nonce for CSP
     const nonce = generateNonce()

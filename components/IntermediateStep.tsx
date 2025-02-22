@@ -1,7 +1,11 @@
-import { useState } from "react";
+'use client'
+
 import type { Message } from "ai/react";
-import { cn } from "@/utils/cn";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
+
+import { cn } from "@/utils/cn";
+
 
 export function IntermediateStep(props: { message: Message }) {
   const parsedInput = JSON.parse(props.message.content);
@@ -11,12 +15,12 @@ export function IntermediateStep(props: { message: Message }) {
   return (
     <div className="mb-8 mr-auto flex max-w-[80%] flex-col whitespace-pre-wrap rounded border border-input bg-secondary p-3">
       <button
-        type="button"
         className={cn(
           "flex items-center gap-1 text-left",
           expanded && "w-full",
         )}
         onClick={(e) => setExpanded(!expanded)}
+        type="button"
       >
         <span>
           Step: <strong className="font-mono">{action.name}</strong>

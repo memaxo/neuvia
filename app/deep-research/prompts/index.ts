@@ -1,12 +1,15 @@
-import { PromptTemplate } from "@langchain/core/prompts";
 import { BaseMessage } from "@langchain/core/messages";
+import { PromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
-import {
-  SearchQuerySchema,
+
+import type {
   ReportPlanSchema,
   SectionContentSchema,
   SectionGradeSchema,
   FinalSectionSchema
+} from "./schemas";
+import {
+  SearchQuerySchema
 } from "./schemas";
 
 /**
@@ -54,13 +57,14 @@ Your output must be a valid JSON object with the following structure:
 }
 `);
 
+const RESEARCH_REQUIREMENTS = `
 Requirements:
 1. Each section should focus on a specific aspect of the topic
 2. Include 3-5 sections total
 3. Mark sections that need web research as "research": true
 4. Generate 2-3 targeted search queries per research section
 5. Ensure queries are specific and technical
-`);
+`;
 
 /**
  * Content generation prompt

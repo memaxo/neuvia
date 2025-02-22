@@ -1,9 +1,10 @@
 'use client'
 
 // Components
+import clsx from 'clsx'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import clsx from 'clsx'
+
 import useAppFormContext from '@/lib/hooks/useAppFormContext'
 
 export default function Step({ step, segment }: StepProps) {

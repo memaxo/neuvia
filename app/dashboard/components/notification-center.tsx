@@ -1,7 +1,5 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import {
   AlertCircle,
@@ -14,7 +12,9 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import Link from 'next/link'
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -29,7 +29,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { mockNotifications, Notification, NotificationType } from './types'
+import { cn } from '@/lib/utils'
+
+import type { Notification, NotificationType } from './types';
+import { mockNotifications } from './types'
 
 const notificationIcons: Record<NotificationType, any> = {
   alert: AlertCircle,
@@ -112,14 +115,14 @@ export function NotificationCenter() {
             </div>
             {!notification.read && (
               <Button
-                variant="ghost"
-                size="icon"
                 className="size-6 text-white/40 hover:text-white/60"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   markAsRead(notification.id)
                 }}
+                size="icon"
+                variant="ghost"
               >
                 <X className="size-4" />
               </Button>
@@ -153,10 +156,10 @@ export function NotificationCenter() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="ghost"
-              size="icon"
               className="relative"
               onClick={() => setIsOpen(!isOpen)}
+              size="icon"
+              variant="ghost"
             >
               <Bell className="size-5 text-white/70" />
               {unreadCount > 0 && (
@@ -181,9 +184,9 @@ export function NotificationCenter() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
                       className="size-8 text-white/40 hover:text-white/60"
+                      size="icon"
+                      variant="ghost"
                     >
                       <Filter className="size-4" />
                     </Button>
@@ -200,8 +203,8 @@ export function NotificationCenter() {
                     <DropdownMenuSeparator />
                     {Object.entries(filters.types).map(([type, enabled]) => (
                       <DropdownMenuCheckboxItem
-                        key={type}
                         checked={enabled}
+                        key={type}
                         onCheckedChange={(checked) =>
                           setFilters((prev) => ({
                             ...prev,
@@ -216,10 +219,10 @@ export function NotificationCenter() {
                 </DropdownMenu>
 
                 <Button
-                  variant="ghost"
-                  size="sm"
                   className="text-xs text-white/40 hover:text-white/60"
                   onClick={markAllAsRead}
+                  size="sm"
+                  variant="ghost"
                 >
                   <Check className="mr-1 size-3" />
                   Mark all as read
@@ -231,9 +234,9 @@ export function NotificationCenter() {
               {filteredNotifications.length > 0 ? (
                 filteredNotifications.map((notification) => (
                   <Link
-                    key={notification.id}
-                    href={notification.actionUrl || '#'}
                     className="block"
+                    href={notification.actionUrl || '#'}
+                    key={notification.id}
                   >
                     <NotificationItem notification={notification} />
                   </Link>

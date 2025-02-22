@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
 import { mockAppointments, mockPatientDistribution } from './types'
 import { MiniCalendar } from './visualizations/mini-calendar'
 import { PieChart } from './visualizations/pie-chart'
@@ -20,9 +21,9 @@ export function PatientOverview() {
             Patient Overview
           </h3>
           <Button
-            variant="ghost"
-            size="sm"
             className="group relative overflow-hidden bg-black/20 text-white/70 transition-all duration-300 hover:scale-105 hover:bg-black/40 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+            size="sm"
+            variant="ghost"
           >
             <span className="relative z-10">View All</span>
             <div className="absolute inset-0 overflow-hidden">

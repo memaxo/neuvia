@@ -1,8 +1,9 @@
 import Link from 'next/link'
-import { siteConfig } from '@/config/site'
-import { cn } from '@/lib/utils'
+
 import { Icons } from '@/components/icons'
 import { buttonVariants } from '@/components/ui/button'
+import { siteConfig } from '@/config/site'
+import { cn } from '@/lib/utils'
 
 export function CookieButton() {
   return (
@@ -13,7 +14,7 @@ export function CookieButton() {
           variant: 'ghost',
         })}
       >
-        <Link href="#" className={cn('yourConsentManager')}>
+        <Link className={cn('yourConsentManager')} href="#">
           <Icons.cookie className="size-5" />
           <span className="sr-only">Cookie Preferences</span>
         </Link>

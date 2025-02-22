@@ -1,5 +1,5 @@
-import { Redis } from "ioredis";
 import { RedisCache } from "@langchain/community/caches/ioredis";
+import { Redis } from "ioredis";
 
 /**
  * Cache configuration options

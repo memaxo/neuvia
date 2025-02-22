@@ -1,8 +1,8 @@
 'use client'
 
-import { Suspense, useEffect } from 'react'
 import Spline from '@splinetool/react-spline'
 import type { Application } from '@splinetool/runtime'
+import { Suspense, useEffect } from 'react'
 
 interface SplineWrapperProps {
   readonly scene: string
@@ -29,12 +29,12 @@ export default function SplineWrapper({
     >
       <div className="relative size-full">
         <Spline
-          scene={scene}
           className={`absolute inset-0 ${className}`}
           onLoad={(splineApp: Application) => {
             console.log('Spline onLoad called')
             onLoad?.(splineApp)
           }}
+          scene={scene}
         />
       </div>
     </Suspense>

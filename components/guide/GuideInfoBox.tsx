@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export function GuideInfoBox(props: { children: ReactNode }) {
   return (

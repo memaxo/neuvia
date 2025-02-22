@@ -1,9 +1,11 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
-import { createClient } from '@/utils/supabase/client'
+import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+
+import { createClient } from '@/utils/supabase/client'
+
 
 type AvatarError = {
   message: string
@@ -14,15 +16,17 @@ export default function Avatar({
   uid,
   url,
   size,
+  email,
   onUpload,
 }: {
   uid: string | null
   url: string | null
   size: number
+  email: string | null
   onUpload: (url: string) => void
 }) {
   const supabase = createClient()
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(url)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<AvatarError | null>(null)
 
@@ -102,19 +106,19 @@ export default function Avatar({
       <div className="relative">
         {avatarUrl ? (
           <Image
-            width={size}
-            height={size}
-            src={avatarUrl}
             alt="Avatar"
             className="rounded-full object-cover"
+            height={size}
+            src={avatarUrl}
             style={{ height: size, width: size }}
+            width={size}
           />
         ) : (
           <div
             className="flex items-center justify-center rounded-full bg-secondary text-secondary-foreground"
             style={{ height: size, width: size }}
           >
-            {user?.email?.charAt(0).toUpperCase() ?? '?'}
+            {email?.charAt(0).toUpperCase() ?? '?'}
           </div>
         )}
         {uploading && (
@@ -122,7 +126,7 @@ export default function Avatar({
             className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50"
             style={{ height: size, width: size }}
           >
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            <div className="size-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
           </div>
         )}
       </div>
@@ -135,21 +139,21 @@ export default function Avatar({
 
       <div className="flex items-center gap-2">
         <label
-          htmlFor="single"
           className="cursor-pointer rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+          htmlFor="single"
         >
           {uploading ? 'Uploading...' : 'Upload Image'}
         </label>
         <input
+          accept="image/*"
+          disabled={uploading}
+          id="single"
+          onChange={uploadAvatar}
           style={{
             visibility: 'hidden',
             position: 'absolute',
           }}
           type="file"
-          id="single"
-          accept="image/*"
-          onChange={uploadAvatar}
-          disabled={uploading}
         />
       </div>
     </div>

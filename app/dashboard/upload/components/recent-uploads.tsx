@@ -8,7 +8,7 @@ import {
   FileType,
   MoreVertical,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -22,6 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 interface RecentUpload {
   id: string
@@ -77,7 +78,6 @@ export function RecentUploads() {
     <div className="space-y-4">
       {mockUploads.map((upload) => (
         <div
-          key={upload.id}
           className={cn(
             'group relative rounded-xl p-4',
             'bg-black/20 backdrop-blur-sm',
@@ -86,6 +86,7 @@ export function RecentUploads() {
             'hover:translate-x-1 hover:bg-black/40',
             'hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
           )}
+          key={upload.id}
         >
           {/* Enhanced gradient overlay */}
           <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -134,9 +135,9 @@ export function RecentUploads() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="ghost"
-                        size="icon"
                         className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        size="icon"
+                        variant="ghost"
                       >
                         <Eye className="size-4" />
                       </Button>
@@ -149,9 +150,9 @@ export function RecentUploads() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="ghost"
-                        size="icon"
                         className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        size="icon"
+                        variant="ghost"
                       >
                         <Download className="size-4" />
                       </Button>
@@ -164,9 +165,9 @@ export function RecentUploads() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
-                        variant="ghost"
-                        size="icon"
                         className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                        size="icon"
+                        variant="ghost"
                       >
                         <MoreVertical className="size-4" />
                       </Button>

@@ -1,12 +1,14 @@
-import React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { readUserSession } from '@/utils/actions'
+import React from 'react'
+
+import { buttonVariants } from '@/components/ui/button'
 import { siteConfig } from '@/config/site'
 import { cn } from '@/lib/utils'
-import { buttonVariants } from '@/components/ui/button'
-import AuthForm from './components/AuthForm'
+import { readUserSession } from '@/utils/actions'
+
+import { AuthForm } from './components/AuthForm'
 
 export default async function page() {
   const { data: userSession } = await readUserSession()
@@ -52,17 +54,17 @@ export default async function page() {
             {/* Logo section */}
             <div className="mb-6 flex flex-col items-center space-y-2">
               <Link
-                href="/"
                 className="group relative mb-6 flex items-center space-x-2 overflow-hidden rounded-full"
+                href="/"
               >
                 <div className="absolute inset-0 bg-background/5 backdrop-blur-sm transition-all duration-300 group-hover:bg-background/10" />
                 <div className="relative z-10 flex items-center space-x-2 px-4 py-2">
                   <Image
-                    src="/neuvia-comp.jpg"
                     alt="Neuvia Logo"
-                    width={24}
-                    height={24}
                     className="rounded-full transition-opacity group-hover:opacity-90"
+                    height={24}
+                    src="/neuvia-comp.jpg"
+                    width={24}
                   />
                   <span className="inline-block font-bold text-foreground transition-colors group-hover:text-primary">
                     {siteConfig.name}
@@ -105,15 +107,15 @@ export default async function page() {
             >
               By clicking continue, you agree to our{' '}
               <Link
-                href="/terms"
                 className="text-primary/90 underline underline-offset-4 transition-colors hover:text-primary"
+                href="/terms"
               >
                 Terms of Service
               </Link>{' '}
               and{' '}
               <Link
-                href="/privacy"
                 className="text-primary/90 underline underline-offset-4 transition-colors hover:text-primary"
+                href="/privacy"
               >
                 Privacy Policy
               </Link>

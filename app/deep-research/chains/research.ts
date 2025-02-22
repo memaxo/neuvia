@@ -1,15 +1,15 @@
-import { RunnableSequence, RunnableMap, Runnable } from "@langchain/core/runnables";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatAnthropic } from "@langchain/anthropic";
 import { EventEmitter } from "events";
-import { z } from "zod";
+
+import { ChatAnthropic } from "@langchain/anthropic";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { PromptTemplate } from "@langchain/core/prompts";
+import { RunnableSequence, RunnableMap } from "@langchain/core/runnables";
+import type { Runnable } from "@langchain/core/runnables";
+import { ChatOpenAI } from "@langchain/openai";
+import { z } from "zod";
 
-import { ResearchConfig, SupportedModels } from "../configuration";
-import { ResearchState, ResearchOutput, ProgressUpdate } from "../state";
-import { SearchRepository } from "../services/search";
-import { ResearchCache, type CacheConfig } from "../services/cache";
+import type { ResearchConfig} from "../configuration";
+import { SupportedModels } from "../configuration";
 import {
   ExternalServiceError,
   ResearchProcessError,
@@ -31,6 +31,9 @@ import {
   type FinalSection,
   type ReportSection
 } from "../prompts/schemas";
+import { ResearchCache, type CacheConfig } from "../services/cache";
+import { SearchRepository } from "../services/search";
+import type { ResearchState, ResearchOutput, ProgressUpdate } from "../state";
 
 export type SectionOutput = {
   title: string;
@@ -342,7 +345,7 @@ export class ResearchChain extends EventEmitter {
               eventType: "search_in_progress",
               timestamp: Date.now()
             });
-            let aggregatedResults = [];
+            const aggregatedResults = [];
             for (const q of generatedQueries) {
               const results = await this.searchRepository.search(q.search_query);
               aggregatedResults.push(...results);
@@ -456,11 +459,13 @@ export class ResearchChain extends EventEmitter {
 
     return researched;
   }
-state: ReportState
-): Promise<string | boolean> {
-// Simulate human approval for development purposes
-return true;
-}
+
+  private async approveReport(state: ReportState): Promise<string | boolean> {
+    // Simulate human approval for development purposes
+    return true;
+  }
+
+  /**
    * Simplified research fallback
    */
   private async simplifiedResearch(input: { topic: string }): Promise<ResearchState> {

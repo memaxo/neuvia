@@ -6,8 +6,8 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
       <div className="mx-auto w-full max-w-md">
         <div className="relative">
           <div
-            className="absolute left-0 top-1/2 -mt-px h-0.5 w-full bg-slate-200 dark:bg-slate-700"
             aria-hidden="true"
+            className="absolute left-0 top-1/2 -mt-px h-0.5 w-full bg-slate-200 dark:bg-slate-700"
           ></div>
           <ul className="relative flex w-full justify-between">
             <li>

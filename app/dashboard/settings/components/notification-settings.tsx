@@ -1,10 +1,11 @@
 'use client'
 
 import { AlertCircle, Bell, Mail, MessageSquare } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
 import { Label as _ } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 const notificationTypes = [
   {
@@ -61,7 +62,6 @@ export function NotificationSettings() {
         <div className="space-y-3">
           {notificationTypes.map((type) => (
             <div
-              key={type.id}
               className={cn(
                 'group relative rounded-xl p-4',
                 'bg-black/20 backdrop-blur-sm',
@@ -70,6 +70,7 @@ export function NotificationSettings() {
                 'hover:bg-black/40',
                 'hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]'
               )}
+              key={type.id}
             >
               {/* Enhanced gradient overlay */}
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -108,7 +109,6 @@ export function NotificationSettings() {
         <div className="space-y-3">
           {notificationEvents.map((event) => (
             <div
-              key={event.id}
               className={cn(
                 'group relative rounded-xl p-4',
                 'bg-black/20 backdrop-blur-sm',
@@ -117,6 +117,7 @@ export function NotificationSettings() {
                 'hover:bg-black/40',
                 'hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]'
               )}
+              key={event.id}
             >
               {/* Enhanced gradient overlay */}
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

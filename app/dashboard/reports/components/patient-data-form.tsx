@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 export function PatientDataForm() {
@@ -27,59 +28,59 @@ export function PatientDataForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-lg bg-card p-4">
+    <form className="space-y-4 rounded-lg bg-card p-4" onSubmit={handleSubmit}>
       <div>
-        <Label htmlFor="symptoms" className="mb-1 block">Symptoms</Label>
+        <Label className="mb-1 block" htmlFor="symptoms">Symptoms</Label>
         <Input 
+          className="w-full" 
           id="symptoms" 
-          value={symptoms} 
           onChange={(e) => setSymptoms(e.target.value)}
           placeholder="Enter symptoms separated by commas"
-          className="w-full" 
+          value={symptoms} 
         />
       </div>
       <div>
-        <Label htmlFor="medicalHistory" className="mb-1 block">Medical History</Label>
+        <Label className="mb-1 block" htmlFor="medicalHistory">Medical History</Label>
         <Textarea 
+          className="w-full" 
           id="medicalHistory" 
-          value={medicalHistory} 
           onChange={(e) => setMedicalHistory(e.target.value)}
           placeholder="Enter medical history"
-          className="w-full" 
+          value={medicalHistory} 
         />
       </div>
       <div>
-        <Label htmlFor="currentMedications" className="mb-1 block">Current Medications</Label>
+        <Label className="mb-1 block" htmlFor="currentMedications">Current Medications</Label>
         <Input 
+          className="w-full" 
           id="currentMedications" 
-          value={currentMedications} 
           onChange={(e) => setCurrentMedications(e.target.value)}
           placeholder="List current medications"
-          className="w-full" 
+          value={currentMedications} 
         />
       </div>
       <div>
-        <Label htmlFor="allergies" className="mb-1 block">Allergies</Label>
+        <Label className="mb-1 block" htmlFor="allergies">Allergies</Label>
         <Input 
+          className="w-full" 
           id="allergies" 
-          value={allergies} 
           onChange={(e) => setAllergies(e.target.value)}
           placeholder="List allergies"
-          className="w-full" 
+          value={allergies} 
         />
       </div>
       <div>
-        <Label htmlFor="vitalSigns" className="mb-1 block">Vital Signs</Label>
+        <Label className="mb-1 block" htmlFor="vitalSigns">Vital Signs</Label>
         <Input 
+          className="w-full" 
           id="vitalSigns" 
-          value={vitalSigns} 
           onChange={(e) => setVitalSigns(e.target.value)}
           placeholder="e.g., Blood Pressure, Heart Rate"
-          className="w-full" 
+          value={vitalSigns} 
         />
       </div>
       <div className="flex justify-end">
-        <Button type="submit" className="mt-4">Submit Data</Button>
+        <Button className="mt-4" type="submit">Submit Data</Button>
       </div>
     </form>
   )

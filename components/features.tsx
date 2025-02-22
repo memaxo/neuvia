@@ -44,8 +44,8 @@ export default function Features() {
         <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
           {features.map((feature) => (
             <div
-              key={feature.name}
               className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-8 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]"
+              key={feature.name}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 

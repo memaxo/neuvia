@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Message as VercelChatMessage, StreamingTextResponse } from "ai";
-
-import { ChatOpenAI } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import type { Message as VercelChatMessage} from "ai";
+import { StreamingTextResponse } from "ai";
 import { HttpResponseOutputParser } from "langchain/output_parsers";
+import type { NextRequest} from "next/server";
+import { NextResponse } from "next/server";
 
 export const runtime = "edge";
 

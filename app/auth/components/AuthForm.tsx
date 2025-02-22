@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Eye, EyeOff } from 'lucide-react'
+import { useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
+
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
+
 import { loginWithEmailAndPassword, signInWithGoogle } from '../actions'
 import type { AuthResponse } from '../actions'
 
@@ -95,7 +97,7 @@ export function AuthForm() {
   return (
     <div className="grid gap-6">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
           <FormField
             control={form.control}
             name="email"
@@ -104,12 +106,12 @@ export function AuthForm() {
                 <FormLabel>Email</FormLabel>
                 <FormControl>
                   <Input
-                    placeholder="name@example.com"
-                    type="email"
                     autoCapitalize="none"
                     autoComplete="email"
                     autoCorrect="off"
                     disabled={isPending}
+                    placeholder="name@example.com"
+                    type="email"
                     {...field}
                   />
                 </FormControl>
@@ -126,24 +128,24 @@ export function AuthForm() {
                 <FormControl>
                   <div className="relative">
                     <Input
-                      placeholder="Enter your password"
-                      type={showPassword ? 'text' : 'password'}
                       autoComplete="current-password"
                       disabled={isPending}
+                      placeholder="Enter your password"
+                      type={showPassword ? 'text' : 'password'}
                       {...field}
                     />
                     <Button
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      disabled={isPending}
+                      onClick={() => setShowPassword(!showPassword)}
+                      size="sm"
                       type="button"
                       variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isPending}
                     >
                       {showPassword ? (
-                        <EyeOff className="size-4" aria-hidden="true" />
+                        <EyeOff aria-hidden="true" className="size-4" />
                       ) : (
-                        <Eye className="size-4" aria-hidden="true" />
+                        <Eye aria-hidden="true" className="size-4" />
                       )}
                       <span className="sr-only">
                         {showPassword ? 'Hide password' : 'Show password'}
@@ -173,9 +175,9 @@ export function AuthForm() {
             )}
           />
           <Button
-            type="submit"
             className="w-full"
             disabled={isPending}
+            type="submit"
           >
             {isPending && (
               <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
@@ -195,23 +197,23 @@ export function AuthForm() {
         </div>
       </div>
       <Button
-        variant="outline"
-        type="button"
         disabled={isPending}
         onClick={handleGoogleSignIn}
+        type="button"
+        variant="outline"
       >
         {isPending ? (
           <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
         ) : (
           <svg
-            className="mr-2 size-4"
             aria-hidden="true"
-            focusable="false"
-            data-prefix="fab"
+            className="mr-2 size-4"
             data-icon="github"
+            data-prefix="fab"
+            focusable="false"
             role="img"
-            xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
           >
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

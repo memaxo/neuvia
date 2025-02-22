@@ -1,6 +1,7 @@
 'use client'
 
 import { FileText, TrendingUp, Users, Clock } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 interface Stat {
@@ -45,8 +46,8 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
         const Icon = getIcon(stat.name)
         return (
           <div
-            key={index}
             className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-6 backdrop-blur-xl"
+            key={index}
           >
             {/* Gradient overlay */}
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

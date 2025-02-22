@@ -1,6 +1,7 @@
 'use client'
 
 import { Activity, AlertCircle, Calendar, User } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
 const filters = {
@@ -54,13 +55,13 @@ export function PatientFilters() {
           <div className="space-y-2">
             {filters.status.map((filter) => (
               <button
-                key={filter.value}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
               >
                 {/* Enhanced gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -107,13 +108,13 @@ export function PatientFilters() {
           <div className="space-y-2">
             {filters.appointments.map((filter) => (
               <button
-                key={filter.value}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
               >
                 {/* Enhanced gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -152,13 +153,13 @@ export function PatientFilters() {
           <div className="space-y-2">
             {filters.activity.map((filter) => (
               <button
-                key={filter.value}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
               >
                 {/* Enhanced gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

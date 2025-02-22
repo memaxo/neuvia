@@ -2,10 +2,12 @@
 
 import { readStreamableValue } from "ai/rsc";
 import React, { useEffect, useRef, useState } from "react";
-import { executeTool } from "./action";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+
+import { executeTool } from "./action";
 
 export default function Page() {
   const [input, setInput] = useState("");
@@ -39,49 +41,49 @@ export default function Page() {
 
   return (
     <div className="stretch mx-auto flex w-full max-w-4xl flex-col gap-3 py-12">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
         <Input
+          onChange={(e) => setInput(e.target.value)}
           placeholder="What's the weather in XYZ city and XYZ state"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
         />
         <div className="flex items-center">
           <Checkbox
-            id="wso-checkbox"
             checked={options.wso}
+            id="wso-checkbox"
             onCheckedChange={(checked) =>
               setOptions((prev) => ({ ...prev, wso: !!checked }))
             }
           />
-          <label htmlFor="wso-checkbox" className="ml-2 text-sm font-medium">
+          <label className="ml-2 text-sm font-medium" htmlFor="wso-checkbox">
             Use <code>withStructuredOutput</code>
           </label>
         </div>
         <div className="flex items-center">
           <Checkbox
-            id="stream-events-checkbox"
             checked={options.streamEvents}
+            id="stream-events-checkbox"
             onCheckedChange={(checked) =>
               setOptions((prev) => ({ ...prev, streamEvents: !!checked }))
             }
           />
           <label
-            htmlFor="stream-events-checkbox"
             className="ml-2 text-sm font-medium"
+            htmlFor="stream-events-checkbox"
           >
             Use <code>streamEvents</code>
           </label>
         </div>
-        <Button type="submit" disabled={isLoading}>
+        <Button disabled={isLoading} type="submit">
           Submit
         </Button>
       </form>
       <div
-        ref={scrollRef}
         className="flex h-[650px] flex-col gap-2 overflow-y-auto px-2"
+        ref={scrollRef}
       >
         {data.map((item, i) => (
-          <div key={i} className="rounded-lg bg-[#25252f] p-4">
+          <div className="rounded-lg bg-[#25252f] p-4" key={i}>
             {options.streamEvents ? (
               <>
                 <strong>Event:</strong> <p className="text-sm">{item.event}</p>

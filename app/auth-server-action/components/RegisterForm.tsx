@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AuthTokenResponse } from '@supabase/supabase-js'
+import type { AuthTokenResponse } from '@supabase/supabase-js'
 import { Check, Eye, EyeOff, X } from 'lucide-react'
+import { useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
-import { cn } from '@/lib/utils'
+
+import {
+  signInWithGoogle,
+  signUpWithEmailAndPassword,
+} from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -20,10 +24,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
-import {
-  signInWithGoogle,
-  signUpWithEmailAndPassword,
-} from '@/app/auth/actions'
+import { cn } from '@/lib/utils'
 
 const RegisterSchema = z
   .object({
@@ -110,7 +111,7 @@ export default function RegisterForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-4">
+      <form className="w-full space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
           name="email"
@@ -122,8 +123,8 @@ export default function RegisterForm() {
               <FormControl>
                 <div className="group relative">
                   <Input
-                    placeholder="email@example.com"
                     className="border-border/50 bg-background/20 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
+                    placeholder="email@example.com"
                     {...field}
                     type="email"
                   />
@@ -148,16 +149,16 @@ export default function RegisterForm() {
               <FormControl>
                 <div className="group relative">
                   <Input
+                    className="border-border/50 bg-background/20 pr-10 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
                     placeholder="Create a strong password"
                     type={showPassword ? 'text' : 'password'}
-                    className="border-border/50 bg-background/20 pr-10 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
                     {...field}
                     onFocus={() => setShowPasswordRequirements(true)}
                   />
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/10 hover:text-foreground focus:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                    type="button"
                   >
                     {showPassword ? (
                       <EyeOff className="size-4" />
@@ -175,7 +176,7 @@ export default function RegisterForm() {
               {showPasswordRequirements && (
                 <div className="animate-fade-down mt-2 space-y-1.5 rounded-md border border-border/50 bg-background/40 p-3 text-xs text-muted-foreground">
                   {passwordRequirements.map((req, index) => (
-                    <p key={index} className="flex items-center gap-2">
+                    <p className="flex items-center gap-2" key={index}>
                       {req.regex.test(password) ? (
                         <Check className="size-3 text-emerald-500" />
                       ) : (
@@ -208,15 +209,15 @@ export default function RegisterForm() {
               <FormControl>
                 <div className="group relative">
                   <Input
+                    className="border-border/50 bg-background/20 pr-10 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
                     placeholder="Confirm your password"
                     type={showConfirmPassword ? 'text' : 'password'}
-                    className="border-border/50 bg-background/20 pr-10 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus:border-primary/50 focus:ring-primary/25"
                     {...field}
                   />
                   <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/10 hover:text-foreground focus:text-foreground"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    type="button"
                   >
                     {showConfirmPassword ? (
                       <EyeOff className="size-4" />
@@ -236,9 +237,9 @@ export default function RegisterForm() {
         />
 
         <Button
-          type="submit"
-          disabled={isPending}
           className="w-full rounded-lg bg-gradient-to-r from-primary to-primary-foreground py-5 font-medium text-primary-foreground transition-all duration-300 hover:-translate-y-0.5 hover:from-primary/90 hover:to-primary-foreground/90 hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:transform-none"
+          disabled={isPending}
+          type="submit"
         >
           {isPending ? (
             <div className="flex items-center justify-center gap-2">
@@ -263,27 +264,27 @@ export default function RegisterForm() {
           </div>
         </div>
         <Button
-          type="button"
-          onClick={handleGoogleSignUp}
-          disabled={isGoogleLoading}
           className="flex w-full items-center gap-2 border-border/50 bg-background/20 text-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)] transition-all duration-200 hover:border-border hover:bg-background/30 focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={isGoogleLoading}
+          onClick={handleGoogleSignUp}
+          type="button"
         >
           {isGoogleLoading ? (
             <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
           ) : (
             <svg
-              className="mr-2 size-4"
               aria-hidden="true"
-              focusable="false"
-              data-prefix="fab"
+              className="mr-2 size-4"
               data-icon="google"
+              data-prefix="fab"
+              focusable="false"
               role="img"
-              xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 488 512"
+              xmlns="http://www.w3.org/2000/svg"
             >
               <path
-                fill="currentColor"
                 d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"
+                fill="currentColor"
               ></path>
             </svg>
           )}

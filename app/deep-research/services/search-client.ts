@@ -1,4 +1,4 @@
-import { SearchResult } from "../state";
+import type { SearchResult } from "../state";
 
 /**
  * Interface for search provider clients

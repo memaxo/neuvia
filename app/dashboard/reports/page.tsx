@@ -1,17 +1,19 @@
 'use client'
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useState, useEffect } from "react";
+
 import type { Report } from "@/lib/reports.types";
-import { ReportsOverview } from "./components/reports-overview";
+import { createClient } from "@/utils/supabase/client";
+
 import { ReportsFilters } from "./components/reports-filters";
 import { ReportsList } from "./components/reports-list";
-import { useState, useEffect } from "react";
+import { ReportsOverview } from "./components/reports-overview";
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const supabase = createClientComponentClient();
+  const supabase = createClient();
 
   useEffect(() => {
     async function fetchReports() {

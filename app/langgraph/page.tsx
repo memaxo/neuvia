@@ -1,15 +1,18 @@
 "use client";
 
+import { Client, Message } from "@langchain/langgraph-sdk";
+import { useStream } from "@langchain/langgraph-sdk/react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useQueryState } from "nuqs";
+import type { ReactNode} from "react";
+import { Suspense, useState } from "react";
+import { toast } from "sonner";
+
 import { ChatInput, ChatLayout } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
-import { ReactNode, Suspense, useState } from "react";
-import { toast } from "sonner";
-import { cn } from "@/utils/cn";
-import { useStream } from "@langchain/langgraph-sdk/react";
-import { useQueryState } from "nuqs";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Client, Message } from "@langchain/langgraph-sdk";
+import { cn } from "@/utils/cn";
+
 
 const onError = (error: unknown) => {
   toast.error("Failed to handle input", {
@@ -30,17 +33,17 @@ function EditMessage({
 
   return (
     <ChatInput
-      value={editValue}
+      actions={
+        <Button onClick={onCancel} type="button" variant="outline">
+          Cancel
+        </Button>
+      }
       onChange={(e) => setEditValue(e.target.value)}
       onSubmit={(e) => {
         e.preventDefault();
         onEdit({ type: "human", content: editValue });
       }}
-      actions={
-        <Button variant="outline" type="button" onClick={onCancel}>
-          Cancel
-        </Button>
-      }
+      value={editValue}
     />
   );
 }
@@ -56,8 +59,8 @@ function Message(props: {
     return (
       <EditMessage
         message={props.message}
-        onEdit={props.onEdit}
         onCancel={() => setIsEditing(false)}
+        onEdit={props.onEdit}
       />
     );
   }
@@ -91,8 +94,8 @@ function Message(props: {
         <div className="ml-auto mt-2 flex items-center justify-end gap-2">
           <button
             className="text-right text-sm text-muted-foreground"
-            type="button"
             onClick={() => setIsEditing(true)}
+            type="button"
           >
             Edit
           </button>
@@ -105,7 +108,7 @@ function Message(props: {
         <div className="mt-2 flex items-center justify-start gap-2">
           {props.actions}
           <div className="text-sm text-muted-foreground">
-            <button type="button" onClick={props.onRegenerate}>
+            <button onClick={props.onRegenerate} type="button">
               Regenerate
             </button>
           </div>
@@ -125,13 +128,13 @@ function BranchPicker(props: {
   return (
     <div className="flex items-center justify-end gap-2 text-sm">
       <button
-        type="button"
         className="shrink-0"
         onClick={() => {
           const nextIndex = Math.max(0, index - 1);
           const next = props.branches[nextIndex];
           props.onSelect(next);
         }}
+        type="button"
       >
         <ChevronLeft className="size-4 text-muted-foreground" />
       </button>
@@ -141,13 +144,13 @@ function BranchPicker(props: {
       </span>
 
       <button
-        type="button"
         className="shrink-0"
         onClick={() => {
           const nextIndex = Math.min(props.branches.length - 1, index + 1);
           const next = props.branches[nextIndex];
           props.onSelect(next);
         }}
+        type="button"
       >
         <ChevronRight className="size-4 text-muted-foreground" />
       </button>
@@ -169,7 +172,6 @@ function StatefulChatInput(props: {
   return (
     <ChatInput
       loading={props.loading}
-      value={input}
       onChange={(e) => setInput(e.target.value)}
       onStop={props.onStop}
       onSubmit={(e) => {
@@ -177,6 +179,7 @@ function StatefulChatInput(props: {
         setInput("");
         props.onSubmit(input);
       }}
+      value={input}
     />
   );
 }
@@ -208,9 +211,9 @@ function ClientLanggraphPage() {
             <div className="flex items-center justify-between gap-2">
               <span>Thread ID: {threadId}</span>
               <Button
-                variant="outline"
-                type="button"
                 onClick={() => setThreadId(null)}
+                type="button"
+                variant="outline"
               >
                 New thread
               </Button>
@@ -224,22 +227,22 @@ function ClientLanggraphPage() {
 
               return (
                 <Message
+                  actions={
+                    meta?.branch != null &&
+                    meta?.branchOptions != null && (
+                      <BranchPicker
+                        branches={meta.branchOptions}
+                        current={meta.branch}
+                        onSelect={thread.setBranch}
+                      />
+                    )
+                  }
                   key={message.id ?? index}
                   message={message}
                   onEdit={(message) =>
                     thread.submit({ messages: [message] }, { checkpoint })
                   }
                   onRegenerate={() => thread.submit(undefined, { checkpoint })}
-                  actions={
-                    meta?.branch != null &&
-                    meta?.branchOptions != null && (
-                      <BranchPicker
-                        current={meta.branch}
-                        branches={meta.branchOptions}
-                        onSelect={thread.setBranch}
-                      />
-                    )
-                  }
                 />
               );
             })}

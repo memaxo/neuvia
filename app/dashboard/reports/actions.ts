@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import { Database } from "@/lib/database.types";
+
+import { createClient } from '@/utils/supabase/server'
+
+import type { Database } from "@/lib/database.types";
 
 // Schema for medical references
 const medicalReferenceSchema = z.object({
@@ -150,7 +151,7 @@ export const auditLogSchema = z.object({
 export type AuditLog = z.infer<typeof auditLogSchema>;
 
 export async function generateReport(input: GenerateReportInput) {
-  const supabase = createServerActionClient<Database>({ cookies });
+  const supabase = await createClient()
 
   // 1. Start report generation
   const { data: report, error: createError } = await supabase
@@ -184,7 +185,7 @@ export async function generateReport(input: GenerateReportInput) {
     .single();
 
   if (createError) {
-    throw new Error("Failed to create report: " + createError.message);
+    throw new Error(`Failed to create report: ${  createError.message}`);
   }
 
   // 2. Generate research topic from patient info
@@ -206,7 +207,7 @@ export async function generateReport(input: GenerateReportInput) {
     });
 
     if (!response.ok) {
-      throw new Error("Deep research failed: " + response.statusText);
+      throw new Error(`Deep research failed: ${  response.statusText}`);
     }
 
     const result = await response.json();
@@ -237,7 +238,7 @@ export async function generateReport(input: GenerateReportInput) {
       .eq("id", report.id);
 
     if (updateError) {
-      throw new Error("Failed to update report: " + updateError.message);
+      throw new Error(`Failed to update report: ${  updateError.message}`);
     }
 
     return { success: true, reportId: report.id };

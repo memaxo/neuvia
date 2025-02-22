@@ -1,19 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Message as VercelChatMessage, StreamingTextResponse } from "ai";
-
-import { createClient } from "@supabase/supabase-js";
-
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
+import type {
+  BaseMessage} from "@langchain/core/messages";
 import {
   AIMessage,
-  BaseMessage,
   ChatMessage,
   HumanMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
-import { createRetrieverTool } from "langchain/tools/retriever";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
+import { createClient } from "@supabase/supabase-js";
+import { StreamingTextResponse } from "ai";
+import type { Message as VercelChatMessage} from "ai";
+import { createRetrieverTool } from "langchain/tools/retriever";
+import { NextResponse } from "next/server";
+import type { NextRequest} from "next/server";
 
 export const runtime = "edge";
 

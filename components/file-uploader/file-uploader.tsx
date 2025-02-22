@@ -1,17 +1,18 @@
 'use client'
 
-import * as React from 'react'
-import Image from 'next/image'
 import { FileText, Upload, X } from 'lucide-react'
+import Image from 'next/image'
+import * as React from 'react'
 import Dropzone, {
   type DropzoneProps,
   type FileRejection,
 } from 'react-dropzone'
 import { toast } from 'sonner'
-import { cn, formatBytes } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn, formatBytes } from '@/lib/utils'
 
 interface FileUploaderProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
@@ -210,12 +211,12 @@ export function FileUploader({
   return (
     <div className="relative flex flex-col gap-6">
       <Dropzone
-        onDrop={onDrop}
         accept={accept}
-        maxSize={maxSize}
-        maxFiles={maxFileCount}
-        multiple={maxFileCount > 1 || multiple}
         disabled={isDisabled}
+        maxFiles={maxFileCount}
+        maxSize={maxSize}
+        multiple={maxFileCount > 1 || multiple}
+        onDrop={onDrop}
       >
         {({ getRootProps, getInputProps, isDragActive }) => (
           <div
@@ -234,8 +235,8 @@ export function FileUploader({
               <div className="flex flex-col items-center justify-center gap-4 sm:px-5">
                 <div className="rounded-full border border-dashed p-3">
                   <Upload
-                    className="size-7 text-muted-foreground"
                     aria-hidden="true"
+                    className="size-7 text-muted-foreground"
                   />
                 </div>
                 <p className="font-medium text-muted-foreground">
@@ -246,8 +247,8 @@ export function FileUploader({
               <div className="flex flex-col items-center justify-center gap-4 sm:px-5">
                 <div className="rounded-full border border-dashed p-3">
                   <Upload
-                    className="size-7 text-muted-foreground"
                     aria-hidden="true"
+                    className="size-7 text-muted-foreground"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -270,8 +271,8 @@ export function FileUploader({
           <div className="flex max-h-48 flex-col gap-4">
             {files.map((file, index) => (
               <FileCard
-                key={index}
                 file={file}
+                key={index}
                 onRemove={() => onRemove(index)}
                 progress={internalProgresses[file.name] ?? progresses?.[file.name]}
               />
@@ -295,16 +296,16 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
       <div className="flex flex-1 gap-2.5">
         {file.preview ? (
           <Image
-            src={file.preview}
             alt={file.name}
-            width={48}
-            height={48}
             className="size-12 shrink-0 rounded-md object-cover"
+            height={48}
+            src={file.preview}
+            width={48}
           />
         ) : (
           <FileText
-            className="size-12 text-muted-foreground"
             aria-hidden="true"
+            className="size-12 text-muted-foreground"
           />
         )}
         <div className="flex w-full flex-col gap-2">
@@ -320,13 +321,13 @@ function FileCard({ file, progress, onRemove }: FileCardProps) {
         </div>
       </div>
       <Button
-        type="button"
-        variant="outline"
-        size="icon"
         className="size-7"
         onClick={onRemove}
+        size="icon"
+        type="button"
+        variant="outline"
       >
-        <X className="size-4" aria-hidden="true" />
+        <X aria-hidden="true" className="size-4" />
         <span className="sr-only">Remove file</span>
       </Button>
     </div>

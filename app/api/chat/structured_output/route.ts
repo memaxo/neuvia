@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-
-import { z } from "zod";
-
-import { ChatOpenAI } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import type { NextRequest} from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 export const runtime = "edge";
 

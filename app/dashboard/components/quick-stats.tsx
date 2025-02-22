@@ -1,7 +1,5 @@
 'use client'
 
-import type { Route } from 'next'
-import Link from 'next/link'
 import {
   AlertCircle,
   ArrowDownIcon,
@@ -10,7 +8,9 @@ import {
   Upload,
   type LucideIcon,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import type { Route } from 'next'
+import Link from 'next/link'
+
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -18,6 +18,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
 import { mockTrendData } from './types'
 import { Sparkline } from './visualizations/sparkline'
 
@@ -189,9 +191,9 @@ export function QuickStats() {
                     {stat.action && (
                       <Link href={stat.action.href}>
                         <Button
-                          variant="ghost"
-                          size="sm"
                           className="group/btn relative overflow-hidden rounded-xl bg-black/40 px-4 py-2 text-white/80 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-black/60 hover:text-white hover:shadow-[0_0_30px_rgba(0,255,255,0.2)]"
+                          size="sm"
+                          variant="ghost"
                         >
                           <span className="relative z-10 flex items-center gap-2">
                             <stat.action.icon className="size-4" />
@@ -213,7 +215,6 @@ export function QuickStats() {
                     <TooltipTrigger asChild>
                       <div className="h-[32px] cursor-help">
                         <Sparkline
-                          data={mockTrendData[stat.trendKey]}
                           color={
                             stat.color === 'spline-cyan'
                               ? '#4B6BFD'
@@ -221,6 +222,7 @@ export function QuickStats() {
                                 ? '#0066FF'
                                 : '#FF00FF'
                           }
+                          data={mockTrendData[stat.trendKey]}
                           height={32}
                         />
                       </div>

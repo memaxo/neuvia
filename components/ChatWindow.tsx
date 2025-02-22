@@ -2,17 +2,18 @@
 
 import { type Message } from "ai";
 import { useChat } from "ai/react";
+import { ArrowDown, LoaderCircle, Paperclip } from "lucide-react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
+import { cn } from "@/utils/cn";
+
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
-import { ArrowDown, LoaderCircle, Paperclip } from "lucide-react";
 import { Checkbox } from "./ui/checkbox";
-import { UploadDocumentsForm } from "./UploadDocumentsForm";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
-import { cn } from "@/utils/cn";
+import { UploadDocumentsForm } from "./UploadDocumentsForm";
 
 function ChatMessages(props: {
   messages: Message[];
@@ -40,9 +41,9 @@ function ChatMessages(props: {
         const sourceKey = (props.messages.length - 1 - i).toString();
         return (
           <ChatMessageBubble
+            aiEmoji={props.aiEmoji}
             key={m.id}
             message={m}
-            aiEmoji={props.aiEmoji}
             sources={props.sourcesForMessages[sourceKey]}
           />
         );
@@ -65,6 +66,7 @@ export function ChatInput(props: {
   const disabled = props.loading && props.onStop == null;
   return (
     <form
+      className={cn("flex w-full flex-col", props.className)}
       onSubmit={(e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -75,14 +77,13 @@ export function ChatInput(props: {
           props.onSubmit(e);
         }
       }}
-      className={cn("flex w-full flex-col", props.className)}
     >
       <div className="mx-auto flex w-full max-w-screen-md flex-col gap-2 rounded-lg border border-input bg-secondary">
         <input
-          value={props.value}
-          placeholder={props.placeholder}
-          onChange={props.onChange}
           className="border-none bg-transparent p-4 outline-none"
+          onChange={props.onChange}
+          placeholder={props.placeholder}
+          value={props.value}
         />
 
         <div className="mb-2 ml-4 mr-2 flex justify-between">
@@ -90,9 +91,9 @@ export function ChatInput(props: {
 
           <div className="flex gap-2 self-end">
             {props.actions}
-            <Button type="submit" className="self-end" disabled={disabled}>
+            <Button className="self-end" disabled={disabled} type="submit">
               {props.loading ? (
-                <span role="status" className="flex justify-center">
+                <span className="flex justify-center" role="status">
                   <LoaderCircle className="animate-spin" />
                   <span className="sr-only">Loading...</span>
                 </span>
@@ -113,9 +114,9 @@ function ScrollToBottom(props: { className?: string }) {
   if (isAtBottom) return null;
   return (
     <Button
-      variant="outline"
       className={props.className}
       onClick={() => scrollToBottom()}
+      variant="outline"
     >
       <ArrowDown className="size-4" />
       <span>Scroll to bottom</span>
@@ -134,11 +135,11 @@ function StickyToBottomContent(props: {
   // scrollRef will also switch between overflow: unset to overflow: auto
   return (
     <div
+      className={cn("grid grid-rows-[1fr,auto]", props.className)}
       ref={context.scrollRef}
       style={{ width: "100%", height: "100%" }}
-      className={cn("grid grid-rows-[1fr,auto]", props.className)}
     >
-      <div ref={context.contentRef} className={props.contentClassName}>
+      <div className={props.contentClassName} ref={context.contentRef}>
         {props.content}
       </div>
 
@@ -152,8 +153,8 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
     <StickToBottom>
       <StickyToBottomContent
         className="absolute inset-0"
-        contentClassName="py-8 px-2"
         content={props.content}
+        contentClassName="py-8 px-2"
         footer={
           <div className="sticky bottom-8 px-2">
             <ScrollToBottom className="absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
@@ -297,27 +298,27 @@ export function ChatWindow(props: {
         ) : (
           <ChatMessages
             aiEmoji={props.emoji}
-            messages={chat.messages}
             emptyStateComponent={props.emptyStateComponent}
+            messages={chat.messages}
             sourcesForMessages={sourcesForMessages}
           />
         )
       }
       footer={
         <ChatInput
-          value={chat.input}
+          loading={chat.isLoading || intermediateStepsLoading}
           onChange={chat.handleInputChange}
           onSubmit={sendMessage}
-          loading={chat.isLoading || intermediateStepsLoading}
           placeholder={props.placeholder ?? "What's it like to be a pirate?"}
+          value={chat.input}
         >
           {props.showIngestForm && (
             <Dialog>
               <DialogTrigger asChild>
                 <Button
-                  variant="ghost"
                   className="-ml-2 pl-2 pr-3"
                   disabled={chat.messages.length !== 0}
+                  variant="ghost"
                 >
                   <Paperclip className="size-4" />
                   <span>Upload document</span>
@@ -338,13 +339,13 @@ export function ChatWindow(props: {
           {props.showIntermediateStepsToggle && (
             <div className="flex items-center gap-2">
               <Checkbox
-                id="show_intermediate_steps"
-                name="show_intermediate_steps"
                 checked={showIntermediateSteps}
                 disabled={chat.isLoading || intermediateStepsLoading}
+                id="show_intermediate_steps"
+                name="show_intermediate_steps"
                 onCheckedChange={(e) => setShowIntermediateSteps(!!e)}
               />
-              <label htmlFor="show_intermediate_steps" className="text-sm">
+              <label className="text-sm" htmlFor="show_intermediate_steps">
                 Show intermediate steps
               </label>
             </div>

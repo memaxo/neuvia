@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
 import { StreamingTextResponse } from "ai";
+import type { NextRequest} from "next/server";
+import { NextResponse } from "next/server";
+
 import { runRAGAgent } from "@/app/ai_sdk/rag/agent";
 
 export const runtime = "edge";

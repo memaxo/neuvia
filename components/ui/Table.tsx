@@ -1,4 +1,5 @@
-import React, { ReactNode } from 'react'
+import type { ReactNode } from 'react';
+import React from 'react'
 
 export default function Table({
   children,
@@ -14,8 +15,8 @@ export default function Table({
           {headers.map((header, index) => {
             return (
               <h1
-                key={index}
                 className="text-sm font-medium dark:text-slate-500"
+                key={index}
               >
                 {header}
               </h1>

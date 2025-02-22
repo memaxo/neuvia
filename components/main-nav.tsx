@@ -1,59 +1,53 @@
 'use client'
 
-import * as React from 'react'
-import { useEffect, useState } from 'react'
+import throttle from 'lodash.throttle'
+import { LogOut } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { createClient } from '@/utils/supabase/client'
-import { LogOut } from 'lucide-react'
-import { NavItem } from '@/types/nav'
-import { siteConfig } from '@/config/site'
-import { cn } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import * as React from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
 import { buttonVariants } from '@/components/ui/button'
+import { siteConfig } from '@/config/site'
+import { useAuth } from '@/contexts/AuthContext'
+import { cn } from '@/lib/utils'
+import type { NavItem } from '@/types/nav'
+
 import { ThemeToggle } from './theme-toggle'
+
 
 interface MainNavProps {
   items?: NavItem[]
 }
 
 export function MainNav({ items }: MainNavProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const router = useRouter()
+  const { session, isLoading, logout } = useAuth()
+  const isAuthenticated = !!session
   const [isScrolled, setIsScrolled] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-  const supabase = createClient()
+  const [isLoaded, setIsLoaded] = useState(true) // Assume loaded once context is provided
 
   useEffect(() => {
-    const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      setIsAuthenticated(!!session)
-
-      // Subscribe to auth changes
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((event, session) => {
-        setIsAuthenticated(!!session)
-      })
-
-      return () => subscription.unsubscribe()
-    }
-
-    checkSession()
-    setIsLoaded(true)
-
-    // Handle scroll events
-    const handleScroll = () => {
+    // Throttle the scroll event to update isScrolled at most once every 200ms
+    const throttledScroll = throttle(() => {
       setIsScrolled(window.scrollY > 10)
+    }, 200)
+    window.addEventListener('scroll', throttledScroll)
+    throttledScroll() // Check initial scroll position
+    return () => {
+      window.removeEventListener('scroll', throttledScroll)
     }
+  }, [])
 
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [supabase])
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-  }
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout()
+      router.refresh()
+    } catch (error) {
+      console.error('Error signing out:', error)
+    }
+  }, [logout, router])
 
   return (
     <div
@@ -75,19 +69,19 @@ export function MainNav({ items }: MainNavProps) {
             isLoaded && 'animate-fade-in'
           )}
         >
-          <Link href="/" className="group flex items-center space-x-2">
+          <Link className="group flex items-center space-x-2" href="/">
             <div className="relative overflow-hidden rounded-full">
               <Image
-                src="/neuvia-comp.jpg"
                 alt="Neuvia Logo"
-                width={28}
-                height={28}
                 className={cn(
                   'rounded-full transition-all duration-300',
                   'group-hover:scale-110 group-hover:brightness-110',
                   'dark:brightness-110',
                   isLoaded && 'animate-scale-in'
                 )}
+                height={28}
+                src="/neuvia-comp.jpg"
+                width={28}
               />
               <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
             </div>
@@ -107,14 +101,14 @@ export function MainNav({ items }: MainNavProps) {
                 (item, index) =>
                   item.href && (
                     <Link
-                      key={index}
-                      href={item.href}
                       className={cn(
                         'group relative flex items-center px-3 py-1 text-sm font-medium transition-all',
                         'text-foreground/70 dark:text-foreground/60',
                         'hover:text-foreground dark:hover:text-foreground/90',
                         item.disabled && 'cursor-not-allowed opacity-80'
                       )}
+                      href={item.href}
+                      key={index}
                     >
                       {item.title}
                       <span className="absolute inset-x-0 -bottom-1 h-0.5 origin-left scale-x-0 bg-gradient-to-r from-primary/60 via-primary/80 to-secondary/60 transition-transform group-hover:scale-x-100" />
@@ -138,7 +132,6 @@ export function MainNav({ items }: MainNavProps) {
           {isAuthenticated ? (
             <>
               <Link
-                href="/dashboard"
                 className={buttonVariants({
                   variant: 'ghost',
                   className: cn(
@@ -148,12 +141,12 @@ export function MainNav({ items }: MainNavProps) {
                     'hover:bg-foreground/[0.03] dark:hover:bg-foreground/[0.02]'
                   ),
                 })}
+                href="/dashboard"
               >
                 Dashboard
                 <span className="absolute inset-x-0 -bottom-1 h-0.5 origin-left scale-x-0 bg-gradient-to-r from-primary/60 via-primary/80 to-secondary/60 transition-transform group-hover:scale-x-100" />
               </Link>
               <button
-                onClick={handleLogout}
                 className={buttonVariants({
                   variant: 'ghost',
                   className: cn(
@@ -164,6 +157,7 @@ export function MainNav({ items }: MainNavProps) {
                     'backdrop-blur-sm'
                   ),
                 })}
+                onClick={handleLogout}
               >
                 <LogOut className="mr-2 size-4" />
                 Logout
@@ -172,7 +166,6 @@ export function MainNav({ items }: MainNavProps) {
           ) : (
             <>
               <Link
-                href="/auth"
                 className={buttonVariants({
                   variant: 'ghost',
                   className: cn(
@@ -187,11 +180,11 @@ export function MainNav({ items }: MainNavProps) {
                     'after:transition-all after:duration-300'
                   ),
                 })}
+                href="/auth"
               >
                 Sign In
               </Link>
               <Link
-                href="/onboarding"
                 className={cn(
                   'group relative',
                   'inline-flex items-center justify-center',
@@ -221,6 +214,7 @@ export function MainNav({ items }: MainNavProps) {
                   'backdrop-blur-sm',
                   'isolate'
                 )}
+                href="/onboarding"
               >
                 <span className="relative z-10 flex items-center gap-2 transition-transform duration-300 group-hover:translate-x-1">
                   <span className="relative">
@@ -230,15 +224,15 @@ export function MainNav({ items }: MainNavProps) {
                   <svg
                     className="size-4 transition-all duration-300 group-hover:translate-x-1 group-hover:scale-110"
                     fill="none"
-                    viewBox="0 0 24 24"
                     stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
                     <path
+                      className="group-hover:stroke-[2.5]"
+                      d="M13 7l5 5m0 0l-5 5m5-5H6"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
-                      className="group-hover:stroke-[2.5]"
                     />
                   </svg>
                 </span>

@@ -3,15 +3,24 @@
  * Uses a combination of LLM-based planning, web research, and content generation.
  */
 
+import { ChatAnthropic } from "@langchain/anthropic";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import {
     // If you install @langchain/langgraph:
     StateGraph,
 } from "@langchain/langgraph";
-import { z } from "zod";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatAnthropic } from "@langchain/anthropic";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
+
 import { loadConfiguration } from "./configuration";
+import {
+    reportPlannerQueryWriterInstructions,
+    reportPlannerInstructions,
+    queryWriterInstructions,
+    sectionWriterInstructions,
+    sectionGraderInstructions,
+    finalSectionWriterInstructions,
+} from "./prompts";
 import {
     type Section,
     type Sections,
@@ -32,14 +41,6 @@ import {
     perplexitySearch,
     getHumanFeedback,
 } from "./utils";
-import {
-    reportPlannerQueryWriterInstructions,
-    reportPlannerInstructions,
-    queryWriterInstructions,
-    sectionWriterInstructions,
-    sectionGraderInstructions,
-    finalSectionWriterInstructions,
-} from "./prompts";
 
 /**
  * This file demonstrates how you might replicate the "plan, feedback, parallel section building" logic in TS.

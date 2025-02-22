@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/utils/supabase/client'
 
 export type DocumentType = 
   | 'medical-image'  // DICOM, NIfTI, JPEG, PNG
@@ -105,8 +105,8 @@ const ALLOWED_MIME_TYPES = {
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 export class StorageService {
-  private supabase = createClientComponentClient()
-  private edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL + '/functions/v1'
+  private supabase = createClient()
+  private edgeFunctionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL  }/functions/v1`
   private activeUploads = new Map<string, XMLHttpRequest>()
   private pausedUploads = new Map<string, { file: File; metadata?: UploadMetadata; progress: number }>()
   private maxRetries = 3
@@ -388,7 +388,7 @@ export class StorageService {
         url: await this.getDownloadUrl(path, metadata?.patientId),
         type: metadata?.documentType,
         mimeType: file.type,
-        analysisData: analysisData,
+        analysisData,
         startTime,
         lastUpdate: Date.now(),
         bytesUploaded: file.size,

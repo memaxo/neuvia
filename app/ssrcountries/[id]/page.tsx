@@ -1,11 +1,13 @@
-import { getCountryById } from '@/queries/country-by-id'
-import { createReadOnlyClient } from '@/utils/supabase'
 import { prefetchQuery } from '@supabase-cache-helpers/postgrest-react-query'
 import {
   dehydrate,
   HydrationBoundary,
   QueryClient,
 } from '@tanstack/react-query'
+
+import { getCountryById } from '@/queries/country-by-id'
+import { createReadOnlyClient } from '@/utils/supabase'
+
 import Country from './country'
 
 export default async function CountryPage({

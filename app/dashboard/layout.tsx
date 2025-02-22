@@ -1,6 +1,8 @@
-import React from 'react'
 import { redirect } from 'next/navigation'
+import React from 'react'
+
 import { readUserSession } from '@/utils/actions'
+
 import DashboardBackground from './components/dashboard-background'
 import { DashboardSidebar } from './components/dashboard-sidebar'
 

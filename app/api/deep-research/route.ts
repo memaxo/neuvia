@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { ResearchChain } from "@/app/deep-research/chains/research";
-import { ResearchStateSchema } from "@/app/deep-research/state";
-import { loadConfiguration } from "@/app/deep-research/configuration";
+import type { NextRequest} from "next/server";
+import { NextResponse } from "next/server";
 import { ZodError } from "zod";
+
+import { ResearchChain } from "@/app/deep-research/chains/research";
+import { loadConfiguration } from "@/app/deep-research/configuration";
+import { ResearchStateSchema } from "@/app/deep-research/state";
 
 export async function POST(req: NextRequest) {
   try {

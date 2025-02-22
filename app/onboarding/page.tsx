@@ -1,12 +1,13 @@
-import React from 'react'
-import { Metadata } from 'next'
+import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { readUserSession } from '@/utils/actions'
-import { siteConfig } from '@/config/site'
-import { buttonVariants } from '@/components/ui/button'
+import React from 'react'
+
 import RegisterForm from '@/app/auth-server-action/components/RegisterForm'
+import { buttonVariants } from '@/components/ui/button'
+import { siteConfig } from '@/config/site'
+import { readUserSession } from '@/utils/actions'
 
 export const metadata: Metadata = {
   title: 'Onboarding',
@@ -55,15 +56,15 @@ export default async function OnboardingPage() {
             {/* Logo section */}
             <div className="mb-2 flex flex-col items-center space-y-2">
               <Link
-                href="/"
                 className="group mb-6 flex items-center space-x-2 rounded-full bg-background/5 px-4 py-2 backdrop-blur-sm transition-all duration-300 hover:bg-background/10 hover:shadow-lg hover:shadow-primary/10"
+                href="/"
               >
                 <Image
-                  src="/neuvia-comp.jpg"
                   alt="Neuvia Logo"
-                  width={24}
-                  height={24}
                   className="rounded-full transition-opacity group-hover:opacity-90"
+                  height={24}
+                  src="/neuvia-comp.jpg"
+                  width={24}
                 />
                 <span className="inline-block font-bold text-foreground transition-colors group-hover:text-primary">
                   {siteConfig.name}
@@ -98,15 +99,15 @@ export default async function OnboardingPage() {
             >
               By clicking continue, you agree to our{' '}
               <Link
-                href="/terms"
                 className="text-primary/90 underline underline-offset-4 transition-colors hover:text-primary"
+                href="/terms"
               >
                 Terms of Service
               </Link>{' '}
               and{' '}
               <Link
-                href="/privacy"
                 className="text-primary/90 underline underline-offset-4 transition-colors hover:text-primary"
+                href="/privacy"
               >
                 Privacy Policy
               </Link>
@@ -122,8 +123,8 @@ export default async function OnboardingPage() {
                 Already have an account?
               </span>{' '}
               <Link
-                href="/auth"
                 className="text-primary/90 underline underline-offset-4 transition-colors hover:text-primary"
+                href="/auth"
               >
                 Sign in
               </Link>

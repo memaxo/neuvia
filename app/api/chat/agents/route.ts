@@ -1,17 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Message as VercelChatMessage, StreamingTextResponse } from "ai";
-
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { ChatOpenAI } from "@langchain/openai";
-import { SerpAPI } from "@langchain/community/tools/serpapi";
 import { Calculator } from "@langchain/community/tools/calculator";
+import { SerpAPI } from "@langchain/community/tools/serpapi";
+import type {
+  BaseMessage} from "@langchain/core/messages";
 import {
   AIMessage,
-  BaseMessage,
   ChatMessage,
   HumanMessage,
   SystemMessage,
 } from "@langchain/core/messages";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { ChatOpenAI } from "@langchain/openai";
+import type { Message as VercelChatMessage} from "ai";
+import { NextResponse } from "next/server";
+import type { NextRequest} from "next/server";
+import { streamText } from 'ai';
 
 export const runtime = "edge";
 
@@ -118,7 +120,8 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      return new StreamingTextResponse(transformStream);
+      const response = streamText({ textStream: transformStream });
+      return response.toTextStreamResponse();
     } else {
       /**
        * We could also pick intermediate steps out from `streamEvents` chunks, but

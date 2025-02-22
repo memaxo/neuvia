@@ -1,4 +1,5 @@
 import { Filter, PlusCircle, Search, SlidersHorizontal } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -7,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+
 import { PatientFilters } from './components/patient-filters'
 import { PatientList } from './components/patient-list'
 
@@ -40,9 +42,9 @@ export default function PatientsPage() {
             <div className="relative overflow-hidden rounded-xl backdrop-blur-sm transition-all duration-300 group-focus-within:shadow-[0_0_30px_rgba(0,255,255,0.1)]">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
               <Input
-                type="search"
-                placeholder="Search patients by name, ID, or status..."
                 className="h-11 w-full border-white/5 bg-black/40 pl-11 text-base text-white/70 transition-all duration-300 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20 group-focus-within:border-cyan-500/30"
+                placeholder="Search patients by name, ID, or status..."
+                type="search"
               />
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-focus-within:opacity-100">
                 <div className="group-focus-within:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
@@ -55,9 +57,9 @@ export default function PatientsPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
                   className="size-11 rounded-xl border border-white/5 bg-black/40 text-white/60 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/60 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+                  size="icon"
+                  variant="ghost"
                 >
                   <Filter className="size-4" />
                 </Button>
@@ -70,9 +72,9 @@ export default function PatientsPage() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="icon"
                   className="size-11 rounded-xl border border-white/5 bg-black/40 text-white/60 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/60 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+                  size="icon"
+                  variant="ghost"
                 >
                   <SlidersHorizontal className="size-4" />
                 </Button>

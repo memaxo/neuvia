@@ -1,12 +1,13 @@
-import React from 'react'
+import { type User } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { type User } from '@supabase/supabase-js'
+import React from 'react'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
-import { siteConfig } from '@/config/site'
+
+import { getUser } from '@/app/auth/actions'
 import { ContactForm } from '@/components/forms/contact'
 import { Icons } from '@/components/icons'
-import { getUser } from '@/app/auth/actions'
+import { siteConfig } from '@/config/site'
 
 export default async function ContactPage() {
   const { data, error } = await getUser()
@@ -19,7 +20,7 @@ export default async function ContactPage() {
     <div className="mt-10 px-2 lg:p-8">
       <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col items-center space-y-2 text-center">
-          <Link href="/" className="mb-8 flex items-center space-x-2">
+          <Link className="mb-8 flex items-center space-x-2" href="/">
             <Icons.logo className="size-6" />
             <span className="inline-block font-bold">{siteConfig.name}</span>
           </Link>

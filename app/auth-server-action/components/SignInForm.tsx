@@ -1,12 +1,13 @@
 'use client'
 
-import { useTransition } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AuthTokenResponse } from '@supabase/supabase-js'
+import type { AuthTokenResponse } from '@supabase/supabase-js'
+import { useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
-import { cn } from '@/lib/utils'
+
+import { loginWithEmailAndPassword } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -18,7 +19,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
-import { loginWithEmailAndPassword } from '@/app/auth/actions'
+import { cn } from '@/lib/utils'
 
 const SignInSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address' }),
@@ -78,9 +79,9 @@ export default function SignInForm() {
               <FormLabel>Email</FormLabel>
               <FormControl>
                 <Input
+                  disabled={isPending}
                   placeholder="example@gmail.com"
                   type="email"
-                  disabled={isPending}
                   {...field}
                 />
               </FormControl>
@@ -96,9 +97,9 @@ export default function SignInForm() {
               <FormLabel>Password</FormLabel>
               <FormControl>
                 <Input
+                  disabled={isPending}
                   placeholder="Enter your password"
                   type="password"
-                  disabled={isPending}
                   {...field}
                 />
               </FormControl>
@@ -108,9 +109,9 @@ export default function SignInForm() {
         />
         <Button
           className="flex w-full items-center gap-2"
-          variant="outline"
-          type="submit"
           disabled={isPending}
+          type="submit"
+          variant="outline"
         >
           {isPending ? 'Signing in...' : 'Sign In'}{' '}
           <AiOutlineLoading3Quarters

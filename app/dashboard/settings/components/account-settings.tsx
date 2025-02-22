@@ -1,11 +1,12 @@
 'use client'
 
-import Image from 'next/image'
 import { Building, Camera, Mail, Phone, User } from 'lucide-react'
-import { _cn as cn } from '@/lib/utils'
+import Image from 'next/image'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { _cn as cn } from '@/lib/utils'
 
 export function AccountSettings() {
   return (
@@ -15,11 +16,11 @@ export function AccountSettings() {
         <div className="group relative">
           <div className="relative size-20 overflow-hidden rounded-full">
             <Image
-              src="/placeholder.jpg"
               alt="Profile picture"
               className="size-full object-cover"
-              width={80}
               height={80}
+              src="/placeholder.jpg"
+              width={80}
             />
           </div>
           <button className="absolute bottom-0 right-0 rounded-lg border border-white/10 bg-black/60 p-1.5 text-white/70 transition-colors duration-300 hover:text-white">
@@ -33,9 +34,9 @@ export function AccountSettings() {
           </p>
           <div className="mt-2 flex items-center gap-2">
             <Button
-              variant="ghost"
-              size="sm"
               className="group relative overflow-hidden bg-black/40 text-white/70 hover:bg-black/60 hover:text-white"
+              size="sm"
+              variant="ghost"
             >
               Change Photo
               <div className="absolute inset-0 overflow-hidden">
@@ -43,9 +44,9 @@ export function AccountSettings() {
               </div>
             </Button>
             <Button
-              variant="ghost"
-              size="sm"
               className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+              size="sm"
+              variant="ghost"
             >
               Remove
             </Button>
@@ -63,8 +64,8 @@ export function AccountSettings() {
             <div className="relative">
               <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
               <Input
-                placeholder="Enter your full name"
                 className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Enter your full name"
               />
             </div>
           </div>
@@ -78,9 +79,9 @@ export function AccountSettings() {
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
               <Input
-                type="email"
-                placeholder="Enter your email"
                 className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Enter your email"
+                type="email"
               />
             </div>
           </div>
@@ -94,9 +95,9 @@ export function AccountSettings() {
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
               <Input
-                type="tel"
-                placeholder="Enter your phone number"
                 className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Enter your phone number"
+                type="tel"
               />
             </div>
           </div>
@@ -110,8 +111,8 @@ export function AccountSettings() {
             <div className="relative">
               <Building className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
               <Input
-                placeholder="Enter your organization"
                 className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Enter your organization"
               />
             </div>
           </div>

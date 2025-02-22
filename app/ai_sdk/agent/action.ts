@@ -1,12 +1,12 @@
 // app/ai_sdk/agent/action.ts
 "use server";
 
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
+import type { ChatPromptTemplate } from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import { createStreamableValue } from "ai/rsc";
 import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
 import { pull } from "langchain/hub";
-import { createStreamableValue } from "ai/rsc";
 
 export async function runAgent(input: string) {
   "use server";

@@ -1,14 +1,15 @@
+import { CheckCircle, Shield } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { Route } from 'next'
-import { readUserSession } from '@/utils/actions'
-import { CheckCircle, Shield } from 'lucide-react'
-import { siteConfig } from '@/config/site'
+
 import BackgroundSpline from '@/components/background-spline'
 import Features from '@/components/features'
 import { SecurityBadge } from '@/components/security-badge'
 import { TechnicalText } from '@/components/technical-text'
 import { buttonVariants } from '@/components/ui/button'
+import { siteConfig } from '@/config/site'
+import { readUserSession } from '@/utils/actions'
 
 export default async function IndexPage() {
   const { data: userSession } = await readUserSession()
@@ -35,9 +36,9 @@ export default async function IndexPage() {
             <h1 className="animate-fade-in font-sans text-6xl font-extrabold leading-tight tracking-tight text-white drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)] sm:text-7xl md:text-8xl">
               Augment Your Clinical Judgment with{' '}
               <TechnicalText
-                variant="highlight"
                 animate
                 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text font-black text-transparent"
+                variant="highlight"
               >
                 AI-Powered Intelligence
               </TechnicalText>
@@ -47,8 +48,8 @@ export default async function IndexPage() {
             <p className="animate-slide-up mx-auto max-w-3xl py-2 text-lg font-medium leading-relaxed tracking-wide text-white backdrop-blur-sm sm:text-xl md:text-2xl">
               Reduce chart review time by{' '}
               <TechnicalText
-                variant="technical"
                 className="font-bold text-cyan-300"
+                variant="technical"
               >
                 60%
               </TechnicalText>{' '}
@@ -62,11 +63,11 @@ export default async function IndexPage() {
               style={{ animationDelay: '0.2s' }}
             >
               <Link
-                href={siteConfig.links.signup as Route}
                 className={buttonVariants({
                   className:
                     'group relative transform overflow-hidden rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 px-10 py-7 text-xl font-bold text-white shadow-[0_0_30px_rgba(0,255,255,0.3)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:from-cyan-400 hover:via-blue-400 hover:to-purple-500 hover:shadow-[0_0_40px_rgba(0,255,255,0.5)]',
                 })}
+                href={siteConfig.links.signup as Route}
               >
                 <span className="relative z-10 flex items-center">
                   Watch Clinical Demo

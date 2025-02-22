@@ -1,10 +1,11 @@
 'use server'
 
+import type { AuthError, User } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/utils/supabase'
-import type { AuthError, User } from '@supabase/supabase-js'
 import { z } from 'zod'
+
+import { createServerClient } from '@/utils/supabase'
 
 // Validation schemas
 const emailSchema = z.string().email('Please enter a valid email address')

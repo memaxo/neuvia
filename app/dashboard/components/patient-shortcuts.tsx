@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import {
   Calendar,
   FileText,
@@ -10,7 +9,9 @@ import {
   Upload,
   User,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import Link from 'next/link'
+import { useState, useEffect } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -24,6 +25,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
+
+import type { Patient } from './types'
 
 interface Patient {
   id: number
@@ -32,73 +37,6 @@ interface Patient {
   nextAppointment?: string
   lastActivity: string
   riskLevel: number // 0-100
-}
-
-// Replace hardcoded patients with live data
-import { useState, useEffect } from 'react'
-import type { Patient } from './types'
-
-export function PatientShortcuts() {
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function fetchPatients() {
-      try {
-        const response = await fetch('/api/patients')
-        if (!response.ok) {
-          throw new Error('Failed to fetch patients')
-        }
-        const data = await response.json()
-        setPatients(data.patients)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error')
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchPatients()
-  }, [])
-
-  if (loading) {
-    return <div className="p-4 text-center text-white/70">Loading patients...</div>
-  }
-
-  if (error) {
-    return <div className="p-4 text-center text-red-400">{error}</div>
-  }
-
-  return (
-    <div className="grid grid-cols-1 gap-4">
-      {patients.map((patient) => (
-        <div
-          key={patient.id}
-          className={cn(
-            'group relative flex flex-col rounded-xl p-4 bg-black/20 backdrop-blur-sm border border-white/5 transition-all duration-300 hover:-translate-y-1 hover:bg-black/40 hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
-          )}
-        >
-          <div className="relative z-10">
-            <div className="flex items-start gap-1.5">
-              <div className="w-6 flex-none text-center">
-                <div className="text-[10px] text-white/40">
-                  {patient.name.substring(0, 3).toUpperCase()}
-                </div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] text-white/60 truncate">
-                  {patient.name} - {patient.status}
-                </p>
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-white/50">
-              Next: {patient.nextAppointment || 'No upcoming appointment'}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 const statusColors = {
@@ -139,6 +77,36 @@ const getRiskDescription = (risk: number) => {
 }
 
 export function PatientShortcuts() {
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchPatients() {
+      try {
+        const response = await fetch('/api/patients')
+        if (!response.ok) {
+          throw new Error('Failed to fetch patients')
+        }
+        const data = await response.json()
+        setPatients(data.patients)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchPatients()
+  }, [])
+
+  if (loading) {
+    return <div className="p-4 text-center text-white/70">Loading patients...</div>
+  }
+
+  if (error) {
+    return <div className="p-4 text-center text-red-400">{error}</div>
+  }
+
   return (
     <TooltipProvider>
       <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
@@ -149,9 +117,9 @@ export function PatientShortcuts() {
               Recent Patients
             </h3>
             <Button
-              variant="ghost"
-              size="sm"
               className="group relative overflow-hidden bg-black/20 text-white/70 transition-all duration-300 hover:scale-105 hover:bg-black/40 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+              size="sm"
+              variant="ghost"
             >
               <span className="relative z-10">View All</span>
               <div className="absolute inset-0 overflow-hidden">
@@ -166,7 +134,6 @@ export function PatientShortcuts() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {patients.map((patient) => (
               <div
-                key={patient.id}
                 className={cn(
                   'group relative flex flex-col',
                   'rounded-xl p-4',
@@ -176,6 +143,7 @@ export function PatientShortcuts() {
                   'hover:-translate-y-1 hover:bg-black/40',
                   'hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
                 )}
+                key={patient.id}
               >
                 {/* Enhanced gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -228,9 +196,9 @@ export function PatientShortcuts() {
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 text-white/40 transition-all hover:scale-110 hover:bg-black/40 hover:text-white/60"
+                          size="icon"
+                          variant="ghost"
                         >
                           <MoreVertical className="size-4" />
                         </Button>
@@ -258,9 +226,9 @@ export function PatientShortcuts() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
-                            variant="ghost"
-                            size="icon"
                             className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                            size="icon"
+                            variant="ghost"
                           >
                             <Calendar className="size-4" />
                           </Button>
@@ -273,9 +241,9 @@ export function PatientShortcuts() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                          size="icon"
+                          variant="ghost"
                         >
                           <FileText className="size-4" />
                         </Button>
@@ -287,9 +255,9 @@ export function PatientShortcuts() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                          size="icon"
+                          variant="ghost"
                         >
                           <MessageSquare className="size-4" />
                         </Button>
@@ -316,9 +284,9 @@ export function PatientShortcuts() {
 
                   {/* Enhanced clickable overlay */}
                   <Link
-                    href={`/dashboard/patients/${patient.id}`}
-                    className="absolute inset-0 z-20 rounded-xl"
                     aria-label={`View ${patient.name}'s profile`}
+                    className="absolute inset-0 z-20 rounded-xl"
+                    href={`/dashboard/patients/${patient.id}`}
                   />
 
                   {/* Enhanced scanning line effect */}

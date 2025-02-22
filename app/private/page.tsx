@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+
 import { getUser } from '@/app/auth/actions'
 
 export default async function PrivatePage() {

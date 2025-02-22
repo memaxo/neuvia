@@ -62,10 +62,10 @@ export default function AgentsPage() {
 
   return (
     <ChatWindow
-      endpoint="api/chat/agents"
-      emptyStateComponent={InfoCard}
-      placeholder="Squawk! I'm a conversational agent! Ask me about the current weather in Honolulu!"
       emoji="🦜"
+      emptyStateComponent={InfoCard}
+      endpoint="api/chat/agents"
+      placeholder="Squawk! I'm a conversational agent! Ask me about the current weather in Honolulu!"
       showIntermediateStepsToggle={true}
     />
   );

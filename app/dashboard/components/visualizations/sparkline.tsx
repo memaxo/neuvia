@@ -1,7 +1,8 @@
 'use client'
 
 import { useId } from 'react'
-import { TrendPoint } from '../types'
+
+import type { TrendPoint } from '../types'
 
 interface SparklineProps {
   data: TrendPoint[]
@@ -10,6 +11,23 @@ interface SparklineProps {
 }
 
 export function Sparkline({ data, color, height = 30 }: SparklineProps) {
+  // Early return if data is undefined or empty
+  if (!data?.length) {
+    return (
+      <svg className="opacity-50" height={height} width="100%">
+        <line
+          stroke={color}
+          strokeDasharray="4 4"
+          strokeWidth="1"
+          x1="0"
+          x2="100%"
+          y1={height / 2}
+          y2={height / 2}
+        />
+      </svg>
+    )
+  }
+
   const values = data.map((d) => d.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
@@ -30,14 +48,14 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
 
   return (
     <svg
-      width="100%"
+      className="group overflow-visible"
       height={height}
       preserveAspectRatio="none"
-      className="group overflow-visible"
       style={{
         '--gradient-url': `url(#${gradientId})`,
         '--hover-gradient-url': `url(#${hoverGradientId})`,
       } as React.CSSProperties}
+      width="100%"
     >
       {/* Enhanced gradient definitions */}
       <defs>
@@ -53,29 +71,29 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
 
       {/* Enhanced area fill with hover effect */}
       <path
-        d={`M0,${height} ${points} ${100},${height} Z`}
         className="fill-[var(--gradient-url)] opacity-50 transition-all duration-300 group-hover:fill-[var(--hover-gradient-url)] group-hover:opacity-75"
+        d={`M0,${height} ${points} ${100},${height} Z`}
       />
 
       {/* Background line with enhanced effect */}
       <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1"
-        strokeOpacity="0.1"
         className="group-hover:stroke-opacity-20 transition-all duration-300"
+        fill="none"
+        points={points}
+        stroke={color}
+        strokeOpacity="0.1"
+        strokeWidth="1"
       />
 
       {/* Enhanced foreground line */}
       <polyline
-        points={points}
+        className="group-hover:stroke-width-2 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
         fill="none"
+        points={points}
         stroke={color}
-        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="group-hover:stroke-width-2 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
+        strokeWidth="1.5"
       />
 
       {/* Enhanced data points with animations */}
@@ -84,22 +102,22 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
         const y = height - ((d.value - min) / range) * height
         return (
           <g
-            key={i}
             className="opacity-0 transition-all duration-300 group-hover:opacity-100"
+            key={i}
           >
             <circle
+              className="drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-transform duration-300 hover:scale-150"
               cx={`${x}%`}
               cy={y}
-              r="2"
               fill={color}
-              className="drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-transform duration-300 hover:scale-150"
+              r="2"
             />
             {/* Value tooltip on hover */}
             <text
+              className="fill-white/70 text-[10px] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              textAnchor="middle"
               x={`${x}%`}
               y={y - 8}
-              textAnchor="middle"
-              className="fill-white/70 text-[10px] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
             >
               {d.value}
             </text>
@@ -109,11 +127,11 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
 
       {/* Enhanced end point with glow effect */}
       <circle
+        className="group-hover:r-3 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
         cx="100%"
         cy={height - ((data[data.length - 1].value - min) / range) * height}
-        r="2"
         fill={color}
-        className="group-hover:r-3 drop-shadow-[0_0_3px_rgba(0,255,255,0.3)] transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(0,255,255,0.5)]"
+        r="2"
       />
     </svg>
   )

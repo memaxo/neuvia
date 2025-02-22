@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
 
@@ -17,8 +18,8 @@ export default function ChatPage() {
 
   return (
     <ChatWindow
-      endpoint="/api/chat/rag"
       emptyStateComponent={InfoCard}
+      endpoint="/api/chat/rag"
       placeholder="Ask about patient details or report insights…"
       showIntermediateStepsToggle={true}
     />

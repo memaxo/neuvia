@@ -1,8 +1,10 @@
 'use client'
 
 import { AlertCircle, CheckCircle, Info } from 'lucide-react'
-import { FileType as _ } from '@/types/file'
+
 import { cn } from '@/lib/utils'
+
+import { FileType as _ } from '@/types/file'
 
 const guidelines = [
   {
@@ -56,14 +58,13 @@ export function UploadGuidelines() {
       <div className="p-6">
         <div className="space-y-6">
           {guidelines.map((section, index) => (
-            <div key={index} className="space-y-3">
+            <div className="space-y-3" key={index}>
               <h3 className="text-lg font-medium text-white/90">
                 {section.title}
               </h3>
               <div className="space-y-2">
                 {section.items.map((item, itemIndex) => (
                   <div
-                    key={itemIndex}
                     className={cn(
                       'group relative rounded-xl p-3',
                       'bg-black/20 backdrop-blur-sm',
@@ -72,6 +73,7 @@ export function UploadGuidelines() {
                       'hover:bg-black/40',
                       'hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]'
                     )}
+                    key={itemIndex}
                   >
                     {/* Enhanced gradient overlay */}
                     <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

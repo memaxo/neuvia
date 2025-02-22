@@ -1,7 +1,7 @@
 'use client'
 
-import { cn } from '@/lib/utils'
 import type { Report } from '@/lib/reports.types'
+import { cn } from '@/lib/utils'
 
 interface DifferentialDiagnosis {
   condition: string
@@ -68,7 +68,7 @@ export function ReportDetail({ report }: ReportDetailProps) {
           {differentialDiagnoses.length > 0 ? (
             <ul className="list-disc space-y-1 pl-5">
               {differentialDiagnoses.map((diagnosis: DifferentialDiagnosis, idx: number) => (
-                <li key={idx} className="text-sm text-foreground">
+                <li className="text-sm text-foreground" key={idx}>
                   {diagnosis.condition} - {Math.round(diagnosis.confidence * 100)}% confidence
                 </li>
               ))}

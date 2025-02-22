@@ -1,5 +1,6 @@
-import { cn } from "@/utils/cn";
 import type { Message } from "ai/react";
+
+import { cn } from "@/utils/cn";
 
 export function ChatMessageBubble(props: {
   message: Message;
@@ -32,7 +33,7 @@ export function ChatMessageBubble(props: {
             </code>
             <code className="mr-2 mt-1 rounded bg-primary px-2 py-1 text-xs">
               {props.sources?.map((source, i) => (
-                <div className="mt-2" key={"source:" + i}>
+                <div className="mt-2" key={`source:${  i}`}>
                   {i + 1}. &quot;{source.pageContent}&quot;
                   {source.metadata?.loc?.lines !== undefined ? (
                     <div>

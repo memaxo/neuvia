@@ -1,9 +1,11 @@
 'use client'
 
 import { format, isSameDay } from 'date-fns'
-import { cn } from '@/lib/utils'
+
 import { Button } from '@/components/ui/button'
-import { Appointment } from '../types'
+import { cn } from '@/lib/utils'
+
+import type { Appointment } from '../types'
 
 interface MiniCalendarProps {
   appointments: Appointment[]
@@ -25,16 +27,16 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
         </h4>
         <div className="flex items-center gap-1">
           <Button
-            variant="ghost"
-            size="sm"
             className="h-5 px-1.5 text-[10px] text-white/60 hover:text-white"
+            size="sm"
+            variant="ghost"
           >
             Week
           </Button>
           <Button
-            variant="ghost"
-            size="sm"
             className="h-5 px-1.5 text-[10px] text-white/60 hover:text-white"
+            size="sm"
+            variant="ghost"
           >
             Month
           </Button>
@@ -47,11 +49,11 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
 
         return (
           <div
-            key={date.toISOString()}
             className={cn(
               'flex items-start gap-1.5 rounded px-1.5 py-1',
               isSameDay(date, today) ? 'bg-[#4B6BFD]/10' : 'hover:bg-black/20'
             )}
+            key={date.toISOString()}
           >
             <div className="w-6 flex-none text-center">
               <div className="text-[10px] text-white/40">
@@ -66,8 +68,8 @@ export function MiniCalendar({ appointments }: MiniCalendarProps) {
                 <div className="space-y-0.5">
                   {dayAppointments.map((apt) => (
                     <div
-                      key={apt.id}
                       className="truncate text-[10px] text-white/60 hover:text-white/80"
+                      key={apt.id}
                     >
                       {apt.patientName} - {apt.type}
                     </div>

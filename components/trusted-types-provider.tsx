@@ -1,5 +1,7 @@
-import { useEffect } from 'react'
+'use client'
+
 import Script from 'next/script'
+import { useEffect } from 'react'
 import filterXSS from 'xss'
 
 export function TrustedTypesProvider() {
@@ -52,8 +54,6 @@ export function TrustedTypesProvider() {
 
   return (
     <Script
-      id="trusted-types-init"
-      strategy="beforeInteractive"
       dangerouslySetInnerHTML={{
         __html: `
           if (window.trustedTypes && !window.trustedTypes.defaultPolicy) {
@@ -80,6 +80,8 @@ export function TrustedTypesProvider() {
           }
         `
       }}
+      id="trusted-types-init"
+      strategy="beforeInteractive"
     />
   )
 } 

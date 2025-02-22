@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Loader2, FileText } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+
 import { generateReport } from "../actions";
 import type { GenerateReportInput } from "../actions";
 
@@ -43,8 +45,8 @@ export function GenerateReportButton({
 
   return (
     <Button
-      onClick={handleGenerateReport}
       disabled={isGenerating}
+      onClick={handleGenerateReport}
       variant="default"
     >
       {isGenerating ? (

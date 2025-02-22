@@ -1,7 +1,10 @@
-import React from 'react';
-import { ResearchGraph } from '@/deep-research/components/research-graph';
 import { PlusCircle } from 'lucide-react'
+import Link from 'next/link'
+import React from 'react'
+
+import { ResearchGraph } from '@/app/deep-research/components/research-graph'
 import { buttonVariants } from '@/components/ui/button'
+
 import { DashboardHeader } from './components/dashboard-header'
 import { PatientOverview } from './components/patient-overview'
 import { PatientShortcuts } from './components/patient-shortcuts'
@@ -52,17 +55,15 @@ export default function DashboardPage() {
 
       {/* Floating action button */}
       <Link
-        href="/dashboard/patients/new"
         className={buttonVariants({
           className:
             'fixed bottom-4 right-4 flex items-center space-x-2 rounded-full bg-[#4B6BFD] px-3 py-2 font-medium text-white shadow-lg transition-all duration-300 hover:bg-[#4B6BFD]/90 hover:shadow-xl',
         })}
+        href="/dashboard/patients/new"
       >
         <PlusCircle className="size-4" />
         <span className="text-sm">Add Patient</span>
       </Link>
     </div>
   )
-  {/* Add the research process graph below the main dashboard content */}
-  <ResearchGraph />
 }

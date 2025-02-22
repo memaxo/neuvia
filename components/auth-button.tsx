@@ -1,11 +1,12 @@
 'use client'
 
 import React, { useEffect, useState, useTransition } from 'react'
-import { createClient } from '@/utils/supabase/client'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
+
 import { logout } from '@/app/auth/actions'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { createClient } from '@/utils/supabase/client'
 
 export default function AuthButton() {
   const [session, setSession] = useState<boolean>(false)

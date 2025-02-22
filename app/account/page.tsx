@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Separator } from '@/components/ui/separator'
-import AccountForm from './supa-account-form'
+
 import { getUser } from '@/app/auth/actions'
+import { Separator } from '@/components/ui/separator'
+
+import AccountForm from './supa-account-form'
 
 export default async function SettingsAccountPage() {
   const { data, error } = await getUser()
@@ -21,10 +23,10 @@ export default async function SettingsAccountPage() {
           <p className="text-justify text-base">Update your account...</p>
 
           <Link
-            href="/playground"
-            target="_blank"
-            rel="noreferrer"
             className="text-1xl font-bold tracking-tighter sm:text-3xl"
+            href="/playground"
+            rel="noreferrer"
+            target="_blank"
           >
             Check out the OpenAI Playground!
           </Link>

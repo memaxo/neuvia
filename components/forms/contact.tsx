@@ -3,6 +3,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+
+import { updateInqueries } from '@/app/contact/actions'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -15,7 +17,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { updateInqueries } from '@/app/contact/actions'
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -58,7 +59,7 @@ export function ContactForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+      <form className="space-y-8" onSubmit={form.handleSubmit(onSubmit)}>
         <FormField
           control={form.control}
           name="name"
@@ -79,7 +80,7 @@ export function ContactForm() {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="Your email" {...field} />
+                <Input placeholder="Your email" type="email" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

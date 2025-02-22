@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+
 import DEFAULT_RETRIEVAL_TEXT from "@/data/DefaultRetrievalText";
+
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 
@@ -28,22 +30,22 @@ export function UploadDocumentsForm() {
     setIsLoading(false);
   };
   return (
-    <form onSubmit={ingest} className="flex w-full flex-col gap-4">
+    <form className="flex w-full flex-col gap-4" onSubmit={ingest}>
       <Textarea
         className="min-h-[512px] grow rounded bg-transparent p-4"
-        value={document}
         onChange={(e) => setDocument(e.target.value)}
+        value={document}
       />
       <Button type="submit">
         <div
-          role="status"
           className={`${isLoading ? "" : "hidden"} flex justify-center`}
+          role="status"
         >
           <svg
             aria-hidden="true"
             className="size-6 animate-spin fill-sky-800 text-white dark:text-white"
-            viewBox="0 0 100 101"
             fill="none"
+            viewBox="0 0 100 101"
             xmlns="http://www.w3.org/2000/svg"
           >
             <path

@@ -7,6 +7,7 @@ import {
   User,
   Workflow,
 } from 'lucide-react'
+
 import { AccountSettings } from './components/account-settings'
 import { AppearanceSettings } from './components/appearance-settings'
 import { DataSettings } from './components/data-settings'
@@ -80,8 +81,8 @@ export default function SettingsPage() {
           const Component = section.component
           return (
             <div
-              key={section.id}
               className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl"
+              key={section.id}
             >
               {/* Section Header */}
               <div className="border-b border-white/5 p-6">

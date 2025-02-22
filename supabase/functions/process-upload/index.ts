@@ -3,6 +3,7 @@
 // This enables autocomplete, go to definition, etc.
 
 import { createClient } from "jsr:@supabase/supabase-js"
+
 import { corsHeaders } from '../_shared/cors.ts'
 
 interface ProcessUploadRequest {

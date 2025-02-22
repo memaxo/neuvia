@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+
 import { createSupbaseServerClient } from '@/utils/supaone'
 
 export async function signUpWithEmailAndPassword(data: {

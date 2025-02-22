@@ -1,12 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
 import { type User } from '@supabase/supabase-js'
-import { cn } from '@/lib/utils'
+import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
+
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+import { createClient } from '@/utils/supabase/client'
+
+
 import Avatar from './avatar'
 
 type Profile = {
@@ -111,13 +114,14 @@ export default function AccountForm({ user }: { user: User | null }) {
   return (
     <div className="w-full space-y-8 px-2 py-8">
       <Avatar
-        uid={user?.id ?? null}
-        url={avatar_url}
-        size={144}
+        email={email}
         onUpload={(url) => {
           setAvatarUrl(url)
           updateProfile({ fullname, username, website, email, avatar_url: url })
         }}
+        size={144}
+        uid={user?.id ?? null}
+        url={avatar_url}
       />
       {error && (
         <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
@@ -135,10 +139,10 @@ export default function AccountForm({ user }: { user: User | null }) {
           className={cn(
             'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
           )}
+          disabled
           id="email"
           type="text"
           value={user?.email}
-          disabled
         />
       </div>
       <div className="flex flex-col">
@@ -153,9 +157,9 @@ export default function AccountForm({ user }: { user: User | null }) {
             'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="fullName"
+          onChange={(e) => setFullname(e.target.value)}
           type="text"
           value={fullname || ''}
-          onChange={(e) => setFullname(e.target.value)}
         />
       </div>
       <div className="flex flex-col">
@@ -170,9 +174,9 @@ export default function AccountForm({ user }: { user: User | null }) {
             'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="username"
+          onChange={(e) => setUsername(e.target.value)}
           type="text"
           value={username || ''}
-          onChange={(e) => setUsername(e.target.value)}
         />
       </div>
       <div className="flex flex-col">
@@ -187,19 +191,19 @@ export default function AccountForm({ user }: { user: User | null }) {
             'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="website"
+          onChange={(e) => setWebsite(e.target.value)}
           type="url"
           value={website || ''}
-          onChange={(e) => setWebsite(e.target.value)}
         />
       </div>
 
       <div className="grid w-full grid-cols-1 justify-evenly">
         <button
           className={buttonVariants({ variant: 'outline' })}
+          disabled={loading}
           onClick={() =>
             updateProfile({ fullname, username, website, email, avatar_url })
           }
-          disabled={loading}
         >
           {loading ? 'Loading ...' : 'Update Account'}
         </button>
@@ -207,8 +211,8 @@ export default function AccountForm({ user }: { user: User | null }) {
 
       <div className="mb-2 flex w-full flex-col">
         <form
-          className="items-center space-y-8"
           action="/auth/signout"
+          className="items-center space-y-8"
           method="post"
         >
           <button

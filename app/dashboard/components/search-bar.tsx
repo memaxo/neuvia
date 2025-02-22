@@ -1,8 +1,9 @@
 'use client'
 
 import { Search } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
 export function SearchBar() {
   return (
@@ -12,8 +13,6 @@ export function SearchBar() {
         <div className="relative overflow-hidden rounded-xl backdrop-blur-sm transition-all duration-300 group-focus-within:shadow-[0_0_30px_rgba(0,255,255,0.1)]">
           <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
           <Input
-            type="search"
-            placeholder="Search patients, reports, or activities..."
             className={cn(
               'w-full border-white/5 bg-black/40 group-focus-within:border-cyan-500/30',
               'h-11 pl-11 pr-4',
@@ -21,6 +20,8 @@ export function SearchBar() {
               'focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20',
               'transition-all duration-300'
             )}
+            placeholder="Search patients, reports, or activities..."
+            type="search"
           />
 
           {/* Enhanced scanning line effect */}

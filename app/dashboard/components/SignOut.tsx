@@ -2,10 +2,11 @@
 
 import React, { useTransition } from 'react'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
-import { cn } from '@/lib/utils'
+
+import { logout } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
-import { logout } from '@/app/auth/actions'
+import { cn } from '@/lib/utils'
 
 export default function SignOut() {
   const [isPending, startTransition] = useTransition()
@@ -31,8 +32,8 @@ export default function SignOut() {
     <form action={onSubmit}>
       <Button
         className="flex w-full items-center gap-2"
-        variant="outline"
         disabled={isPending}
+        variant="outline"
       >
         {isPending ? 'Signing out...' : 'Sign Out'}{' '}
         <AiOutlineLoading3Quarters

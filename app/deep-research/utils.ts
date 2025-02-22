@@ -2,7 +2,7 @@
  * Utility functions for web search, source formatting, and user interaction.
  */
 
-import { SearchQuery } from "./state";
+import type { SearchQuery } from "./state";
 
 /**
  * Represents a single search result with metadata and content.
@@ -56,7 +56,7 @@ export function deduplicateAndFormatSources(
       const raw = source.raw_content ?? "";
       let truncated = raw;
       if (truncated.length > charLimit) {
-        truncated = truncated.slice(0, charLimit) + "... [truncated]";
+        truncated = `${truncated.slice(0, charLimit)  }... [truncated]`;
       }
       formatted += `Full source content limited to ${maxTokensPerSource} tokens: ${truncated}\n\n`;
     }
@@ -68,7 +68,7 @@ export function deduplicateAndFormatSources(
 /**
  * Formats an array of sections into a readable string format.
  */
-import { Section } from "./state";
+import type { Section } from "./state";
 
 export function formatSections(sections: Section[]): string {
   let out = "";

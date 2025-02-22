@@ -1,13 +1,13 @@
 'use client'
 
-import * as React from 'react'
-import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AuthTokenResponse } from '@supabase/supabase-js'
+import { useState } from 'react'
+import * as React from 'react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import { z } from 'zod'
-import { cn } from '@/lib/utils'
+
 import { Icons } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
+import { cn } from '@/lib/utils'
+
 import { loginWithEmailAndPassword, signInWithGithub, signUpWithEmailAndPassword } from '../actions'
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -89,13 +91,13 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
                     <FormLabel htmlFor="email">Email</FormLabel>
                     <FormControl>
                       <Input
-                        id="email"
-                        placeholder="name@example.com"
-                        type="email"
                         autoCapitalize="none"
                         autoComplete="email"
                         autoCorrect="off"
                         disabled={isLoading}
+                        id="email"
+                        placeholder="name@example.com"
+                        type="email"
                         {...field}
                       />
                     </FormControl>
@@ -113,9 +115,9 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
                     <FormLabel htmlFor="password">Password</FormLabel>
                     <FormControl>
                       <Input
+                        disabled={isLoading}
                         id="password"
                         type="password"
-                        disabled={isLoading}
                         {...field}
                       />
                     </FormControl>
@@ -133,9 +135,9 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
                     <FormLabel htmlFor="confirm">Confirm Password</FormLabel>
                     <FormControl>
                       <Input
+                        disabled={isLoading}
                         id="confirm"
                         type="password"
-                        disabled={isLoading}
                         {...field}
                       />
                     </FormControl>
@@ -164,8 +166,6 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
         </div>
       </div>
       <Button
-        variant="outline"
-        type="button"
         disabled={isLoading}
         onClick={() => {
           setIsLoading(true)
@@ -181,6 +181,8 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
             setIsLoading(false)
           }
         }}
+        type="button"
+        variant="outline"
       >
         {isLoading ? (
           <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />

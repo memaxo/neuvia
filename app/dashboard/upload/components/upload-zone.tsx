@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
 import { 
   FileType, Upload, X, StopCircle, Files, PlayCircle, PauseCircle, RefreshCw, Trash2,
   FileText, Image, FileImage, File, FilePdf, FileJson, FileCode
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useCallback } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -13,6 +13,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
 import { StorageService, type FileUpload, type DocumentType, type UploadMetadata } from '../lib/storage-service'
 
 // File type icons and labels
@@ -402,15 +404,15 @@ export function UploadZone({
     <div className="space-y-6">
       {/* Drop Zone */}
       <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
         className={cn(
           'group relative rounded-xl border-2 border-dashed p-8 text-center transition-all duration-300',
           isDragging
             ? 'border-cyan-500/50 bg-cyan-500/5'
             : 'border-white/10 bg-black/20 hover:border-cyan-500/30'
         )}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         {/* Enhanced gradient overlay */}
         <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -430,8 +432,8 @@ export function UploadZone({
           </p>
 
           <Button
-            onClick={() => document.getElementById('file-upload')?.click()}
             className="group/btn relative overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]"
+            onClick={() => document.getElementById('file-upload')?.click()}
           >
             <FileType className="mr-2 size-4" />
             Select Files
@@ -441,12 +443,12 @@ export function UploadZone({
           </Button>
 
           <input
-            id="file-upload"
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileSelect}
             accept={typeInfo.accept}
+            className="hidden"
+            id="file-upload"
+            multiple
+            onChange={handleFileSelect}
+            type="file"
           />
 
           <p className="mt-4 text-sm text-white/50">
@@ -482,10 +484,10 @@ export function UploadZone({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                           onClick={pauseAllUploads}
+                          size="icon"
+                          variant="ghost"
                         >
                           <PauseCircle className="size-4" />
                         </Button>
@@ -501,10 +503,10 @@ export function UploadZone({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                           onClick={resumeAllUploads}
+                          size="icon"
+                          variant="ghost"
                         >
                           <PlayCircle className="size-4" />
                         </Button>
@@ -520,10 +522,10 @@ export function UploadZone({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                           onClick={cancelAllUploads}
+                          size="icon"
+                          variant="ghost"
                         >
                           <StopCircle className="size-4" />
                         </Button>
@@ -539,10 +541,10 @@ export function UploadZone({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="ghost"
-                          size="icon"
                           className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                           onClick={clearCompleted}
+                          size="icon"
+                          variant="ghost"
                         >
                           <Trash2 className="size-4" />
                         </Button>
@@ -593,8 +595,8 @@ export function UploadZone({
           <div className="space-y-3">
             {uploads.map((upload) => (
               <div
-                key={upload.id}
                 className="group relative rounded-xl border border-white/5 bg-black/20 p-4 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/40"
+                key={upload.id}
               >
                 {/* Enhanced gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -638,10 +640,10 @@ export function UploadZone({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
-                                variant="ghost"
-                                size="icon"
                                 className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                 onClick={() => handleRetry(upload)}
+                                size="icon"
+                                variant="ghost"
                               >
                                 <RefreshCw className="size-4" />
                               </Button>
@@ -657,10 +659,10 @@ export function UploadZone({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
-                                variant="ghost"
-                                size="icon"
                                 className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                 onClick={() => handlePauseResume(upload)}
+                                size="icon"
+                                variant="ghost"
                               >
                                 {upload.status === 'uploading' ? (
                                   <PauseCircle className="size-4" />
@@ -682,10 +684,10 @@ export function UploadZone({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
-                                variant="ghost"
-                                size="icon"
                                 className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                 onClick={() => cancelUpload(upload)}
+                                size="icon"
+                                variant="ghost"
                               >
                                 <StopCircle className="size-4" />
                               </Button>
@@ -700,10 +702,10 @@ export function UploadZone({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
-                              variant="ghost"
-                              size="icon"
                               className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                               onClick={() => removeUpload(upload)}
+                              size="icon"
+                              variant="ghost"
                             >
                               <X className="size-4" />
                             </Button>

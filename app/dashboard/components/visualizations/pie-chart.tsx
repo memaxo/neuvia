@@ -1,14 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
+
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { PatientDistribution } from '../types'
+import { cn } from '@/lib/utils'
+
+import type { PatientDistribution } from '../types'
 
 interface PieChartProps {
   data: PatientDistribution[]
@@ -59,25 +61,25 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
     <TooltipProvider>
       <div className="group relative">
         <svg
-          width={size}
+          className="transition-transform duration-300 group-hover:scale-105"
           height={size}
           viewBox={`0 0 ${size} ${size}`}
-          className="transition-transform duration-300 group-hover:scale-105"
+          width={size}
         >
           {/* Enhanced gradient definitions */}
           <defs>
             {segments.map((segment, i) => (
               <linearGradient
-                key={`gradient-${i}`}
-                id={`pie-segment-${i}`}
                 gradientTransform={`rotate(${(segment.startAngle + segment.endAngle) / 2} ${size / 2} ${size / 2})`}
+                id={`pie-segment-${i}`}
+                key={`gradient-${i}`}
               >
                 <stop offset="0%" stopColor={segment.color} stopOpacity="1" />
                 <stop offset="100%" stopColor={segment.color} stopOpacity="0.7" />
               </linearGradient>
             ))}
             <filter id="pie-glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feGaussianBlur result="coloredBlur" stdDeviation="2" />
               <feMerge>
                 <feMergeNode in="coloredBlur" />
                 <feMergeNode in="SourceGraphic" />
@@ -90,8 +92,6 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
             <Tooltip key={i}>
               <TooltipTrigger asChild>
                 <path
-                  d={segment.path}
-                  fill={`url(#pie-segment-${i})`}
                   className={cn(
                     'cursor-pointer drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transition-all duration-300',
                     hoveredIndex === i
@@ -100,6 +100,8 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
                         ? 'opacity-60'
                         : 'opacity-90 hover:opacity-100'
                   )}
+                  d={segment.path}
+                  fill={`url(#pie-segment-${i})`}
                   onMouseEnter={() => setHoveredIndex(i)}
                   onMouseLeave={() => setHoveredIndex(null)}
                   style={{ filter: 'url(#pie-glow)' }}
@@ -127,10 +129,10 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
 
           {/* Enhanced center circle with blur effect */}
           <circle
+            className="fill-black/40 backdrop-blur-sm transition-all duration-300 group-hover:fill-black/50"
             cx={size / 2}
             cy={size / 2}
             r={size / 4}
-            className="fill-black/40 backdrop-blur-sm transition-all duration-300 group-hover:fill-black/50"
           />
         </svg>
 

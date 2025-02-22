@@ -6,10 +6,10 @@ export function SiteFooter() {
       <p className="text-balance text-center text-xs font-medium leading-loose text-muted-foreground">
         Copyright ©{' '}
         <a
-          href={siteConfig.links.github}
-          target="_blank"
-          rel="noreferrer"
           className="text-center text-xs font-medium"
+          href={siteConfig.links.github}
+          rel="noreferrer"
+          target="_blank"
         >
           2024 Neuvia.
         </a>

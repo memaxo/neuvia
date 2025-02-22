@@ -1,8 +1,9 @@
 'use client'
 
 import { Calendar, FileText, Filter, TrendingUp } from 'lucide-react'
-import { cn } from '@/lib/utils'
+
 import type { Report } from '@/lib/reports.types'
+import { cn } from '@/lib/utils'
 
 const filters = {
   type: [
@@ -59,14 +60,14 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-2">
             {filters.type.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ type: filter.value })}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ type: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -101,14 +102,14 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-2">
             {filters.timeframe.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ timeframe: filter.value })}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ timeframe: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -143,14 +144,14 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-2">
             {filters.status.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ status: filter.value })}
                 className={cn(
                   'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
                   'transition-all duration-300',
                   'hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
                   'backdrop-blur-sm'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ status: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />

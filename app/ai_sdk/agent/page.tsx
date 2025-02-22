@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import type { StreamEvent } from "@langchain/core/tracers/log_stream";
 import { readStreamableValue } from "ai/rsc";
-import { runAgent } from "./action";
-import { StreamEvent } from "@langchain/core/tracers/log_stream";
-import { Input } from "@/components/ui/input";
+import React, { useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+import { runAgent } from "./action";
+
+
 
 export default function Page() {
   const [input, setInput] = useState("");
@@ -40,22 +44,22 @@ export default function Page() {
 
   return (
     <div className="stretch mx-auto flex w-full max-w-4xl flex-col gap-3 py-12">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
         <Input
+          onChange={(e) => setInput(e.target.value)}
           placeholder="What's the weather like in..."
           value={input}
-          onChange={(e) => setInput(e.target.value)}
         />
-        <Button type="submit" disabled={isLoading}>
+        <Button disabled={isLoading} type="submit">
           Submit
         </Button>
       </form>
       <div
-        ref={scrollRef}
         className="flex h-[650px] flex-col gap-2 overflow-y-auto px-2"
+        ref={scrollRef}
       >
         {data.map((item, i) => (
-          <div key={i} className="rounded-lg bg-[#25252f] p-4">
+          <div className="rounded-lg bg-[#25252f] p-4" key={i}>
             <strong>Event:</strong> <p className="text-sm">{item.event}</p>
             <br />
             <strong>Data:</strong>{" "}
