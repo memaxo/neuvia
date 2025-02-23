@@ -121,138 +121,80 @@ const stats: StatItem[] = [
 
 export function QuickStats() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-[#6B818C]/10 bg-[#D8E4FF] backdrop-blur-xl">
-      {/* Header with enhanced gradient */}
-      <div className="border-b border-white/5 p-6">
+    <div className="relative overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
         <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-extrabold text-[#35605A] drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+          <h3 className="text-2xl font-bold text-[rgb(var(--foreground))]">
             Quick Stats
           </h3>
         </div>
       </div>
 
-      {/* Enhanced content section */}
+      {/* Content section */}
       <div className="p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {stats.map((stat, index) => (
             <TooltipProvider key={index}>
               <div className={cn(
-                "group relative rounded-xl border border-white/5 bg-black/20 p-6 transition-all duration-300 hover:-translate-y-1",
+                "group relative rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
+                "bg-[rgb(var(--background))/var(--opacity-40)] p-6",
+                "duration-normal transition-all hover:-translate-y-1",
+                "hover:bg-[rgb(var(--background))/var(--opacity-60)]",
                 stat.colorClass.hover
               )}>
-                {/* Enhanced gradient overlay effect */}
+                {/* Gradient overlay */}
                 <div className={cn(
-                  "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+                  "duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100",
                   stat.colorClass.gradient
                 )} />
 
-                {/* Content wrapper */}
-                <div className="relative z-10">
-                  {/* Trend indicator */}
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      "rounded-full p-1",
-                      stat.colorClass.bg
-                    )}>
-                      {stat.trend.isPositive ? (
-                        <ArrowUpIcon className={cn("size-3", stat.colorClass.text)} />
-                      ) : (
-                        <ArrowDownIcon className={cn("size-3", stat.colorClass.text)} />
+                {/* Content */}
+                <div className="relative z-10 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="grid grid-cols-[24px,1fr] items-start gap-3">
+                      {stat.action?.icon && (
+                        <stat.action.icon className="mt-0.5 size-5 text-[rgb(var(--foreground))/var(--opacity-60)]" />
                       )}
+                      <span className="block font-medium leading-none text-[rgb(var(--foreground))/var(--opacity-70)]">
+                        {stat.label}
+                      </span>
                     </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className={cn(
-                          "text-sm",
-stat.trend.isPositive ? "text-[#004FFF]" : "text-[#902D41]"
-                        )}>
-                          {stat.trend.value}%
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          {stat.trend.isPositive ? 'Increased' : 'Decreased'} by{' '}
-                          {stat.trend.value}% from last period
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <div className={cn(
+                      "flex items-center gap-1 rounded-full px-2 py-1 text-xs",
+                      stat.priority === 'high' && "bg-[rgb(var(--error))/var(--opacity-10)] text-[rgb(var(--error))]",
+                      stat.priority === 'medium' && "bg-[rgb(var(--warning))/var(--opacity-10)] text-[rgb(var(--warning))]",
+                      stat.priority === 'low' && "bg-[rgb(var(--success))/var(--opacity-10)] text-[rgb(var(--success))]"
+                    )}>
+                      {stat.priority}
+                    </div>
                   </div>
 
-                  {/* Value and action row */}
-                  <div className="mb-6 flex items-center justify-between">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="cursor-help space-y-2">
-                          <div className="bg-gradient-primary bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-                            {stat.value.toLocaleString()}
-                          </div>
-                          <div
-                            className={cn(
-                              'inline-flex rounded-full px-2.5 py-1 text-sm font-medium',
-                              stat.priority === 'high'
-                                ? 'bg-[rgb(var(--error)/0.2)] text-[rgb(var(--error)/1)]'
-                                : stat.priority === 'medium'
-                                  ? 'bg-[rgb(var(--processing)/0.2)] text-[rgb(var(--processing)/1)]'
-                                  : 'bg-[rgb(var(--success)/0.2)] text-[rgb(var(--success)/1)]'
-                            )}
-                          >
-                            {stat.priority === 'high'
-                              ? 'critical'
-                              : stat.priority === 'medium'
-                                ? 'attention'
-                                : 'normal'}
-                          </div>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Current {stat.label.toLowerCase()} count</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {stat.action && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Link
-                            className={cn(
-                              "flex size-8 items-center justify-center rounded-xl",
-                              stat.colorClass.bg,
-                              "transition-all duration-300 hover:scale-110"
-                            )}
-                            href={stat.action.href}
-                          >
-                            <stat.action.icon className={cn("size-4", stat.colorClass.text)} />
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{stat.action.label}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-[rgb(var(--foreground))]">
+                      {stat.value}
+                    </span>
+                    <span className={cn(
+                      "text-sm",
+                      stat.trend.isPositive ? "text-[rgb(var(--success))]" : "text-[rgb(var(--error))]"
+                    )}>
+                      {stat.trend.value}%
+                    </span>
                   </div>
 
-                  {/* Sparkline */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="h-[32px] cursor-help">
-                        <Sparkline
-                          color={stat.colorClass.spline}
-                          data={mockTrendData[stat.trendKey]}
-                          height={32}
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Trend over the last 7 days</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Enhanced scanning line effect */}
-                <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className={cn(
-                    "group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent",
-                    stat.colorClass.scan
-                  )} />
+                  {stat.action && (
+                    <Button
+                      className={cn(
+                        "mt-4 w-full justify-between",
+                        "bg-[rgb(var(--background))/var(--opacity-60)]",
+                        "hover:bg-[rgb(var(--background))/var(--opacity-80)]"
+                      )}
+                      variant="ghost"
+                    >
+                      {stat.action.label}
+                      <stat.action.icon className="size-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </TooltipProvider>

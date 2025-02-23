@@ -2,40 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base Medical Colors - Reference Only */
 :root {
-  /* Base Colors */
-  --background: 5 5 5; /* 050505 - Main background */
-  --foreground: 255 255 255; /* FFFFFF - Text color */
-  --border: 38 38 38; /* 262626 - Border color */
+  /* Shared Values */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
 
-  /* Primary Colors - For Actions & Key Data */
-  --primary: 0 79 255; /* 004FFF - Bright blue */
-  --primary-light: 51 127 255; /* 337FFF - Lighter blue */
-  --primary-dark: 0 63 204; /* 003FCC - Darker blue */
+  --animation-fast: 150ms;
+  --animation-normal: 300ms;
+  --animation-slow: 500ms;
 
-  /* Critical/Warning States */
-  --error: 144 45 65; /* 902D41 - Dark red */
-  --error-light: 167 64 89; /* A74059 - Lighter red */
-  --error-dark: 115 36 52; /* 732434 - Darker red */
+  /* Typography */
+  --font-sans:
+    'Geist Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono:
+    'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 
-  /* Secondary/Attention States */
-  --success: 49 175 212; /* 31AFD4 - Turquoise */
-  --success-light: 58 186 219; /* 3ABADB - Lighter turquoise */
-  --success-dark: 39 140 170; /* 278CAA - Darker turquoise */
-
-  /* Processing States */
-  --processing: 53 96 90; /* 35605A - Dark teal */
-  --processing-light: 64 115 140; /* 40738C - Lighter teal */
-  --processing-dark: 42 77 112; /* 2A4D70 - Darker teal */
-
-  /* UI States */
-  --inactive: 107 129 140; /* 6B818C - Gray */
-  --secondary: 216 228 255; /* D8E4FF - Light blue */
-
-  /* Accent Colors */
-  --accent: 255 0 127; /* FF007F - Pink */
-  --accent-light: 255 51 153; /* FF3399 - Lighter pink */
-  --accent-dark: 204 0 102; /* CC0066 - Darker pink */
+  /* Font Smoothing */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 
   /* Opacity Scales */
   --opacity-0: 0;
@@ -51,16 +44,126 @@
   --opacity-90: 0.9;
   --opacity-95: 0.95;
   --opacity-100: 1;
+}
 
-  /* Radii */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 1rem;
+/* Dark Mode (Default) */
+:root {
+  /* Base Colors */
+  --background: 5 5 5; /* #050505 - Deep dark */
+  --foreground: 255 255 255; /* #FFFFFF */
+  --border: 38 38 38; /* #262626 */
+  --shadow: 0 0 0; /* Black shadow base */
 
-  /* Animations */
-  --animation-fast: 150ms;
-  --animation-normal: 300ms;
-  --animation-slow: 500ms;
+  /* Medical Accent Scale */
+  --accent-1: 247 250 252; /* #F7FAFC - Lightest */
+  --accent-2: 237 242 247; /* #EDF2F7 */
+  --accent-3: 226 232 240; /* #E2E8F0 */
+  --accent-4: 203 213 224; /* #CBD5E0 */
+  --accent-5: 160 174 192; /* #A0AEC0 */
+  --accent-6: 113 128 150; /* #718096 */
+  --accent-7: 74 85 104; /* #4A5568 */
+  --accent-8: 45 55 72; /* #2D3748 */
+  --accent-9: 26 32 44; /* #1A202C */
+  --accent-10: 12 15 20; /* #0C0F14 - Darkest */
+
+  /* Primary Colors (Medical Teal) */
+  --primary: 0 132 124; /* #00847C */
+  --primary-light: 65 191 179; /* #41BFB3 */
+  --primary-dark: 0 107 103; /* #006B67 */
+
+  /* Secondary Colors (Tech Blue) */
+  --secondary: 74 144 226; /* #4A90E2 */
+  --secondary-light: 98 162 237; /* #62A2ED */
+  --secondary-dark: 44 82 130; /* #2C5282 */
+
+  /* Status Colors */
+  --success: 76 175 80; /* #4CAF50 */
+  --success-light: 102 187 106; /* #66BB6A */
+  --success-dark: 56 142 60; /* #388E3C */
+
+  --warning: 255 160 0; /* #FFA000 */
+  --warning-light: 255 179 0; /* #FFB300 */
+  --warning-dark: 255 143 0; /* #FF8F00 */
+
+  --error: 229 62 62; /* #E53E3E */
+  --error-light: 245 101 101; /* #F56565 */
+  --error-dark: 197 48 48; /* #C53030 */
+
+  /* UI States */
+  --processing: 0 132 124; /* Same as primary */
+  --inactive: 113 128 150; /* #718096 */
+
+  /* Neutral Scale (Geist-inspired) */
+  --neutral-1: 247 250 252; /* #F7FAFC */
+  --neutral-2: 237 242 247; /* #EDF2F7 */
+  --neutral-3: 226 232 240; /* #E2E8F0 */
+  --neutral-4: 203 213 224; /* #CBD5E0 */
+  --neutral-5: 160 174 192; /* #A0AEC0 */
+  --neutral-6: 113 128 150; /* #718096 */
+  --neutral-7: 74 85 104; /* #4A5568 */
+  --neutral-8: 45 55 72; /* #2D3748 */
+  --neutral-9: 26 32 44; /* #1A202C */
+  --neutral-10: 12 15 20; /* #0C0F14 */
+}
+
+/* Light Mode */
+[data-theme='light'] {
+  /* Base Colors */
+  --background: 247 250 252; /* #F7FAFC - Clean white */
+  --foreground: 26 32 44; /* #1A202C - Near black */
+  --border: 226 232 240; /* #E2E8F0 */
+  --shadow: 0 0 0; /* Black shadow base */
+
+  /* Medical Accent Scale (Inverted) */
+  --accent-1: 12 15 20; /* #0C0F14 */
+  --accent-2: 26 32 44; /* #1A202C */
+  --accent-3: 45 55 72; /* #2D3748 */
+  --accent-4: 74 85 104; /* #4A5568 */
+  --accent-5: 113 128 150; /* #718096 */
+  --accent-6: 160 174 192; /* #A0AEC0 */
+  --accent-7: 203 213 224; /* #CBD5E0 */
+  --accent-8: 226 232 240; /* #E2E8F0 */
+  --accent-9: 237 242 247; /* #EDF2F7 */
+  --accent-10: 247 250 252; /* #F7FAFC */
+
+  /* Primary Colors - Darker for contrast */
+  --primary: 0 107 103; /* #006B67 */
+  --primary-light: 0 132 124; /* #00847C */
+  --primary-dark: 0 87 84; /* #005754 */
+
+  /* Secondary Colors - Adjusted for light */
+  --secondary: 44 82 130; /* #2C5282 */
+  --secondary-light: 74 144 226; /* #4A90E2 */
+  --secondary-dark: 26 54 93; /* #1A365D */
+
+  /* Status Colors - Adjusted for light mode */
+  --success: 56 142 60; /* Darker for contrast */
+  --success-light: 76 175 80;
+  --success-dark: 46 125 50;
+
+  --warning: 245 124 0; /* Darker amber */
+  --warning-light: 255 160 0;
+  --warning-dark: 230 81 0;
+
+  --error: 197 48 48; /* Darker red */
+  --error-light: 229 62 62;
+  --error-dark: 155 28 28;
+
+  /* UI States */
+  --processing: var(--primary);
+  --inactive: 160 174 192; /* Lighter gray */
+
+  /* Neutral Scale - Light Mode (Inverted) */
+  --neutral-1: 12 15 20; /* #0C0F14 */
+  --neutral-2: 26 32 44; /* #1A202C */
+  --neutral-3: 45 55 72; /* #2D3748 */
+  --neutral-4: 74 85 104; /* #4A5568 */
+  --neutral-5: 113 128 150; /* #718096 */
+  --neutral-6: 160 174 192; /* #A0AEC0 */
+  --neutral-7: 203 213 224; /* #CBD5E0 */
+  --neutral-8: 226 232 240; /* #E2E8F0 */
+  --neutral-9: 237 242 247; /* #EDF2F7 */
+  --neutral-10: 247 250 252; /* #F7FAFC */
 }
 
 @layer base {

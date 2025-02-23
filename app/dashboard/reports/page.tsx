@@ -95,51 +95,75 @@ export default function ReportsPage() {
 
   if (error) {
     return (
-      <div className="p-8 text-red-400">
-        Error loading reports: {error.message}
+      <div className="relative flex-1 space-y-6 p-6">
+        <div className="absolute inset-0 bg-[rgb(var(--background))] shadow-2xl" />
+        <div className="relative rounded-xl border border-red-500/20 bg-red-500/10 p-6 backdrop-blur-sm">
+          <p className="text-red-400">Error loading reports: {error.message}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 p-8">
-      <h1 className="text-2xl font-bold">Reports</h1>
-      <ReportsOverview
-        stats={[
-          {
-            name: "Total Reports",
-            value: stats.total,
-            change: "+5%",
-            changeType: "increase",
-          },
-          {
-            name: "Completed",
-            value: stats.completed,
-            change: "+12%",
-            changeType: "increase",
-          },
-          {
-            name: "Processing",
-            value: stats.processing,
-            change: "0",
-            changeType: "neutral",
-          },
-          {
-            name: "Failed",
-            value: stats.failed,
-            change: "-2%",
-            changeType: "decrease",
-          },
-        ]}
-      />
+    <div className="relative flex-1">
+      {/* Background layer */}
+      <div className="absolute inset-0 bg-[rgb(var(--background))] shadow-2xl" />
+      
+      {/* Content stack */}
+      <div className="relative space-y-6 p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Reports</h1>
+        </div>
 
-      <div className="space-y-4">
-        <ReportsFilters onFilterChange={handleFilterChange} />
-        {loading ? (
-          <div className="text-center text-white/70">Loading reports...</div>
-        ) : (
-          <ReportsList reports={reports} />
-        )}
+        {/* Overview Stats */}
+        <ReportsOverview
+          stats={[
+            {
+              name: "Total Reports",
+              value: stats.total,
+              change: "+5%",
+              changeType: "increase",
+            },
+            {
+              name: "Completed",
+              value: stats.completed,
+              change: "+12%",
+              changeType: "increase",
+            },
+            {
+              name: "Processing",
+              value: stats.processing,
+              change: "0",
+              changeType: "neutral",
+            },
+            {
+              name: "Failed",
+              value: stats.failed,
+              change: "-2%",
+              changeType: "decrease",
+            },
+          ]}
+        />
+
+        {/* Main content area */}
+        <div className="grid gap-6 lg:grid-cols-[1fr,280px]">
+          {/* Reports list */}
+          <div className="space-y-4">
+            {loading ? (
+              <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] p-6 text-center backdrop-blur-sm">
+                <div className="text-white/70">Loading reports...</div>
+              </div>
+            ) : (
+              <ReportsList reports={reports} />
+            )}
+          </div>
+
+          {/* Filters sidebar */}
+          <div className="space-y-6">
+            <ReportsFilters onFilterChange={handleFilterChange} />
+          </div>
+        </div>
       </div>
     </div>
   );

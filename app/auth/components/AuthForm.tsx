@@ -10,6 +10,7 @@ import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
@@ -20,6 +21,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import { toast } from '@/components/ui/use-toast'
 
 import { loginWithEmailAndPassword, signInWithGoogle } from '../actions'
@@ -83,7 +85,7 @@ export function AuthForm() {
         })
       }
     })
-  }, [handleAuthResponse])
+  }, [])
 
   const handleGoogleSignIn = useCallback(async () => {
     startTransition(async () => {
@@ -102,7 +104,7 @@ export function AuthForm() {
         })
       }
     })
-  }, [handleAuthResponse])
+  }, [])
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((prev) => !prev)
@@ -175,65 +177,81 @@ export function AuthForm() {
   ), [])
 
   return (
-    <div className="grid gap-6">
-      <Form {...form}>
-        <form className="space-y-4" onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}>
-          <FormField
-            control={form.control}
-            name="email"
-            render={renderEmailField}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={renderPasswordField}
-          />
-          <FormField
-            control={form.control}
-            name="rememberMe"
-            render={renderRememberMeField}
-          />
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>Welcome back</CardTitle>
+        <CardDescription>Sign in to your account to continue</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-6">
+          <Form {...form}>
+            <form className="space-y-4" onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}>
+              <FormField
+                control={form.control}
+                name="email"
+                render={renderEmailField}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={renderPasswordField}
+              />
+              <FormField
+                control={form.control}
+                name="rememberMe"
+                render={renderRememberMeField}
+              />
+              <Button
+                className="group relative w-full overflow-hidden bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--primary-dark))] text-white shadow-lg transition-all hover:shadow-[0_0_30px_rgba(var(--primary),0.3)]"
+                disabled={isPending}
+                type="submit"
+              >
+                {isPending && (
+                  <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
+                )}
+                Sign In
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
+                </div>
+              </Button>
+            </form>
+          </Form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-[rgb(var(--background))] px-2 text-[rgb(var(--foreground)/var(--opacity-60))]">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
           <Button
-            className="w-full"
+            className="group relative overflow-hidden border border-[rgb(var(--border)/var(--opacity-10))] bg-[rgb(var(--background)/var(--opacity-40))] text-[rgb(var(--foreground)/var(--opacity-90))] backdrop-blur-xl transition-all hover:border-[rgb(var(--primary)/var(--opacity-30))] hover:bg-[rgb(var(--background)/var(--opacity-60))] hover:text-[rgb(var(--foreground))] hover:shadow-[0_0_20px_rgba(var(--primary),0.1)]"
             disabled={isPending}
-            type="submit"
+            onClick={() => void handleGoogleSignIn()}
+            type="button"
           >
-            {isPending && (
+            {isPending ? (
               <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Image
+                alt="Google Logo"
+                className="mr-2"
+                height={16}
+                src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTIyLjU2IDEyLjI1YzAtLjc4LS4wNy0xLjUzLS4yLTIuMjVIMTJ2NC4yNmg1LjkyYy0uMjYgMS4zNy0xLjA0IDIuNTMtMi4yMSAzLjMxdjIuNzdoMy41N2MyLjA4LTEuOTIgMy4yOC00Ljc0IDMuMjgtOC4wOXoiIGZpbGw9IiM0Mjg1RjQiLz48cGF0aCBkPSJNMTIgMjNjMi45NyAwIDUuNDYtLjk4IDcuMjgtMi42NmwtMy41Ny0yLjc3Yy0uOTguNjYtMi4yMyAxLjA2LTMuNzEgMS4wNi0yLjg2IDAtNS4yOS0xLjkzLTYuMTYtNC41M0gyLjE4djIuODRDMy45OSAyMC41MyA3LjcgMjMgMTIgMjN6IiBmaWxsPSIjMzRBODUzIi8+PHBhdGggZD0iTTUuODQgMTQuMDljLS4yMi0uNjYtLjM1LTEuMzYtLjM1LTIuMDlzLjEzLTEuNDMuMzUtMi4wOVY3LjA3SDIuMThDMS40MyA4LjU1IDEgMTAuMjIgMSAxMnMuNDMgMy40NSAxLjE4IDQuOTNsMi44NS0yLjIyLjgxLS42MnoiIGZpbGw9IiNGQkJDMDUiLz48cGF0aCBkPSJNMTIgNS4zOGMxLjYyIDAgMy4wNi41NiA0LjIxIDEuNjRsMy4xNS0zLjE1QzE3LjQ1IDIuMDkgMTQuOTcgMSAxMiAxIDcuNyAxIDMuOTkgMy40NyAyLjE4IDcuMDdsMy42NiAyLjg0Yy44Ny0yLjYgMy4zLTQuNTMgNi4xNi00LjUzeiIgZmlsbD0iI0VBNDMzNSIvPjxwYXRoIGQ9Ik0xIDFoMjJ2MjJIMXoiIGZpbGw9Im5vbmUiLz48L3N2Zz4="
+                width={16}
+              />
             )}
-            Sign In
+            Continue with Google
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary)/var(--opacity-30))] to-transparent" />
+            </div>
           </Button>
-        </form>
-      </Form>
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-[#35605A]" />
         </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-[#D8E4FF] px-2 text-[#6B818C]">
-            Or continue with
-          </span>
-        </div>
-      </div>
-      <Button
-        disabled={isPending}
-        onClick={() => void handleGoogleSignIn()}
-        type="button"
-        variant="outline"
-      >
-        {isPending ? (
-          <AiOutlineLoading3Quarters className="mr-2 size-4 animate-spin" />
-        ) : (
-          <Image
-            alt="Google Logo"
-            className="mr-2"
-            height={16}
-            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTIyLjU2IDEyLjI1YzAtLjc4LS4wNy0xLjUzLS4yLTIuMjVIMTJ2NC4yNmg1LjkyYy0uMjYgMS4zNy0xLjA0IDIuNTMtMi4yMSAzLjMxdjIuNzdoMy41N2MyLjA4LTEuOTIgMy4yOC00Ljc0IDMuMjgtOC4wOXoiIGZpbGw9IiM0Mjg1RjQiLz48cGF0aCBkPSJNMTIgMjNjMi45NyAwIDUuNDYtLjk4IDcuMjgtMi42NmwtMy41Ny0yLjc3Yy0uOTguNjYtMi4yMyAxLjA2LTMuNzEgMS4wNi0yLjg2IDAtNS4yOS0xLjkzLTYuMTYtNC41M0gyLjE4djIuODRDMy45OSAyMC41MyA3LjcgMjMgMTIgMjN6IiBmaWxsPSIjMzRBODUzIi8+PHBhdGggZD0iTTUuODQgMTQuMDljLS4yMi0uNjYtLjM1LTEuMzYtLjM1LTIuMDlzLjEzLTEuNDMuMzUtMi4wOVY3LjA3SDIuMThDMS40MyA4LjU1IDEgMTAuMjIgMSAxMnMuNDMgMy40NSAxLjE4IDQuOTNsMi44NS0yLjIyLjgxLS42MnoiIGZpbGw9IiNGQkJDMDUiLz48cGF0aCBkPSJNMTIgNS4zOGMxLjYyIDAgMy4wNi41NiA0LjIxIDEuNjRsMy4xNS0zLjE1QzE3LjQ1IDIuMDkgMTQuOTcgMSAxMiAxIDcuNyAxIDMuOTkgMy40NyAyLjE4IDcuMDdsMy42NiAyLjg0Yy44Ny0yLjYgMy4zLTQuNTMgNi4xNi00LjUzeiIgZmlsbD0iI0VBNDMzNSIvPjxwYXRoIGQ9Ik0xIDFoMjJ2MjJIMXoiIGZpbGw9Im5vbmUiLz48L3N2Zz4="
-            width={16}
-          />
-        )}
-        Google
-      </Button>
-    </div>
+      </CardContent>
+    </Card>
   )
 }

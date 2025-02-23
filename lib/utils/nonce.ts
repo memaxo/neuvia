@@ -13,44 +13,60 @@ export function generateNonce(): string {
 
 /**
  * Creates a CSP header value with the provided nonce
+ * This implements a strict Content Security Policy that:
+ * 1. Uses nonces for script/style validation
+ * 2. Implements Trusted Types for DOM XSS prevention
+ * 3. Handles development vs production differences
+ * 4. Supports Spline 3D and other third-party integrations
+ * 
  * @param nonce The nonce to include in the CSP
  * @returns A string containing the complete CSP header value
  */
 export function createCSPHeader(nonce: string): string {
   const directives = {
+    // Restrict default loading to same origin
     'default-src': ["'self'"],
+
+    // Script execution policy
     'script-src': [
       "'self'",
-      "'strict-dynamic'",
-      `'nonce-${nonce}'`,
-      'wasm-unsafe-eval', // Allow WebAssembly execution
-      // Allow Spline domains
+      "'strict-dynamic'",  // Allow scripts loaded by trusted scripts
+      `'nonce-${nonce}'`,  // Allow scripts with matching nonce
+      'wasm-unsafe-eval',  // Required for Spline's WebAssembly
+      // Third-party domains
       'https://*.spline.design',
       'https://unpkg.com',
-      // In development, allow unsafe-eval and unsafe-inline
+      // Development-only relaxations
       ...(process.env.NODE_ENV === 'development' 
-        ? ["'unsafe-eval'", "'unsafe-inline'"]
+        ? [
+            "'unsafe-eval'",   // Required for React DevTools/HMR
+            "'unsafe-inline'" // Fallback for older browsers
+          ]
         : [])
     ],
+
+    // Style loading policy
     'style-src': [
       "'self'",
       `'nonce-${nonce}'`,
-      // Allow unsafe-inline for styles in development
+      // Development-only relaxations for Tailwind JIT
       ...(process.env.NODE_ENV === 'development' 
         ? ["'unsafe-inline'"]
         : [])
     ],
-    // Restrict image sources to self, data URIs, and specific HTTPS domains
+
+    // Image loading policy - includes blob: for Spline's dynamic textures
     'img-src': [
       "'self'",
-      'data:',
-      'blob:',  // Allow blob URLs for Spline
+      'data:',    // For embedded images
+      'blob:',    // For Spline's dynamic content
       'https://*.supabase.co',
       'https://*.vercel.app',
       'https://*.githubusercontent.com',
       'https://*.spline.design'
     ],
-    // Restrict media sources to specific trusted domains
+
+    // Media loading policy
     'media-src': [
       "'self'",
       'https://*.supabase.co',
@@ -58,61 +74,77 @@ export function createCSPHeader(nonce: string): string {
       'https://*.unsplash.com',
       'https://*.spline.design'
     ],
-    // Restrict API and resource connections
+
+    // API and WebSocket connections
     'connect-src': [
       "'self'",
       'https://*.supabase.co',
       'https://*.vercel.app',
       'https://api.openai.com',
       'https://*.spline.design',
-      // Allow WebSocket connections in development
+      // Allow WebSocket in development for HMR
       process.env.NODE_ENV === 'development' ? 'ws://localhost:*' : ''
     ],
-    // Restrict font sources
+
+    // Font loading restrictions
     'font-src': [
       "'self'",
       'https://fonts.googleapis.com',
       'https://fonts.gstatic.com'
     ],
-    // Restrict frame sources
+
+    // Frame loading policy
     'frame-src': [
       "'self'",
       'https://*.supabase.co',
       'https://*.spline.design'
     ],
+
     // Prevent object injection attacks
     'object-src': ["'none'"],
-    // Allow Spline's child frames/workers
+
+    // Worker and frame policies for Spline
     'child-src': ["'self'", "blob:", "https://*.spline.design"],
     'worker-src': ["'self'", "blob:", "https://*.spline.design"],
+
     // Prevent base tag injection
     'base-uri': ["'self'"],
-    // Restrict form submissions to same origin
+
+    // Form submission restrictions
     'form-action': ["'self'"],
+
     // Prevent clickjacking
     'frame-ancestors': ["'none'"],
-    // Restrict manifest to same origin
+
+    // PWA manifest location
     'manifest-src': ["'self'", "https://neuvia.vercel.app"],
-    // Force HTTPS in production only
-    ...(process.env.NODE_ENV === 'production' ? { 'upgrade-insecure-requests': [] } : {}),
-    // Configure Trusted Types
+
+    // Force HTTPS in production
+    ...(process.env.NODE_ENV === 'production' 
+      ? { 'upgrade-insecure-requests': [] } 
+      : {}),
+
+    // Trusted Types Configuration
     ...(process.env.NODE_ENV === 'development' && process.env.DISABLE_TRUSTED_TYPES === 'true'
       ? {}  // Skip Trusted Types in development if explicitly disabled
       : {
+          // Define allowed Trusted Type policies
           'trusted-types': [
-            'nextjs',
-            'nextjs#bundler',
-            'nextjs#inline-script',
-            'nextjs#script',
-            'default'
+            'nextjs',              // Next.js core policy
+            'nextjs#bundler',      // Next.js bundler policy
+            'nextjs#inline-script',// Next.js inline scripts
+            'nextjs#script',       // Next.js script loading
+            'default'              // Default policy
           ],
-          'trusted-types-allow-duplicates': [],  // Separate directive for allowing duplicates
-          // Only require trusted types in production
+          // Allow duplicate policies (fixes Firefox extensions)
+          'trusted-types-allow-duplicates': [],
+          // Only enforce in production
           ...(process.env.NODE_ENV === 'production' 
             ? { 'require-trusted-types-for': ["'script'"] }
             : {})
         }),
-    // Enable violation reporting
+
+    // CSP violation reporting
     'report-uri': [process.env.CSP_REPORT_URI || '/api/csp-report'],
     'report-to': ['csp-endpoint']
   }

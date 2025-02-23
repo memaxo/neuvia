@@ -1,4 +1,6 @@
 /**
+ * Next.js Configuration
+ * Implements security headers, CORS policies, and PWA configuration
  * @type {import('next').NextConfig}
  */
 
@@ -6,43 +8,46 @@ import withPWA from '@ducanh2912/next-pwa'
 import withMDX from '@next/mdx'
 import withPlugins from 'next-compose-plugins'
 
+/**
+ * Security Headers Configuration
+ * Implements various security headers to protect against common web vulnerabilities
+ */
 const securityHeaders = [
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
+  // Controls how much referrer information should be included with requests
   {
     key: 'Referrer-Policy',
     value: 'strict-origin-when-cross-origin',
   },
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+  // Prevents the browser from rendering the page in a frame/iframe
   {
     key: 'X-Frame-Options',
     value: 'DENY',
   },
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
+  // Prevents MIME type sniffing
   {
     key: 'X-Content-Type-Options',
     value: 'nosniff',
   },
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-DNS-Prefetch-Control
+  // Controls DNS prefetching
   {
     key: 'X-DNS-Prefetch-Control',
     value: 'on',
   },
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+  // Forces HTTPS for a specified duration
   {
     key: 'Strict-Transport-Security',
     value: 'max-age=31536000; includeSubDomains',
   },
+  // Legacy XSS protection for older browsers
   {
     key: 'X-XSS-Protection',
     value: '1; mode=block',
   },
-  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Feature-Policy
+  // Controls browser features and APIs
   {
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=()',
   },
-  // Content Security Policy for Spline
-
 ]
 
 const nextConfig = {
@@ -123,6 +128,12 @@ const nextConfig = {
       },
     ],
   },
+  /**
+   * Headers Configuration
+   * Sets up:
+   * 1. Global security headers for all routes
+   * 2. CORS headers for manifest.json to support PWA functionality
+   */
   async headers() {
     return [
       {
@@ -130,12 +141,13 @@ const nextConfig = {
         headers: securityHeaders,
       },
       {
-        // Add CORS headers for manifest.json
+        // CORS configuration for manifest.json
+        // Required for PWA functionality in development
         source: '/manifest.json',
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: '*'  // Or specify your domains
+            value: '*'  // Consider restricting to specific domains in production
           },
           {
             key: 'Access-Control-Allow-Methods',

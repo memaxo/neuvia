@@ -98,46 +98,64 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
   return (
     <div className="space-y-6">
       {/* Report Type Filters */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
-        <div className="border-b border-white/5 p-4">
-          <h3 className="from-primary-light bg-gradient-to-r via-primary to-accent bg-clip-text text-lg font-semibold text-transparent">
+      <div className={cn(
+        // Base card styles
+        "relative overflow-hidden rounded-xl",
+        // Border and background
+        "border border-[rgb(var(--border))/var(--opacity-10)]",
+        "bg-[rgb(var(--background))/var(--opacity-40)]",
+        // Effects
+        "backdrop-blur-sm"
+      )}>
+        <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
+          <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Report Type
           </h3>
         </div>
-        <div className="p-4">
-          <div className="space-y-2">
+        <div className="p-6">
+          <div className="space-y-4">
             {filters.type.map((filter) => (
               <button
-                className={cn(
-                  'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
-                  'transition-all duration-300',
-                  filter.colorClass.hover,
-                  'backdrop-blur-sm'
-                )}
                 key={filter.value}
                 onClick={() => onFilterChange?.({ type: filter.value })}
+                className={cn(
+                  // Base styles
+                  "group relative w-full",
+                  // Layout
+                  "flex items-center justify-between",
+                  // Border and background
+                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
+                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  // Padding and effects
+                  "p-4 backdrop-blur-sm",
+                  // Transitions
+                  "transition-all duration-300",
+                  // Hover states
+                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
+                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                )}
               >
                 {/* Gradient overlay */}
                 <div className={cn(
                   "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100",
-                  filter.colorClass.gradient
+                  "bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1]"
                 )} />
 
                 <div className="relative z-10 flex items-center gap-3">
-                  <div className={cn('rounded-lg p-2', filter.colorClass.bg)}>
-                    <filter.icon className={cn('size-4', filter.colorClass.text)} />
+                  <div className={cn(
+                    "rounded-lg p-2",
+                    "bg-[rgb(var(--primary))/0.1]"
+                  )}>
+                    <filter.icon className="size-4 text-[rgb(var(--primary))]" />
                   </div>
-                  <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
+                  <span className="text-sm font-medium text-[rgb(var(--muted-foreground))] transition-colors duration-300 group-hover:text-[rgb(var(--foreground))]">
                     {filter.label}
                   </span>
                 </div>
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className={cn(
-                    "group-hover:animate-scan absolute -left-full top-0 h-px w-full",
-                    filter.colorClass.scan
-                  )} />
+                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
                 </div>
               </button>
             ))}
@@ -146,40 +164,58 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
       </div>
 
       {/* Timeframe Filters */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
-        <div className="border-b border-white/5 p-4">
-          <h3 className="from-primary-light bg-gradient-to-r via-primary to-accent bg-clip-text text-lg font-semibold text-transparent">
+      <div className={cn(
+        // Base card styles
+        "relative overflow-hidden rounded-xl",
+        // Border and background
+        "border border-[rgb(var(--border))/var(--opacity-10)]",
+        "bg-[rgb(var(--background))/var(--opacity-40)]",
+        // Effects
+        "backdrop-blur-sm"
+      )}>
+        <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
+          <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Timeframe
           </h3>
         </div>
-        <div className="p-4">
-          <div className="space-y-2">
+        <div className="p-6">
+          <div className="space-y-4">
             {filters.timeframe.map((filter) => (
               <button
-                className={cn(
-                  'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
-                  'transition-all duration-300',
-                  'hover-filter-primary',
-                  'backdrop-blur-sm'
-                )}
                 key={filter.value}
                 onClick={() => onFilterChange?.({ timeframe: filter.value })}
+                className={cn(
+                  // Base styles
+                  "group relative w-full",
+                  // Layout
+                  "flex items-center justify-between",
+                  // Border and background
+                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
+                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  // Padding and effects
+                  "p-4 backdrop-blur-sm",
+                  // Transitions
+                  "transition-all duration-300",
+                  // Hover states
+                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
+                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                )}
               >
                 {/* Gradient overlay */}
-                <div className="gradient-overlay-primary absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
                 <div className="relative z-10 flex items-center gap-3">
-                  <div className="bg-filter-primary rounded-lg p-2">
-                    <Calendar className="text-filter-primary size-4" />
+                  <div className="rounded-lg bg-[rgb(var(--primary))/0.1] p-2">
+                    <Calendar className="size-4 text-[rgb(var(--primary))]" />
                   </div>
-                  <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
+                  <span className="text-sm font-medium text-[rgb(var(--muted-foreground))] transition-colors duration-300 group-hover:text-[rgb(var(--foreground))]">
                     {filter.label}
                   </span>
                 </div>
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="group-hover:animate-scan scan-line-primary absolute -left-full top-0 h-px w-full" />
+                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
                 </div>
               </button>
             ))}
@@ -188,46 +224,58 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
       </div>
 
       {/* Status Filters */}
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
-        <div className="border-b border-white/5 p-4">
-          <h3 className="from-primary-light bg-gradient-to-r via-primary to-accent bg-clip-text text-lg font-semibold text-transparent">
+      <div className={cn(
+        // Base card styles
+        "relative overflow-hidden rounded-xl",
+        // Border and background
+        "border border-[rgb(var(--border))/var(--opacity-10)]",
+        "bg-[rgb(var(--background))/var(--opacity-40)]",
+        // Effects
+        "backdrop-blur-sm"
+      )}>
+        <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
+          <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Status
           </h3>
         </div>
-        <div className="p-4">
-          <div className="space-y-2">
+        <div className="p-6">
+          <div className="space-y-4">
             {filters.status.map((filter) => (
               <button
-                className={cn(
-                  'group relative flex w-full items-center justify-between rounded-xl border border-white/5 bg-black/20 p-3',
-                  'transition-all duration-300',
-                  filter.colorClass.hover,
-                  'backdrop-blur-sm'
-                )}
                 key={filter.value}
                 onClick={() => onFilterChange?.({ status: filter.value })}
+                className={cn(
+                  // Base styles
+                  "group relative w-full",
+                  // Layout
+                  "flex items-center justify-between",
+                  // Border and background
+                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
+                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  // Padding and effects
+                  "p-4 backdrop-blur-sm",
+                  // Transitions
+                  "transition-all duration-300",
+                  // Hover states
+                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
+                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                )}
               >
                 {/* Gradient overlay */}
-                <div className={cn(
-                  "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100",
-                  filter.colorClass.gradient
-                )} />
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
                 <div className="relative z-10 flex items-center gap-3">
-                  <div className={cn('rounded-lg p-2', filter.colorClass.bg)}>
-                    <FileText className={cn('size-4', filter.colorClass.text)} />
+                  <div className="rounded-lg bg-[rgb(var(--primary))/0.1] p-2">
+                    <FileText className="size-4 text-[rgb(var(--primary))]" />
                   </div>
-                  <span className="text-sm font-medium text-white/70 transition-colors duration-300 group-hover:text-white">
+                  <span className="text-sm font-medium text-[rgb(var(--muted-foreground))] transition-colors duration-300 group-hover:text-[rgb(var(--foreground))]">
                     {filter.label}
                   </span>
                 </div>
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className={cn(
-                    "group-hover:animate-scan absolute -left-full top-0 h-px w-full",
-                    filter.colorClass.scan
-                  )} />
+                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
                 </div>
               </button>
             ))}

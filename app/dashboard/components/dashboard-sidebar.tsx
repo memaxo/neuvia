@@ -14,7 +14,6 @@ import type { Route } from 'next'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -34,7 +33,6 @@ import { cn } from '@/lib/utils'
 
 import { SearchBar } from './search-bar'
 
-
 interface SidebarProps {
   children: React.ReactNode
   defaultCollapsed?: boolean
@@ -48,7 +46,11 @@ interface SidebarComposition {
 }
 
 const Header = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex items-center justify-between p-4">{children}</div>
+  return (
+    <div className="flex items-center justify-between border-b border-[rgb(var(--border))/var(--opacity-5)] p-4">
+      {children}
+    </div>
+  )
 }
 Header.displayName = "SidebarHeader"
 
@@ -69,7 +71,8 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
     return (
       <aside 
         className={cn(
-          "group/sidebar relative flex h-full flex-col overflow-hidden border-r bg-background",
+          "group/sidebar relative flex h-screen flex-col overflow-hidden bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl transition-all duration-normal",
+          "after:absolute after:right-0 after:h-full after:w-[1px] after:bg-gradient-to-b after:from-transparent after:via-[rgb(var(--border))/var(--opacity-5)] after:to-transparent",
           className
         )}
         data-collapsed={isCollapsed}
@@ -77,13 +80,15 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
       >
         {children}
         {collapsible === 'icon' && (
-          <button
-            className="absolute right-4 top-4 opacity-0 transition-opacity group-hover/sidebar:opacity-100"
+          <Button
+            className="absolute right-4 top-4 size-8 opacity-0 transition-opacity group-hover/sidebar:opacity-100"
             onClick={() => setIsCollapsed(!isCollapsed)}
+            size="icon"
+            variant="ghost"
           >
             <ChevronLeft className="size-4" />
             <span className="sr-only">Toggle Sidebar</span>
-          </button>
+          </Button>
         )}
       </aside>
     )
@@ -145,15 +150,18 @@ export function DashboardSidebar() {
     <Sheet>
       <SheetTrigger asChild>
         <Button
-          className="flex size-10 items-center justify-center p-0 hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 md:hidden"
+          className="flex size-10 items-center justify-center p-0 hover:bg-[rgb(var(--primary))/var(--opacity-10)] focus-visible:ring-[rgb(var(--primary))/var(--opacity-20)] md:hidden"
           variant="ghost"
         >
           <ChevronRight className="size-4" />
           <span className="sr-only">Toggle sidebar</span>
         </Button>
       </SheetTrigger>
-      <SheetContent className="flex w-[300px] flex-col p-0" side="left">
-        <SheetHeader className="border-b border-border p-4">
+      <SheetContent 
+        className="w-[300px] bg-[rgb(var(--background))/var(--opacity-95)] p-0 backdrop-blur-xl" 
+        side="left"
+      >
+        <SheetHeader className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-4">
           <SheetTitle>Dashboard</SheetTitle>
         </SheetHeader>
         <nav className="flex-1 overflow-y-auto p-2">
@@ -162,19 +170,24 @@ export function DashboardSidebar() {
             return (
               <Link
                 className={cn(
-                  'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
-                  'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
+                  'group flex items-center gap-3 rounded-lg px-4 py-3 transition-all duration-normal',
+                  'hover:bg-[rgb(var(--primary))/var(--opacity-10)]',
                   isActive
-                    ? 'border border-cyan-500/30 bg-black/40'
-                    : 'border border-transparent'
+                    ? 'bg-[rgb(var(--primary))/var(--opacity-10)] text-[rgb(var(--primary))]'
+                    : 'text-[rgb(var(--foreground))/var(--opacity-70)] hover:text-[rgb(var(--foreground))]'
                 )}
                 href={link.href}
                 key={link.href}
               >
-                <link.icon className="size-5 shrink-0" />
+                <link.icon 
+                  className={cn('size-5 shrink-0', {
+                    'text-[rgb(var(--primary))]': isActive,
+                    'text-[rgb(var(--foreground))/var(--opacity-60)]': !isActive
+                  })} 
+                />
                 <div className="flex flex-col">
-                  <span>{link.title}</span>
-                  <span className="text-sm text-muted-foreground">
+                  <span className="font-medium leading-none">{link.title}</span>
+                  <span className="mt-1 text-sm leading-none text-[rgb(var(--foreground))/var(--opacity-60)]">
                     {link.description}
                   </span>
                 </div>
@@ -183,16 +196,20 @@ export function DashboardSidebar() {
           })}
         </nav>
       </SheetContent>
-      <div className="hidden md:flex">
-        <Sidebar
-          className="min-h-screen border-r"
-          collapsible="icon"
-          defaultCollapsed={false}
-        >
-          <Sidebar.Header>
+      <div className="hidden md:block">
+        <aside className={cn(
+          "group/sidebar relative flex flex-col",
+          "h-[calc(100vh-3.5rem)] min-h-0",
+          "border-r border-[rgb(var(--border))/var(--opacity-10)]",
+          "bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl",
+          "overflow-hidden transition-[width] duration-normal ease-in-out",
+          isCollapsed ? "w-[80px]" : "w-[280px]"
+        )}>
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-[rgb(var(--border))/var(--opacity-10)] px-4">
             <Button
-              className="size-10"
+              className="size-8"
               onClick={() => setIsCollapsed(!isCollapsed)}
+              size="icon"
               variant="ghost"
             >
               {isCollapsed ? (
@@ -202,12 +219,19 @@ export function DashboardSidebar() {
               )}
               <span className="sr-only">Toggle sidebar</span>
             </Button>
-          </Sidebar.Header>
-          <Sidebar.Content>
-            <div className="px-2">
-              <SearchBar />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="h-[72px] shrink-0 border-b border-[rgb(var(--border))/var(--opacity-10)]">
+              <div className={cn(
+                "h-full transition-[opacity,transform] duration-normal",
+                isCollapsed ? "opacity-0 translate-x-[-100%]" : "opacity-100 translate-x-0"
+              )}>
+                <div className="p-4">
+                  <SearchBar />
+                </div>
+              </div>
             </div>
-            <nav className="flex-1 overflow-y-auto p-2">
+            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
               {sidebarLinks.map((link) => {
                 const isActive = pathname === link.href
                 return (
@@ -216,35 +240,39 @@ export function DashboardSidebar() {
                       <TooltipTrigger asChild>
                         <Link
                           className={cn(
-                            'group flex items-center gap-3 rounded-xl px-4 py-3 transition-all duration-300',
-                            'hover:bg-black/40 hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]',
+                            'group grid items-start transition-all duration-normal rounded-lg',
+                            'hover:bg-[rgb(var(--primary))/var(--opacity-10)]',
                             isActive
-                              ? 'border border-cyan-500/30 bg-black/40'
-                              : 'border border-transparent',
-                            isCollapsed ? 'justify-center' : ''
+                              ? 'bg-[rgb(var(--primary))/var(--opacity-10)] text-[rgb(var(--primary))]'
+                              : 'text-[rgb(var(--foreground))/var(--opacity-70)] hover:text-[rgb(var(--foreground))]',
+                            isCollapsed ? "px-2 py-3 grid-cols-1 justify-items-center" : "p-3 grid-cols-[24px,1fr] gap-3"
                           )}
                           href={link.href}
                         >
                           <link.icon
-                            className={cn('size-5 shrink-0', {
-                              'text-muted-foreground': !isActive,
+                            className={cn('size-5 mt-0.5', {
+                              'text-[rgb(var(--primary))]': isActive,
+                              'text-[rgb(var(--foreground))/var(--opacity-60)]': !isActive
                             })}
                           />
-                          {!isCollapsed && (
-                            <div className="flex flex-col">
-                              <span>{link.title}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {link.description}
-                              </span>
-                            </div>
-                          )}
+                          <div 
+                            className={cn(
+                              "transition-[width,opacity,transform] duration-normal overflow-hidden",
+                              isCollapsed ? "w-0 opacity-0 hidden" : "w-auto opacity-100"
+                            )}
+                          >
+                            <span className="block font-medium leading-none whitespace-nowrap">{link.title}</span>
+                            <span className="mt-1 block text-sm leading-none text-[rgb(var(--foreground))/var(--opacity-60)] whitespace-nowrap">
+                              {link.description}
+                            </span>
+                          </div>
                         </Link>
                       </TooltipTrigger>
                       {isCollapsed && (
                         <TooltipContent side="right">
                           <div className="flex flex-col gap-1">
-                            <span>{link.title}</span>
-                            <span className="text-sm text-muted-foreground">
+                            <span className="font-medium">{link.title}</span>
+                            <span className="text-sm text-[rgb(var(--foreground))/var(--opacity-60)]">
                               {link.description}
                             </span>
                           </div>
@@ -255,8 +283,8 @@ export function DashboardSidebar() {
                 )
               })}
             </nav>
-          </Sidebar.Content>
-        </Sidebar>
+          </div>
+        </aside>
       </div>
     </Sheet>
   )

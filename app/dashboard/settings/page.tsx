@@ -62,52 +62,60 @@ const settingsSections = [
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6">
-      {/* Header Section */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-            Settings
-          </h1>
-          <p className="mt-2 text-sm text-white/70">
-            Manage your account and application preferences
-          </p>
+    <div className="relative flex-1">
+      {/* Background layer */}
+      <div className="absolute inset-0 bg-[rgb(var(--background))] shadow-2xl" />
+      
+      {/* Content stack */}
+      <div className="relative space-y-6 p-6">
+        {/* Header Section */}
+        <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="bg-gradient-to-r from-[rgb(var(--primary-light))] via-[rgb(var(--primary))] to-[rgb(var(--primary-dark))] bg-clip-text text-3xl font-extrabold text-transparent">
+                Settings
+              </h1>
+              <p className="mt-2 text-sm text-[rgb(var(--foreground))/var(--opacity-70)]">
+                Manage your account and application preferences
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Settings Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {settingsSections.map((section) => {
-          const Component = section.component
-          return (
-            <div
-              className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl"
-              key={section.id}
-            >
-              {/* Section Header */}
-              <div className="border-b border-white/5 p-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5">
-                    <section.icon className="size-5 text-cyan-400" />
-                  </div>
-                  <div>
-                    <h2 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-semibold text-transparent">
-                      {section.title}
-                    </h2>
-                    <p className="text-sm text-white/70">
-                      {section.description}
-                    </p>
+        {/* Settings Grid */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {settingsSections.map((section) => {
+            const Component = section.component
+            return (
+              <div
+                className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm"
+                key={section.id}
+              >
+                {/* Section Header */}
+                <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-[rgb(var(--primary))/var(--opacity-10)] p-2.5">
+                      <section.icon className="size-5 text-[rgb(var(--primary))]" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-[rgb(var(--foreground))]">
+                        {section.title}
+                      </h2>
+                      <p className="text-sm text-[rgb(var(--foreground))/var(--opacity-70)]">
+                        {section.description}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Section Content */}
-              <div className="p-6">
-                <Component />
+                {/* Section Content */}
+                <div className="p-6">
+                  <Component />
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

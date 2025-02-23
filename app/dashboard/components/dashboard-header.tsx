@@ -1,6 +1,7 @@
 'use client'
 
 import { Settings, User } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
 
 import { Button } from '@/components/ui/button'
@@ -12,50 +13,60 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 
 import { NotificationCenter } from './notification-center'
 
 export function DashboardHeader() {
   return (
-    <header className="flex h-12 items-center gap-2 border-b border-white/5 bg-black/30 px-3 backdrop-blur-lg">
-      <div className="flex-1" />
-      <div className="flex items-center gap-2">
-        <NotificationCenter />
-        <Button className="header-button" size="sm" variant="ghost">
-          <Settings className="header-icon" />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="header-button" variant="ghost">
-              <User className="header-icon" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="header-dropdown">
-            <DropdownMenuLabel className="header-dropdown-label">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium text-white/90">Dr. Smith</p>
-                <p className="text-[10px] text-white/60">dr.smith@neuvia.com</p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator className="header-dropdown-separator" />
-            <DropdownMenuItem className="header-dropdown-item">
-              <Link className="flex w-full" href="/dashboard/profile">
-                Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="header-dropdown-item">
-              <Link className="flex w-full" href="/dashboard/settings">
-                Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="header-dropdown-separator" />
-            <DropdownMenuItem className="header-dropdown-item text-red-400 hover:text-red-300">
-              <Link className="flex w-full" href="/auth/signout">
-                Sign out
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <header className="sticky top-0 z-50 flex h-14 items-center gap-2 border-b border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl">
+      <div className="relative flex w-full items-center justify-between px-6">
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <NotificationCenter />
+          <Button
+            className="text-[rgb(var(--foreground))/var(--opacity-70)] hover:bg-[rgb(var(--primary))/var(--opacity-10)] hover:text-[rgb(var(--primary))]"
+            size="icon"
+            variant="ghost"
+          >
+            <Settings className="size-4" />
+            <span className="sr-only">Settings</span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="text-[rgb(var(--foreground))/var(--opacity-70)] hover:bg-[rgb(var(--primary))/var(--opacity-10)] hover:text-[rgb(var(--primary))]"
+                variant="ghost"
+              >
+                <User className="size-4" />
+                <span className="sr-only">User menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="space-y-1">
+                <p className="text-sm font-medium text-[rgb(var(--foreground))]">Dr. Smith</p>
+                <p className="text-xs text-[rgb(var(--foreground))/var(--opacity-60)]">dr.smith@neuvia.com</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <Link className="flex w-full items-center" href={'/dashboard/profile' as Route}>
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Link className="flex w-full items-center" href={'/dashboard/settings' as Route}>
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-[rgb(var(--error))] hover:text-[rgb(var(--error))/var(--opacity-90)]">
+                <Link className="flex w-full items-center" href={'/auth/signout' as Route}>
+                  Sign out
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   )

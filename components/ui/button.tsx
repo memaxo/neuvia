@@ -5,25 +5,33 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-[var(--radius-md)] text-sm font-medium transition-all duration-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary)/var(--opacity-20))] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        default:
+          'bg-[rgb(var(--primary))] text-white shadow-sm hover:bg-[rgb(var(--primary-dark))] hover:shadow-[0_0_20px_rgba(var(--primary),0.2)] active:scale-[0.98]',
         destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+          'bg-[rgb(var(--error))] text-white shadow-sm hover:bg-[rgb(var(--error-dark))] hover:shadow-[0_0_20px_rgba(var(--error),0.2)] active:scale-[0.98]',
         outline:
-          'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+          'border border-[rgb(var(--border))] bg-background shadow-sm hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--primary))] hover:border-[rgb(var(--primary)/var(--opacity-30))] hover:shadow-[0_0_20px_rgba(var(--primary),0.1)] active:scale-[0.98]',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'bg-[rgb(var(--secondary))] text-white shadow-sm hover:bg-[rgb(var(--secondary-dark))] hover:shadow-[0_0_20px_rgba(var(--secondary),0.2)] active:scale-[0.98]',
+        ghost:
+          'hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--primary))] active:scale-[0.98]',
+        link: 'text-[rgb(var(--primary))] underline-offset-4 hover:underline',
+        success:
+          'bg-[rgb(var(--success))] text-white shadow-sm hover:bg-[rgb(var(--success-dark))] hover:shadow-[0_0_20px_rgba(var(--success),0.2)] active:scale-[0.98]',
+        warning:
+          'bg-[rgb(var(--warning))] text-white shadow-sm hover:bg-[rgb(var(--warning-dark))] hover:shadow-[0_0_20px_rgba(var(--warning),0.2)] active:scale-[0.98]',
+        premium:
+          'relative overflow-hidden bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--secondary))] text-white shadow-lg transition-all hover:shadow-[0_0_30px_rgba(var(--primary),0.3)] active:scale-[0.98] group',
       },
       size: {
         default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
+        sm: 'h-9 rounded-[var(--radius-sm)] px-3',
+        lg: 'h-11 rounded-[var(--radius-lg)] px-8',
+        icon: 'size-10',
       },
     },
     defaultVariants: {
@@ -39,22 +47,13 @@ export interface ButtonProps
   asChild?: boolean
 }
 
-const Button = React.forwardRef<HTMLButtonElement | HTMLElement, ButtonProps>(
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
-    if (asChild) {
-      return (
-        <Slot
-          className={cn(buttonVariants({ variant, size, className }))}
-          ref={ref}
-          {...props}
-        />
-      )
-    }
-
+    const Comp = asChild ? Slot : 'button'
     return (
-      <button
+      <Comp
         className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref as React.Ref<HTMLButtonElement>}
+        ref={ref}
         {...props}
       />
     )

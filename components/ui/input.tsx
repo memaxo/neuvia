@@ -2,22 +2,29 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
-const Input = React.forwardRef<
-  HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement>
->(({ className, type, ...props }, ref) => {
-  return (
-    <input
-      className={cn(
-        'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-        className
-      )}
-      ref={ref}
-      type={type}
-      {...props}
-    />
-  )
-})
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {
+  error?: boolean
+}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, error, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          'flex h-10 w-full rounded-[var(--radius-md)] border border-[rgb(var(--border)/var(--opacity-20))] bg-[rgb(var(--background)/var(--opacity-40))] px-3 py-2 text-sm text-[rgb(var(--foreground)/var(--opacity-90))] shadow-sm transition-all duration-normal file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-[rgb(var(--foreground)/var(--opacity-50))]',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary)/var(--opacity-20))] focus-visible:border-[rgb(var(--primary)/var(--opacity-30))] focus-visible:bg-[rgb(var(--background)/var(--opacity-60))]',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          error && 'border-[rgb(var(--error)/var(--opacity-30))] focus-visible:ring-[rgb(var(--error)/var(--opacity-20))]',
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
 Input.displayName = 'Input'
 
 export { Input }
