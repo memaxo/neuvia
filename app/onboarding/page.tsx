@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import React from 'react'
 
-import RegisterForm from '@/app/auth-server-action/components/RegisterForm'
+import { AuthForm } from '@/app/auth/components/AuthForm'
 import { buttonVariants } from '@/components/ui/button'
 import { siteConfig } from '@/config/site'
 import { readUserSession } from '@/utils/actions'
@@ -89,7 +89,7 @@ export default async function OnboardingPage() {
               className="animate-fade-up rounded-xl border border-border/50 bg-card/40 p-6 shadow-[inset_0_1px_1px_rgba(0,0,0,0.1)]"
               style={{ animationDelay: '600ms' }}
             >
-              <RegisterForm />
+              <AuthForm />
             </div>
 
             {/* Enhanced terms section */}

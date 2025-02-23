@@ -23,7 +23,7 @@ const SplineWrapper = dynamic(
   }
 )
 
-export default function BackgroundSpline() {
+export default function BackgroundSpline({ nonce }: { nonce?: string }) {
   const [isMounted, setIsMounted] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const splineRef = useRef<Application | null>(null)
@@ -60,6 +60,7 @@ export default function BackgroundSpline() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <SplineWrapper
+        nonce={nonce}
         className="size-full"
         onLoad={handleSplineLoad}
         scene="https://prod.spline.design/Y6XgUDfF8whAr82F/scene.splinecode"

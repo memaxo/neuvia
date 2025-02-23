@@ -11,7 +11,13 @@ import { UploadZone } from './components/upload-zone'
 
 
 export default function UploadPage() {
-  const [isUploading, setIsUploading] = React.useState(false)
+  const [uploadStatus, setUploadStatus] = React.useState({
+    uploading: 0,
+    queued: 0,
+    completed: 0,
+    failed: 0,
+    totalProgress: 0
+  })
   const [refreshKey, setRefreshKey] = React.useState(0)
 
   return (
@@ -26,22 +32,24 @@ export default function UploadPage() {
             Upload and manage patient scan files
           </p>
         </div>
-        {isUploading && (
-          <div className="flex items-center">
-            <Loader2 className="mr-2 animate-spin" />
-            <span className="text-sm text-white/70">Uploading...</span>
+        {uploadStatus.uploading > 0 && (
+          <div className="flex items-center gap-4">
+            <div className="flex items-center">
+              <Loader2 className="mr-2 size-4 animate-spin text-cyan-400" />
+              <span className="text-sm text-white/70">
+                Uploading {uploadStatus.uploading} file{uploadStatus.uploading !== 1 ? 's' : ''}...
+              </span>
+            </div>
+            {uploadStatus.queued > 0 && (
+              <div className="text-sm text-white/50">
+                {uploadStatus.queued} queued
+              </div>
+            )}
+            <div className="text-sm text-white/70">
+              {uploadStatus.totalProgress}%
+            </div>
           </div>
         )}
-      </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-            Upload Scans
-          </h1>
-          <p className="mt-2 text-sm text-white/70">
-            Upload and manage patient scan files
-          </p>
-        </div>
       </div>
 
       {/* Main Content */}
@@ -58,14 +66,15 @@ export default function UploadPage() {
             <div className="p-6">
               <UploadZone
                 onUploadComplete={(upload) => {
-                  setIsUploading(false);
-                  setRefreshKey(prev => prev + 1);
+                  setRefreshKey(prev => prev + 1)
                 }}
                 onUploadError={(error) => {
-                  setIsUploading(false);
-                  toast.error(error.message);
+                  toast.error(error.message)
                 }}
-                onUploadStart={() => setIsUploading(true)}
+                onUploadStart={() => {
+                  // Individual file upload starts are tracked via onStatusChange
+                }}
+                onStatusChange={setUploadStatus}
               />
             </div>
           </div>

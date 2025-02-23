@@ -2,11 +2,10 @@ import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { headers } from 'next/headers'
+import { headers as getHeaders } from 'next/headers'
 import Script from 'next/script'
 
 import './globals.css'
-import { AuthProvider } from '@/contexts/AuthContext'
 import { CookieButton } from '@/components/cookie-button'
 import { ReactQueryClientProvider } from '@/components/react-query-client-provider'
 import { SiteFooter } from '@/components/site-footer'
@@ -15,6 +14,7 @@ import { TailwindIndicator as _ } from '@/components/tailwind-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { siteConfig } from '@/config/site'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { fontSans } from '@/lib/font'
 import { cn } from '@/lib/utils'
 
@@ -146,7 +146,7 @@ interface RootLayoutProps {
 }
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  const headersList = await headers()
+  const headersList = await getHeaders()
   const nonce = headersList.get('x-nonce') ?? ''
 
   return (
@@ -155,10 +155,22 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         <head />
         <body
           className={cn(
-            'min-h-screen bg-background font-sans antialiased',
+            'bg-background min-h-screen font-sans antialiased',
             fontSans.variable
           )}
         >
+          <Script
+            dangerouslySetInnerHTML={{
+              __html: `window.__webpack_nonce__ = "${nonce}";`,
+            }}
+            id="webpack-nonce"
+            nonce={nonce}
+          />
+          <Script
+            nonce={nonce}
+            src="https://unpkg.com/@splinetool/runtime@1.0.42/build/runtime.js"
+            strategy="afterInteractive"
+          />
           <ThemeProvider
             attribute="class"
             defaultTheme="system"

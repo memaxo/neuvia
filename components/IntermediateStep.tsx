@@ -13,7 +13,7 @@ export function IntermediateStep(props: { message: Message }) {
   const observation = parsedInput.observation;
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="mb-8 mr-auto flex max-w-[80%] flex-col whitespace-pre-wrap rounded border border-input bg-secondary p-3">
+    <div className="mb-8 mr-auto flex max-w-[80%] flex-col whitespace-pre-wrap rounded border border-[#6B818C] bg-[#D8E4FF] p-3">
       <button
         className={cn(
           "flex items-center gap-1 text-left",

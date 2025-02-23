@@ -1,18 +1,18 @@
 'use client'
 
-import { Activity, Eye, FileText, Upload, X } from 'lucide-react'
+import { Activity, Eye, FileText, Upload, X, AlertCircle, Clock, MessageSquare } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import type { Notification } from '../types'
+import type { Notification } from './types'
 
 const categoryColors = {
   file: 'from-blue-500/20 to-blue-500/5',
   process: 'from-green-500/20 to-green-500/5',
-  document: 'from-purple-500/20 to-purple-500/5',
+  system: 'from-[#004FFF]/20 to-[#004FFF]/5',
   action: 'from-amber-500/20 to-amber-500/5',
 }
 
@@ -50,15 +50,15 @@ export function RecentActivity() {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
+    <div className="group relative flex cursor-pointer items-start gap-4 rounded-xl border border-[#6B818C]/5 bg-[#D8E4FF]/80 p-4 backdrop-blur-sm transition-all duration-300 hover:translate-x-1 hover:border-[#31AFD4]/30 hover:bg-[#D8E4FF]/60 hover:shadow-[0_0_30px_rgba(0,0,0,0.1)]">
       {/* Enhanced header */}
-      <div className="border-b border-white/5 p-6">
+      <div className="border-b border-[#6B818C]/5 p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <h3 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-2xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <h3 className="text-2xl font-extrabold text-[#35605A] drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               Recent Activity
             </h3>
-            <span className="text-sm text-white/70">Last 48 hours</span>
+            <span className="text-sm text-[#6B818C]">Latest updates and activities</span>
           </div>
         </div>
       </div>
@@ -72,10 +72,10 @@ export function RecentActivity() {
           <div className="space-y-4">
             {activities.length > 0 ? (
               activities.map((activity) => {
-                const Icon = activity.type === 'Upload' ? Upload
-                        : activity.type === 'Analysis' ? Activity
-                        : activity.type === 'Report' ? FileText
-                        : activity.type === 'Review' ? Eye : Upload
+                const Icon = activity.type === 'alert' ? AlertCircle
+                        : activity.type === 'update' ? Activity
+                        : activity.type === 'reminder' ? Clock
+                        : activity.type === 'message' ? MessageSquare : AlertCircle
 
                 return (
                   <div
@@ -104,8 +104,12 @@ export function RecentActivity() {
                     <div className="relative z-10 min-w-0 flex-1">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-medium text-white/90">{activity.title}</p>
-                          <p className="mt-1 text-xs text-white/60">{activity.message}</p>
+                          <h4 className="text-xl font-extrabold text-[#050505] drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+                            {activity.title}
+                          </h4>
+                          <span className="text-sm text-[#6B818C]">
+                            {activity.message}
+                          </span>
                         </div>
                         {!activity.read && (
                           <Button className="size-6 text-white/40 hover:text-white/60" size="icon" variant="ghost">
@@ -123,7 +127,7 @@ export function RecentActivity() {
 
                     {/* Enhanced scanning line effect */}
                     <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                      <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent" />
                     </div>
                   </div>
                 )

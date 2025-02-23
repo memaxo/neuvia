@@ -17,7 +17,7 @@ export function DocsSidebarNav({ items }: DocsSidebarNavProps) {
     <div className="w-full">
       {items.map((item, index) => (
         <div className={cn('pb-4')} key={index}>
-          <h4 className="mb-1 rounded-md px-2 py-1 text-sm font-semibold">
+          <h4 className="mb-1 rounded-md px-2 py-1 text-sm font-semibold text-[rgb(var(--foreground)/0.9)]">
             {item.title}
           </h4>
           {item?.items?.length && (
@@ -44,11 +44,12 @@ export function DocsSidebarNavItems({
         item.href && !item.disabled ? (
           <Link
             className={cn(
-              'group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline',
+              'group flex w-full items-center rounded-md border border-transparent px-2 py-1 transition-colors duration-normal',
+              'hover:bg-[rgb(var(--primary)/0.1)] hover:text-[rgb(var(--primary))]',
               item.disabled && 'cursor-not-allowed opacity-60',
               pathname === item.href
-                ? 'font-medium text-foreground'
-                : 'text-muted-foreground'
+                ? 'bg-[rgb(var(--primary)/0.1)] font-medium text-[rgb(var(--primary))]'
+                : 'text-[rgb(var(--foreground)/0.7)]'
             )}
             href={item.href}
             key={index}
@@ -57,7 +58,7 @@ export function DocsSidebarNavItems({
           >
             {item.title}
             {item.label && (
-              <span className="ml-2 rounded-md bg-[#adfa1d] px-1.5 py-0.5 text-xs leading-none text-[#000000] no-underline group-hover:no-underline">
+              <span className="ml-2 rounded-md bg-[rgb(var(--primary)/0.1)] px-1.5 py-0.5 text-xs leading-none text-[rgb(var(--primary))] no-underline group-hover:bg-[rgb(var(--primary)/0.15)]">
                 {item.label}
               </span>
             )}
@@ -65,14 +66,14 @@ export function DocsSidebarNavItems({
         ) : (
           <span
             className={cn(
-              'flex w-full cursor-not-allowed items-center rounded-md p-2 text-muted-foreground hover:underline',
-              item.disabled && 'cursor-not-allowed opacity-60'
+              'flex w-full cursor-not-allowed items-center rounded-md p-2 text-[rgb(var(--foreground)/0.5)]',
+              item.disabled && 'opacity-60'
             )}
             key={index}
           >
             {item.title}
             {item.label && (
-              <span className="ml-2 rounded-md bg-muted px-1.5 py-0.5 text-xs leading-none text-muted-foreground no-underline group-hover:no-underline">
+              <span className="ml-2 rounded-md bg-[rgb(var(--foreground)/0.1)] px-1.5 py-0.5 text-xs leading-none text-[rgb(var(--foreground)/0.7)] no-underline">
                 {item.label}
               </span>
             )}

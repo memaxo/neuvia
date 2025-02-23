@@ -10,10 +10,10 @@ export async function middleware(request: NextRequest) {
   try {
     const response = NextResponse.next()
 
-    // Generate nonce for CSP
+    // Generate nonce with enhanced entropy
     const nonce = generateNonce()
     
-    // Set CSP header with nonce
+    // Update CSP header with Spline requirements
     const cspHeader = createCSPHeader(nonce)
     response.headers.set('Content-Security-Policy', cspHeader)
     response.headers.set('x-nonce', nonce)

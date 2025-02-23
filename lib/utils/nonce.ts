@@ -23,32 +23,40 @@ export function createCSPHeader(nonce: string): string {
       "'self'",
       "'strict-dynamic'",
       `'nonce-${nonce}'`,
-      // In development, if you absolutely need unsafe-eval (e.g., for React DevTools),
-      // enable it via environment variable and warn about it
-      process.env.NODE_ENV === 'development' && process.env.ALLOW_UNSAFE_EVAL === 'true'
-        ? (console.warn('Warning: unsafe-eval is enabled in development mode'), "'unsafe-eval'")
-        : '',
+      'wasm-unsafe-eval', // Allow WebAssembly execution
+      // Allow Spline domains
+      'https://*.spline.design',
+      'https://unpkg.com',
+      // In development, allow unsafe-eval and unsafe-inline
+      ...(process.env.NODE_ENV === 'development' 
+        ? ["'unsafe-eval'", "'unsafe-inline'"]
+        : [])
     ],
     'style-src': [
       "'self'",
       `'nonce-${nonce}'`,
-      // Tailwind JIT mode requires unsafe-inline in dev only
-      process.env.NODE_ENV === 'development' ? "'unsafe-inline'" : ''
+      // Allow unsafe-inline for styles in development
+      ...(process.env.NODE_ENV === 'development' 
+        ? ["'unsafe-inline'"]
+        : [])
     ],
     // Restrict image sources to self, data URIs, and specific HTTPS domains
     'img-src': [
       "'self'",
       'data:',
+      'blob:',  // Allow blob URLs for Spline
       'https://*.supabase.co',
       'https://*.vercel.app',
-      'https://*.githubusercontent.com'
+      'https://*.githubusercontent.com',
+      'https://*.spline.design'
     ],
     // Restrict media sources to specific trusted domains
     'media-src': [
       "'self'",
       'https://*.supabase.co',
       'https://*.quantumone.b-cdn.net',
-      'https://*.unsplash.com'
+      'https://*.unsplash.com',
+      'https://*.spline.design'
     ],
     // Restrict API and resource connections
     'connect-src': [
@@ -56,6 +64,8 @@ export function createCSPHeader(nonce: string): string {
       'https://*.supabase.co',
       'https://*.vercel.app',
       'https://api.openai.com',
+      'https://*.spline.design',
+      // Allow WebSocket connections in development
       process.env.NODE_ENV === 'development' ? 'ws://localhost:*' : ''
     ],
     // Restrict font sources
@@ -67,29 +77,41 @@ export function createCSPHeader(nonce: string): string {
     // Restrict frame sources
     'frame-src': [
       "'self'",
-      'https://*.supabase.co'
+      'https://*.supabase.co',
+      'https://*.spline.design'
     ],
     // Prevent object injection attacks
     'object-src': ["'none'"],
+    // Allow Spline's child frames/workers
+    'child-src': ["'self'", "blob:", "https://*.spline.design"],
+    'worker-src': ["'self'", "blob:", "https://*.spline.design"],
     // Prevent base tag injection
-    'base-uri': ["'none'"],
+    'base-uri': ["'self'"],
     // Restrict form submissions to same origin
     'form-action': ["'self'"],
     // Prevent clickjacking
     'frame-ancestors': ["'none'"],
     // Restrict manifest to same origin
-    'manifest-src': ["'self'"],
-    // Force HTTPS
-    'upgrade-insecure-requests': [],
+    'manifest-src': ["'self'", "https://neuvia.vercel.app"],
+    // Force HTTPS in production only
+    ...(process.env.NODE_ENV === 'production' ? { 'upgrade-insecure-requests': [] } : {}),
     // Configure Trusted Types
-    'trusted-types': [
-      'nextjs',
-      'nextjs#bundler',
-      'nextjs#inline-script',
-      'nextjs#script',
-      'default'
-    ],
-    'require-trusted-types-for': ["'script'"],
+    ...(process.env.NODE_ENV === 'development' && process.env.DISABLE_TRUSTED_TYPES === 'true'
+      ? {}  // Skip Trusted Types in development if explicitly disabled
+      : {
+          'trusted-types': [
+            'nextjs',
+            'nextjs#bundler',
+            'nextjs#inline-script',
+            'nextjs#script',
+            'default'
+          ],
+          'trusted-types-allow-duplicates': [],  // Separate directive for allowing duplicates
+          // Only require trusted types in production
+          ...(process.env.NODE_ENV === 'production' 
+            ? { 'require-trusted-types-for': ["'script'"] }
+            : {})
+        }),
     // Enable violation reporting
     'report-uri': [process.env.CSP_REPORT_URI || '/api/csp-report'],
     'report-to': ['csp-endpoint']

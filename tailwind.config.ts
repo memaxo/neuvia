@@ -1,152 +1,103 @@
+import containerQueries from '@tailwindcss/container-queries'
+import forms from '@tailwindcss/forms'
+import typography from '@tailwindcss/typography'
 import type { Config } from 'tailwindcss'
 
-const config: Config = {
-  darkMode: ['class'],
+export default {
   content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}'
   ],
+  future: {
+    hoverOnlyWhenSupported: true,
+    respectDefaultRingColorOpacity: true,
+    disableColorOpacityUtilitiesByDefault: true,
+  },
   theme: {
     extend: {
+      // Animation durations from CSS variables
+      transitionDuration: {
+        'fast': 'var(--animation-fast)',
+        'normal': 'var(--animation-normal)',
+        'slow': 'var(--animation-slow)',
+      },
+      // Border radius from CSS variables
+      borderRadius: {
+        sm: 'var(--radius-sm)',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
+      },
+      // Colors from CSS variables
       colors: {
-        spline: {
-          cyan: '#4B6BFD',
-          blue: '#0066FF',
-          magenta: '#FF00FF',
-          yellow: '#FFFF00',
-          red: '#FF0000',
+        // Base colors
+        background: 'rgb(var(--background) / <alpha-value>)',
+        foreground: 'rgb(var(--foreground) / <alpha-value>)',
+        border: 'rgb(var(--border) / <alpha-value>)',
+        
+        // Primary action colors
+        primary: {
+          light: 'rgb(var(--primary-light) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+          dark: 'rgb(var(--primary-dark) / <alpha-value>)',
         },
-        navy: {
-          '700': '#222222',
-          '800': '#111111',
-          '900': '#000000',
+        
+        // Critical/Warning states
+        error: {
+          light: 'rgb(var(--error-light) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--error) / <alpha-value>)',
+          dark: 'rgb(var(--error-dark) / <alpha-value>)',
         },
-        teal: {
-          '50': '#E6FFFF',
-          '100': '#B3FFFF',
-          '200': '#80FFFF',
-          '300': '#4DFFFF',
-          '400': '#1AFFFF',
-          '500': '#00E5FF',
-          '600': '#00CCFF',
-          '700': '#0099FF',
-          '800': '#0066FF',
-          '900': '#0033FF',
+        
+        // Secondary/Attention states
+        success: {
+          light: 'rgb(var(--success-light) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--success) / <alpha-value>)',
+          dark: 'rgb(var(--success-dark) / <alpha-value>)',
         },
-        cyan: {
-          '500': '#00FFFF',
-          '600': '#00E5FF',
+        
+        // Processing states
+        processing: {
+          light: 'rgb(var(--processing-light) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--processing) / <alpha-value>)',
+          dark: 'rgb(var(--processing-dark) / <alpha-value>)',
         },
-        purple: {
-          '500': '#FF00FF',
-        },
-        orange: {
-          '50': '#FFF3E0',
-          '100': '#FFE0B2',
-          '200': '#FFCC80',
-          '300': '#FFB74D',
-          '400': '#FFA726',
-          '500': '#FF9100',
-          '600': '#FF6D00',
-          '700': '#FF3D00',
-          '800': '#DD2C00',
-          '900': '#BF360C',
-        },
-        slate: {
-          '50': '#FFFFFF',
-          '100': '#F5F5F5',
-          '200': '#EEEEEE',
-          '300': '#E0E0E0',
-          '400': '#BDBDBD',
-          '500': '#9E9E9E',
-          '600': '#757575',
-          '700': '#616161',
-          '800': '#424242',
-          '900': '#212121',
-        },
-        blue: {
-          '50': '#E3F2FD',
-          '100': '#BBDEFB',
-          '200': '#90CAF9',
-          '300': '#64B5F6',
-          '400': '#42A5F5',
-          '500': '#2196F3',
-          '600': '#1E88E5',
-          '700': '#1976D2',
-          '800': '#1565C0',
-          '900': '#0D47A1',
-        },
-        pearl: {
-          '50': '#FFFFFF',
-          '100': '#F5F5F5',
-          '200': '#EEEEEE',
-        },
-        sidebar: {
-          DEFAULT: 'hsl(var(--sidebar-background))',
-          foreground: 'hsl(var(--sidebar-foreground))',
-          primary: 'hsl(var(--sidebar-primary))',
-          'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
-          accent: 'hsl(var(--sidebar-accent))',
-          'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-          border: 'hsl(var(--sidebar-border))',
-          ring: 'hsl(var(--sidebar-ring))',
+        
+        // UI states
+        inactive: 'rgb(var(--inactive) / <alpha-value>)',
+        secondary: 'rgb(var(--secondary) / <alpha-value>)',
+        
+        // Accent colors
+        accent: {
+          light: 'rgb(var(--accent-light) / <alpha-value>)',
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          dark: 'rgb(var(--accent-dark) / <alpha-value>)',
         },
       },
+      
+      // Gradient configurations
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic':
-          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'gradient-spline':
-          'linear-gradient(to right, #4B6BFD, #0066FF, #FF00FF)',
+        'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+        'gradient-primary': 'linear-gradient(to right, rgb(var(--primary)), rgb(var(--primary-dark)))',
+        'gradient-accent': 'linear-gradient(to right, rgb(var(--accent)), rgb(var(--accent-dark)))',
+        'gradient-success': 'linear-gradient(to right, rgb(var(--success)), rgb(var(--success-dark)))',
+        'gradient-error': 'linear-gradient(to right, rgb(var(--error)), rgb(var(--error-dark)))',
+        'gradient-processing': 'linear-gradient(to right, rgb(var(--processing)), rgb(var(--processing-dark)))',
       },
-      fontFamily: {
-        sans: ['Roboto', 'sans-serif'],
-        mono: ['Roboto Mono', 'monospace'],
-      },
-      animation: {
-        'fade-in': 'fadeIn 1s ease-in forwards',
-        'slide-up': 'slideUp 1s ease-out forwards',
-        glow: 'glow 2s ease-in-out infinite',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': {
-            opacity: '0',
-          },
-          '100%': {
-            opacity: '1',
-          },
-        },
-        slideUp: {
-          '0%': {
-            transform: 'translateY(20px)',
-            opacity: '0',
-          },
-          '100%': {
-            transform: 'translateY(0)',
-            opacity: '1',
-          },
-        },
-        glow: {
-          '0%, 100%': {
-            opacity: '1',
-          },
-          '50%': {
-            opacity: '0.7',
-          },
-        },
-      },
-      transitionDuration: {
-        '300': '300ms',
-      },
+      
+      // Box shadow configurations
       boxShadow: {
-        lg: '0 10px 15px -3px rgba(75, 107, 253, 0.1), 0 4px 6px -2px rgba(75, 107, 253, 0.05)',
-        xl: '0 20px 25px -5px rgba(75, 107, 253, 0.1), 0 10px 10px -5px rgba(75, 107, 253, 0.04)',
-        spline: '0 4px 14px 0 rgba(75, 107, 253, 0.3)',
+        'glow-primary': '0 0 20px rgb(var(--primary) / 0.35)',
+        'glow-accent': '0 0 20px rgb(var(--accent) / 0.35)',
+        'glow-success': '0 0 20px rgb(var(--success) / 0.35)',
+        'glow-error': '0 0 20px rgb(var(--error) / 0.35)',
+        'glow-processing': '0 0 20px rgb(var(--processing) / 0.35)',
       },
     },
   },
-  plugins: [],
-}
-export default config
+  plugins: [
+    typography,
+    forms,
+    containerQueries,
+  ],
+} satisfies Config

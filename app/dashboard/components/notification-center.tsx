@@ -12,6 +12,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
 import { useState } from 'react'
 
@@ -42,10 +43,10 @@ const notificationIcons: Record<NotificationType, any> = {
 }
 
 const notificationColors: Record<NotificationType, string> = {
-  alert: 'text-red-400 bg-red-400/10',
-  update: 'text-blue-400 bg-blue-400/10',
-  reminder: 'text-yellow-400 bg-yellow-400/10',
-  message: 'text-purple-400 bg-purple-400/10',
+  alert: 'text-[#902D41] bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent',
+  update: 'text-[#004FFF] bg-[#004FFF]/10',
+  reminder: 'text-[#31AFD4] bg-[#31AFD4]/10',
+  message: 'text-[#004FFF] bg-[#004FFF]/10',
 }
 
 export function NotificationCenter() {
@@ -91,7 +92,7 @@ export function NotificationCenter() {
           'group relative flex items-start gap-4 rounded-lg p-4',
           'transition-all duration-200',
           notification.read ? 'opacity-75' : 'opacity-100',
-          'hover:bg-spline-blue/10'
+          'hover:bg-[#004FFF]/10'
         )}
       >
         <div
@@ -106,7 +107,7 @@ export function NotificationCenter() {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-sm font-medium text-white/90">
+<p className="text-sm font-medium text-[#050505]">
                 {notification.title}
               </p>
               <p className="mt-1 text-xs text-white/60">
@@ -130,7 +131,7 @@ export function NotificationCenter() {
           </div>
 
           <div className="mt-2 flex items-center gap-4">
-            <span className="text-xs text-white/40">
+            <span className="text-xs text-[#6B818C]">
               {formatDistanceToNow(new Date(notification.timestamp), {
                 addSuffix: true,
               })}
@@ -144,7 +145,7 @@ export function NotificationCenter() {
         </div>
 
         {notification.actionUrl && (
-          <ChevronRight className="size-4 text-white/20 transition-colors group-hover:text-white/40" />
+            <ChevronRight className="size-4 text-[#6B818C]/20 transition-colors group-hover:text-[#6B818C]/40" />
         )}
       </div>
     )
@@ -163,7 +164,7 @@ export function NotificationCenter() {
             >
               <Bell className="size-5 text-white/70" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#902D41] text-[10px] font-medium text-white">
                   {unreadCount}
                 </span>
               )}
@@ -175,9 +176,9 @@ export function NotificationCenter() {
         </Tooltip>
 
         {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-96 rounded-lg border border-white/5 bg-black/90 shadow-lg backdrop-blur-lg">
+            <div className="absolute right-0 top-full mt-2 w-96 rounded-lg border border-[#6B818C]/5 bg-[#D8E4FF]/90 shadow-lg backdrop-blur-lg">
             <div className="flex items-center justify-between border-b border-white/5 p-4">
-              <h3 className="text-sm font-medium text-white/90">
+<h3 className="text-sm font-medium text-[#050505]">
                 Notifications
               </h3>
               <div className="flex items-center gap-2">
@@ -235,7 +236,7 @@ export function NotificationCenter() {
                 filteredNotifications.map((notification) => (
                   <Link
                     className="block"
-                    href={notification.actionUrl || '#'}
+                    href={(notification.actionUrl || '/') as Route}
                     key={notification.id}
                   >
                     <NotificationItem notification={notification} />

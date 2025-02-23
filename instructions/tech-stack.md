@@ -100,10 +100,9 @@ This document details the technical stack and dependencies used in the Neuvia Me
   - `api/`: Contains API routes.
     - `send/route.ts`: Sends emails using `resend`.
     - `sid/callback/route.tsx`: Supabase OAuth2 callback
-  - `auth/`: Authentication-related components and actions.
+  - `auth/`: Contains components and actions for user authentication.
     - `actions/index.tsx`: Server actions for signup, login, and logout.
     - `components/AuthForm.tsx`: Login form.
-    - `components/user-auth-form.tsx`: Older version
     - `callback/route.tsx`: Supabase OAuth callback handler.
     - `page.tsx`: Login page.
   - `auth-server-action/`: Contains actions and components related to server-side authentication.
@@ -134,7 +133,7 @@ This document details the technical stack and dependencies used in the Neuvia Me
 
 The project makes extensive use of Next.js Server Actions for form submissions and data mutations. Examples include:
 
-- `signUpWithEmailAndPassword`, `loginWithEmailAndPassword`, `logout` (in `app/auth/actions/index.tsx` and `app/auth-server-action/actions/index.ts`).
+- `signUpWithEmailAndPassword`, `loginWithEmailAndPassword`, `logout` (in `app/auth/actions/index.tsx`).
 - `updateInqueries` (in `app/contact/actions/index.tsx`): Handles contact form submissions.
 - `readUserSession` and `createSupbaseServerClientReadOnly` for getting the user.
 

@@ -30,7 +30,14 @@ interface StatItem {
     value: number
     isPositive: boolean
   }
-  color: string
+  colorClass: {
+    bg: string
+    text: string
+    hover: string
+    gradient: string
+    scan: string
+    spline: string
+  }
   priority: 'high' | 'medium' | 'low'
   action?: {
     label: string
@@ -48,7 +55,14 @@ const stats: StatItem[] = [
       value: 12,
       isPositive: true,
     },
-    color: 'spline-cyan',
+    colorClass: {
+      bg: 'bg-[#004FFF]',
+      text: 'text-[#004FFF]',
+      hover: 'hover:bg-[#004FFF]/90',
+      gradient: 'bg-gradient-to-r from-[#004FFF]/10 via-transparent to-[#004FFF]/10',
+      scan: 'scan-line-[#004FFF]',
+      spline: '#004FFF'
+    },
     priority: 'high',
     action: {
       label: 'Add Patient',
@@ -64,7 +78,14 @@ const stats: StatItem[] = [
       value: 2,
       isPositive: false,
     },
-    color: 'spline-blue',
+    colorClass: {
+      bg: 'bg-filter-processing',
+      text: 'text-filter-processing',
+      hover: 'hover-filter-processing',
+      gradient: 'gradient-overlay-processing',
+      scan: 'scan-line-processing',
+      spline: 'rgb(var(--processing))'
+    },
     priority: 'medium',
     action: {
       label: 'Upload Scan',
@@ -80,7 +101,14 @@ const stats: StatItem[] = [
       value: 3,
       isPositive: true,
     },
-    color: 'spline-magenta',
+    colorClass: {
+      bg: 'bg-filter-error',
+      text: 'text-filter-error',
+      hover: 'hover-filter-error',
+      gradient: 'gradient-overlay-error',
+      scan: 'scan-line-error',
+      spline: 'rgb(var(--error))'
+    },
     priority: 'high',
     action: {
       label: 'View Risks',
@@ -93,11 +121,11 @@ const stats: StatItem[] = [
 
 export function QuickStats() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
-      {/* Header with enhanced gradient and spacing */}
+    <div className="relative overflow-hidden rounded-2xl border border-[#6B818C]/10 bg-[#D8E4FF] backdrop-blur-xl">
+      {/* Header with enhanced gradient */}
       <div className="border-b border-white/5 p-6">
         <div className="flex items-center justify-between">
-          <h3 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-2xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <h3 className="text-2xl font-extrabold text-[#35605A] drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
             Quick Stats
           </h3>
         </div>
@@ -108,46 +136,38 @@ export function QuickStats() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {stats.map((stat, index) => (
             <TooltipProvider key={index}>
-              <div className="group relative rounded-xl border border-white/5 bg-black/20 p-6 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_40px_rgba(0,255,255,0.2)]">
+              <div className={cn(
+                "group relative rounded-xl border border-white/5 bg-black/20 p-6 transition-all duration-300 hover:-translate-y-1",
+                stat.colorClass.hover
+              )}>
                 {/* Enhanced gradient overlay effect */}
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/20 via-transparent to-purple-500/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                <div className={cn(
+                  "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100",
+                  stat.colorClass.gradient
+                )} />
 
                 {/* Content wrapper */}
                 <div className="relative z-10">
-                  {/* Header with label and trend */}
-                  <div className="mb-4 flex items-center justify-between">
+                  {/* Trend indicator */}
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "rounded-full p-1",
+                      stat.colorClass.bg
+                    )}>
+                      {stat.trend.isPositive ? (
+                        <ArrowUpIcon className={cn("size-3", stat.colorClass.text)} />
+                      ) : (
+                        <ArrowDownIcon className={cn("size-3", stat.colorClass.text)} />
+                      )}
+                    </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="cursor-help text-base font-medium text-white/90 transition-colors duration-300 group-hover:text-white">
-                          {stat.label}
+                        <span className={cn(
+                          "text-sm",
+stat.trend.isPositive ? "text-[#004FFF]" : "text-[#902D41]"
+                        )}>
+                          {stat.trend.value}%
                         </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          View detailed {stat.label.toLowerCase()} statistics
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div
-                          className={cn(
-                            'flex cursor-help items-center gap-1.5 rounded-full px-2.5 py-1.5',
-                            'bg-black/40 backdrop-blur-sm transition-colors duration-300 group-hover:bg-black/60',
-                            stat.trend.isPositive
-                              ? 'text-cyan-400'
-                              : 'text-red-400'
-                          )}
-                        >
-                          {stat.trend.isPositive ? (
-                            <ArrowUpIcon className="size-3.5" />
-                          ) : (
-                            <ArrowDownIcon className="size-3.5" />
-                          )}
-                          <span className="text-sm font-medium">
-                            {stat.trend.value}%
-                          </span>
-                        </div>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
@@ -163,17 +183,17 @@ export function QuickStats() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="cursor-help space-y-2">
-                          <div className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+                          <div className="bg-gradient-primary bg-clip-text text-3xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
                             {stat.value.toLocaleString()}
                           </div>
                           <div
                             className={cn(
                               'inline-flex rounded-full px-2.5 py-1 text-sm font-medium',
                               stat.priority === 'high'
-                                ? 'bg-red-500/20 text-red-300'
+                                ? 'bg-[rgb(var(--error)/0.2)] text-[rgb(var(--error)/1)]'
                                 : stat.priority === 'medium'
-                                  ? 'bg-yellow-500/20 text-yellow-300'
-                                  : 'bg-green-500/20 text-green-300'
+                                  ? 'bg-[rgb(var(--processing)/0.2)] text-[rgb(var(--processing)/1)]'
+                                  : 'bg-[rgb(var(--success)/0.2)] text-[rgb(var(--success)/1)]'
                             )}
                           >
                             {stat.priority === 'high'
@@ -188,40 +208,34 @@ export function QuickStats() {
                         <p>Current {stat.label.toLowerCase()} count</p>
                       </TooltipContent>
                     </Tooltip>
+
                     {stat.action && (
-                      <Link href={stat.action.href}>
-                        <Button
-                          className="group/btn relative overflow-hidden rounded-xl bg-black/40 px-4 py-2 text-white/80 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-black/60 hover:text-white hover:shadow-[0_0_30px_rgba(0,255,255,0.2)]"
-                          size="sm"
-                          variant="ghost"
-                        >
-                          <span className="relative z-10 flex items-center gap-2">
-                            <stat.action.icon className="size-4" />
-                            <span className="font-medium">
-                              {stat.action.label}
-                            </span>
-                          </span>
-                          {/* Enhanced scanning line effect */}
-                          <div className="absolute inset-0 overflow-hidden">
-                            <div className="group-hover/btn:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
-                          </div>
-                        </Button>
-                      </Link>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link
+                            className={cn(
+                              "flex size-8 items-center justify-center rounded-xl",
+                              stat.colorClass.bg,
+                              "transition-all duration-300 hover:scale-110"
+                            )}
+                            href={stat.action.href}
+                          >
+                            <stat.action.icon className={cn("size-4", stat.colorClass.text)} />
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{stat.action.label}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
 
-                  {/* Enhanced sparkline with tooltip */}
+                  {/* Sparkline */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="h-[32px] cursor-help">
                         <Sparkline
-                          color={
-                            stat.color === 'spline-cyan'
-                              ? '#4B6BFD'
-                              : stat.color === 'spline-blue'
-                                ? '#0066FF'
-                                : '#FF00FF'
-                          }
+                          color={stat.colorClass.spline}
                           data={mockTrendData[stat.trendKey]}
                           height={32}
                         />
@@ -235,7 +249,10 @@ export function QuickStats() {
 
                 {/* Enhanced scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                  <div className={cn(
+                    "group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent",
+                    stat.colorClass.scan
+                  )} />
                 </div>
               </div>
             </TooltipProvider>

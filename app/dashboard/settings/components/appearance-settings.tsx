@@ -9,6 +9,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 
+
+type Theme = 'light' | 'dark' | 'system'
+
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme()
 
@@ -16,21 +19,21 @@ export function AppearanceSettings() {
     <div className="space-y-6">
       {/* Theme Selection */}
       <div className="space-y-3">
-        <Label className="text-white/70">Theme</Label>
+        <Label className="text-[#6B818C]">Theme</Label>
         <RadioGroup
-          defaultValue={theme}
-          onValueChange={(value) => setTheme(value)}
           className="grid grid-cols-3 gap-4"
+          defaultValue={theme}
+          onValueChange={(value: Theme) => setTheme(value)}
         >
           <div>
             <RadioGroupItem
-              value="light"
-              id="light"
               className="peer sr-only"
+              id="light"
+              value="light"
             />
             <Label
+              className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-[#6B818C]/10 bg-[#D8E4FF] p-4 hover:bg-[#D8E4FF]/80 peer-data-[state=checked]:border-[#004FFF]/50 peer-data-[state=checked]:bg-[#004FFF]/10 [&:has([data-state=checked])]:border-[#004FFF]/50"
               htmlFor="light"
-              className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-white/10 bg-black/30 p-4 hover:bg-black/40 peer-data-[state=checked]:border-cyan-500/50 peer-data-[state=checked]:bg-cyan-500/10 [&:has([data-state=checked])]:border-cyan-500/50"
             >
               <Sun className="mb-3 size-6" />
               <span className="text-sm font-medium">Light</span>
@@ -39,13 +42,13 @@ export function AppearanceSettings() {
 
           <div>
             <RadioGroupItem
-              value="dark"
-              id="dark"
               className="peer sr-only"
+              id="dark"
+              value="dark"
             />
             <Label
-              htmlFor="dark"
               className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-white/10 bg-black/30 p-4 hover:bg-black/40 peer-data-[state=checked]:border-cyan-500/50 peer-data-[state=checked]:bg-cyan-500/10 [&:has([data-state=checked])]:border-cyan-500/50"
+              htmlFor="dark"
             >
               <Moon className="mb-3 size-6" />
               <span className="text-sm font-medium">Dark</span>
@@ -54,13 +57,13 @@ export function AppearanceSettings() {
 
           <div>
             <RadioGroupItem
-              value="system"
-              id="system"
               className="peer sr-only"
+              id="system"
+              value="system"
             />
             <Label
-              htmlFor="system"
               className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-white/10 bg-black/30 p-4 hover:bg-black/40 peer-data-[state=checked]:border-cyan-500/50 peer-data-[state=checked]:bg-cyan-500/10 [&:has([data-state=checked])]:border-cyan-500/50"
+              htmlFor="system"
             >
               <div className="mb-3 flex size-6 items-center justify-center">
                 <Sun className="absolute size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -72,29 +75,29 @@ export function AppearanceSettings() {
         </RadioGroup>
       </div>
 
-      <Separator className="bg-white/5" />
+        <Separator className="bg-[#6B818C]/5" />
 
       {/* UI Preferences */}
       <div className="space-y-4">
-        <h4 className="text-sm font-medium text-white/90">Interface Preferences</h4>
+        <h4 className="text-sm font-medium text-[#050505]">Interface Preferences</h4>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label htmlFor="animations" className="text-white/70">
+            <Label className="text-[#6B818C]" htmlFor="animations">
               Enable animations
             </Label>
             <Switch id="animations" />
           </div>
           <div className="flex items-center justify-between">
-            <Label htmlFor="sounds" className="text-white/70">
+            <Label className="text-white/70" htmlFor="sounds">
               Interface sounds
             </Label>
             <Switch id="sounds" />
           </div>
           <div className="flex items-center justify-between">
-            <Label htmlFor="tooltips" className="text-white/70">
+            <Label className="text-white/70" htmlFor="tooltips">
               Show tooltips
             </Label>
-            <Switch id="tooltips" defaultChecked />
+            <Switch defaultChecked id="tooltips" />
           </div>
         </div>
       </div>
@@ -102,7 +105,7 @@ export function AppearanceSettings() {
       <Separator className="bg-white/5" />
 
       {/* Save Changes */}
-      <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
+        <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
         Save Preferences
         <div className="absolute inset-0 overflow-hidden">
           <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />

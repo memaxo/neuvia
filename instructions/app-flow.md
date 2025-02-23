@@ -36,7 +36,7 @@ The /api/send/route.ts is a simple API route used to demonstrate email integrati
 
 The /api/sid/callback/route.tsx handles the OAuth2 provider code exchange.
 
-The /auth-server-action/page.tsx handles user actions using Server Actions. The nested actions folder contains the files /auth-server-action/actions/actions.tsx and /auth-server-action/actions/index.ts which contains the login and logout functions.
+The /auth/page.tsx handles user authentication using Server Actions. The nested actions folder contains the auth actions which handle login and logout functions.
 
 The "Countries" page (/countries/[id]/page.tsx) dynamically displays details for a specific country based on the provided ID. It fetches and shows the country's name using getCountryById. A corresponding client component is provided for CSR at /ssrcountries/[id]/country.tsx
 

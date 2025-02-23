@@ -1,29 +1,52 @@
 'use client'
 
-import { useQuery } from '@supabase-cache-helpers/postgrest-react-query'
+import { notFound } from 'next/navigation'
 
-import { getCountryById } from '@/queries/country-by-id'
-import { createBrowserClient } from '@/utils/supabase'
+import { useCountry } from '@/hooks/use-country'
 
-export default function CountryPage({ params }: { params: { id: number } }) {
-  const supabase = createBrowserClient()
+import CountryDisplay from '../../ssrcountries/[id]/country'
+
+export default function CountryPage({ params }: { params: { id: string } }) {
+  const countryId = parseInt(params.id)
+  if (isNaN(countryId)) {
+    notFound()
+  }
+
   const {
     data: country,
     isLoading,
     isError,
-  } = useQuery(getCountryById(supabase, params.id))
+    error
+  } = useCountry(countryId)
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return (
+      <div className="p-4">
+        <div className="animate-pulse">
+          <div className="mb-4 h-8 w-64 rounded bg-gray-200" />
+          <div className="space-y-3">
+            <div className="h-4 w-48 rounded bg-gray-200" />
+            <div className="h-4 w-32 rounded bg-gray-200" />
+            <div className="h-4 w-40 rounded bg-gray-200" />
+          </div>
+        </div>
+      </div>
+    )
   }
 
-  if (isError || !country) {
-    return <div>Error</div>
+  if (isError) {
+    return (
+      <div className="p-4">
+        <div className="text-red-500">
+          Error: {error instanceof Error ? error.message : 'Failed to load country'}
+        </div>
+      </div>
+    )
   }
 
-  return (
-    <div>
-      <h1>{country.name}</h1>
-    </div>
-  )
+  if (!country) {
+    notFound()
+  }
+
+  return <CountryDisplay country={country} />
 }

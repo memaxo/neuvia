@@ -7,12 +7,12 @@ export default function OnboardingProgress({ step = 1 }: { step?: number }) {
         <div className="relative">
           <div
             aria-hidden="true"
-            className="absolute left-0 top-1/2 -mt-px h-0.5 w-full bg-slate-200 dark:bg-slate-700"
+            className="absolute left-0 top-1/2 -mt-px h-0.5 w-full bg-[#D8E4FF] dark:bg-[#050505]"
           ></div>
           <ul className="relative flex w-full justify-between">
             <li>
               <Link
-                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 1 ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${step >= 1 ? 'bg-[#050505] text-white' : 'bg-[#D8E4FF] text-[#6B818C] dark:bg-[#050505] dark:text-[#6B818C]'}`}
                 href="/signup?=page1"
               >
                 1

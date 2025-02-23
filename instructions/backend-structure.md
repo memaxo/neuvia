@@ -49,7 +49,7 @@ The backend is built using a combination of:
 - **User Data:** User data is stored in the `auth.users` table (managed by Supabase Auth) and extended in the `public.profiles` table.
 - **Server-Side Authentication:** The `createClient` function in `utils/supabase-server.ts` and `utils/supa-server-actions.tsx` is used to create a Supabase client instance on the server, using cookies for authentication.
 - **Client-Side Authentication:** The `useSupabaseBrowser` hook (in `utils/supabase-browser.ts`) provides a Supabase client instance for client-side interactions.
-- **Actions:** `app/auth/actions/index.tsx` and `app/auth-server-action/actions/actions.tsx` contain functions to sign up, sign in, and sign out users.
+- **Actions:** `app/auth/actions/index.tsx` contains functions to sign up, sign in, and sign out users.
 
 #### 2.3. Storage (Supabase Storage)
 

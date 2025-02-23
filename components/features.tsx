@@ -32,7 +32,7 @@ export default function Features() {
     <section className="relative py-12 md:py-20">
       <div className="container relative">
         <div className="mx-auto mb-12 max-w-4xl text-center md:mb-16">
-          <h2 className="mb-6 bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-4xl font-extrabold leading-tight text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)] sm:text-5xl">
+            <h2 className="mb-6 bg-gradient-to-r from-[#35605A] via-[#004FFF] to-[#31AFD4] bg-clip-text text-4xl font-extrabold leading-tight text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)] sm:text-5xl">
             Clinical Intelligence Platform
           </h2>
           <p className="mx-auto max-w-3xl text-xl font-medium text-white/90 backdrop-blur-sm">
@@ -47,12 +47,12 @@ export default function Features() {
               className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-8 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-cyan-500/30 hover:bg-black/40 hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]"
               key={feature.name}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+<div className="absolute inset-0 bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
               <div className="relative z-10">
                 <div className="mb-4 flex items-center gap-5">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 transition-colors duration-300 group-hover:border-cyan-500/20">
-                    <feature.icon className="size-6 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+<div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-[#6B818C]/10 bg-gradient-to-br from-[#004FFF]/20 to-[#004FFF]/20 transition-colors duration-300 group-hover:border-[#004FFF]/20">
+                    <feature.icon className="size-6 text-[#004FFF] transition-colors duration-300 group-hover:text-[#004FFF]" />
                   </div>
                   <h3 className="text-xl font-bold text-white transition-colors duration-300 group-hover:text-cyan-50">
                     {feature.name}
@@ -63,7 +63,7 @@ export default function Features() {
                 </p>
               </div>
 
-              <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+<div className="group relative overflow-hidden rounded-2xl border border-[#6B818C]/10 bg-[#050505] p-8 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-[#004FFF]/30 hover:bg-[#050505]/80 hover:shadow-[0_0_30px_rgba(0,0,0,0.1)]">
                 <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
               </div>
             </div>

@@ -41,6 +41,8 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=()',
   },
+  // Content Security Policy for Spline
+
 ]
 
 const nextConfig = {
@@ -60,6 +62,20 @@ const nextConfig = {
       ...config.resolve.alias,
       '@splinetool/react-spline/next': '@splinetool/react-spline'
     }
+    
+    // Add support for WebAssembly
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      layers: true,
+    }
+
+    // Ensure proper handling of Spline's dependencies
+    config.module.rules.push({
+      test: /\.(glb|gltf)$/,
+      type: 'asset/resource'
+    })
+
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
     return config
   },
@@ -113,6 +129,24 @@ const nextConfig = {
         source: '/(.*)',
         headers: securityHeaders,
       },
+      {
+        // Add CORS headers for manifest.json
+        source: '/manifest.json',
+        headers: [
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*'  // Or specify your domains
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET'
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: '*'
+          }
+        ]
+      }
     ]
   },
   pageExtensions: ['ts', 'tsx', 'mdx', 'js', 'jsx', 'rs'],

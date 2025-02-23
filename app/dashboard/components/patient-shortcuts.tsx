@@ -9,6 +9,7 @@ import {
   Upload,
   User,
 } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 
@@ -27,10 +28,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-
-import type { Patient } from './types'
-
-interface Patient {
+interface PatientData {
   id: number
   name: string
   status: 'High Risk' | 'At Risk' | 'Healthy' | 'New Patient' | 'Recent Upload'
@@ -39,45 +37,37 @@ interface Patient {
   riskLevel: number // 0-100
 }
 
-const statusColors = {
+const statusConfig = {
   'High Risk': {
-    dot: 'rgb(248, 113, 113)',
-    gradient: 'from-red-500/10 to-red-900/5',
+    badge: 'status-badge-high-risk',
+    icon: Info,
   },
   'At Risk': {
-    dot: 'rgb(251, 146, 60)',
-    gradient: 'from-orange-500/10 to-orange-900/5',
+    badge: 'status-badge-at-risk',
+    icon: Info,
   },
-  Healthy: {
-    dot: 'rgb(74, 222, 128)',
-    gradient: 'from-green-500/10 to-green-900/5',
+  'Healthy': {
+    badge: 'status-badge-stable',
+    icon: User,
   },
   'New Patient': {
-    dot: 'rgb(96, 165, 250)',
-    gradient: 'from-blue-500/10 to-blue-900/5',
+    badge: 'status-badge-new',
+    icon: User,
   },
   'Recent Upload': {
-    dot: 'rgb(167, 139, 250)',
-    gradient: 'from-purple-500/10 to-purple-900/5',
+    badge: 'status-badge-new',
+    icon: Upload,
   },
 }
 
-const getRiskColor = (risk: number) => {
-  if (risk >= 75) return 'text-red-400'
-  if (risk >= 50) return 'text-orange-400'
-  if (risk >= 25) return 'text-yellow-400'
-  return 'text-green-400'
-}
-
-const getRiskDescription = (risk: number) => {
-  if (risk >= 75) return 'Critical attention required'
-  if (risk >= 50) return 'Elevated risk level'
-  if (risk >= 25) return 'Moderate risk level'
-  return 'Normal risk level'
+const getRiskScoreClass = (risk: number): string => {
+  if (risk >= 75) return 'risk-score-high'
+  if (risk >= 50) return 'risk-score-medium'
+  return 'risk-score-low'
 }
 
 export function PatientShortcuts() {
-  const [patients, setPatients] = useState<Patient[]>([])
+  const [patients, setPatients] = useState<PatientData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -100,30 +90,30 @@ export function PatientShortcuts() {
   }, [])
 
   if (loading) {
-    return <div className="p-4 text-center text-white/70">Loading patients...</div>
+    return <div className="p-4 text-center text-[rgb(var(--foreground)/var(--opacity-70))]">Loading patients...</div>
   }
 
   if (error) {
-    return <div className="p-4 text-center text-red-400">{error}</div>
+    return <div className="p-4 text-center text-[rgb(var(--error)/var(--opacity-100))]">{error}</div>
   }
 
   return (
     <TooltipProvider>
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
+      <div className="card-premium animate-fade-in">
         {/* Enhanced header */}
-        <div className="border-b border-white/5 p-6">
+        <div className="border-b border-[rgb(var(--border)/var(--opacity-10))] p-6">
           <div className="flex items-center justify-between">
-            <h3 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-2xl font-extrabold text-transparent drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <h3 className="text-2xl font-extrabold text-[rgb(var(--foreground)/var(--opacity-90))]">
               Recent Patients
             </h3>
             <Button
-              className="group relative overflow-hidden bg-black/20 text-white/70 transition-all duration-300 hover:scale-105 hover:bg-black/40 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+              className="action-button px-4"
               size="sm"
               variant="ghost"
             >
               <span className="relative z-10">View All</span>
               <div className="absolute inset-0 overflow-hidden">
-                <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+                <div className="scan-line-primary group-hover:animate-scan absolute -left-full top-0 h-px w-full" />
               </div>
             </Button>
           </div>
@@ -132,170 +122,156 @@ export function PatientShortcuts() {
         {/* Enhanced content */}
         <div className="p-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {patients.map((patient) => (
-              <div
-                className={cn(
-                  'group relative flex flex-col',
-                  'rounded-xl p-4',
-                  'bg-black/20 backdrop-blur-sm',
-                  'border border-white/5 hover:border-cyan-500/30',
-                  'transition-all duration-300',
-                  'hover:-translate-y-1 hover:bg-black/40',
-                  'hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
-                )}
-                key={patient.id}
-              >
-                {/* Enhanced gradient overlay */}
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+            {patients.map((patient) => {
+              const StatusIcon = statusConfig[patient.status].icon
+              const statusBadgeClass = statusConfig[patient.status].badge
+              const riskScoreClass = getRiskScoreClass(patient.riskLevel)
 
-                {/* Content wrapper */}
-                <div className="relative z-10">
-                  {/* Header section */}
-                  <div className="mb-4 flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]">
-                          <User className="size-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
+              return (
+                <div
+                  className="patient-card group"
+                  key={patient.id}
+                >
+                  {/* Enhanced gradient overlay */}
+                  <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
+
+                  {/* Content wrapper */}
+                  <div className="relative z-10">
+                    {/* Header section */}
+                    <div className="patient-card-header">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="duration-normal rounded-xl border border-[rgb(var(--border)/var(--opacity-10))] bg-[rgb(var(--background)/var(--opacity-20))] p-2.5 transition-all group-hover:border-[rgb(var(--primary)/var(--opacity-20))] group-hover:shadow-[0_0_20px_rgba(var(--primary),0.1)]">
+                            <StatusIcon className="duration-normal size-5 text-[rgb(var(--primary)/var(--opacity-100))] transition-colors group-hover:text-[rgb(var(--primary)/var(--opacity-90))]" />
+                          </div>
                         </div>
-                        <div
-                          className="absolute -bottom-1 -right-1 size-3 animate-pulse rounded-full border-2 border-black"
-                          style={{
-                            backgroundColor: statusColors[patient.status].dot,
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-white/90 transition-colors duration-300 group-hover:text-white">
-                            {patient.name}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="duration-normal font-medium text-[rgb(var(--foreground)/var(--opacity-90))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-100))]">
+                              {patient.name}
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className={cn('status-badge', riskScoreClass)}>
+                                  <span>{patient.riskLevel}%</span>
+                                  <Info className="size-3 opacity-50" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Risk Level: {patient.riskLevel}%</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                          <span className="duration-normal text-sm text-[rgb(var(--foreground)/var(--opacity-50))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-70))]">
+                            {patient.status}
                           </span>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div
-                                className={cn(
-                                  'flex items-center gap-1 rounded-full px-2 py-1 text-xs',
-                                  'bg-black/40 backdrop-blur-sm transition-colors duration-300 group-hover:bg-black/60',
-                                  getRiskColor(patient.riskLevel)
-                                )}
-                              >
-                                <span>{patient.riskLevel}%</span>
-                                <Info className="size-3 opacity-50" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{getRiskDescription(patient.riskLevel)}</p>
-                            </TooltipContent>
-                          </Tooltip>
                         </div>
-                        <span className="text-sm text-white/50 transition-colors duration-300 group-hover:text-white/70">
-                          {patient.status}
-                        </span>
                       </div>
-                    </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          className="size-8 text-white/40 transition-all hover:scale-110 hover:bg-black/40 hover:text-white/60"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="w-48 border-white/10 bg-black/80 backdrop-blur-xl"
-                      >
-                        <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
-                          View Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
-                          Edit Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
-                          View History
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Quick actions */}
-                  <div className="flex items-center gap-2">
-                    {patient.nextAppointment && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                           <Button
-                            className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                            className="action-button"
                             size="icon"
                             variant="ghost"
                           >
-                            <Calendar className="size-4" />
+                            <MoreVertical className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-48 border-[rgb(var(--border)/var(--opacity-10))] bg-[rgb(var(--background)/var(--opacity-80))] backdrop-blur-xl"
+                        >
+                          <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
+                            View Profile
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
+                            Edit Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
+                            View History
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    {/* Quick actions */}
+                    <div className="mt-4 flex items-center gap-2">
+                      {patient.nextAppointment && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              className="action-button"
+                              size="icon"
+                              variant="ghost"
+                            >
+                              <Calendar className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Next appointment: {patient.nextAppointment}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            className="action-button"
+                            size="icon"
+                            variant="ghost"
+                          >
+                            <FileText className="size-4" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Next appointment: {patient.nextAppointment}</p>
+                          <p>View medical records</p>
                         </TooltipContent>
                       </Tooltip>
-                    )}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <FileText className="size-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>View medical records</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
-                          size="icon"
-                          variant="ghost"
-                        >
-                          <MessageSquare className="size-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Send message</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            className="action-button"
+                            size="icon"
+                            variant="ghost"
+                          >
+                            <MessageSquare className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Send message</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
 
-                  {/* Last activity with enhanced styling */}
-                  <div className="mt-4 border-t border-white/5 pt-3">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="cursor-help text-sm text-white/50 transition-colors duration-300 group-hover:text-white/70">
-                          {patient.lastActivity}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Most recent patient activity</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                    {/* Last activity with enhanced styling */}
+                    <div className="mt-4 border-t border-[rgb(var(--border)/var(--opacity-10))] pt-3">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="duration-normal cursor-help text-sm text-[rgb(var(--foreground)/var(--opacity-50))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-70))]">
+                            {patient.lastActivity}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Most recent patient activity</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
 
-                  {/* Enhanced clickable overlay */}
-                  <Link
-                    aria-label={`View ${patient.name}'s profile`}
-                    className="absolute inset-0 z-20 rounded-xl"
-                    href={`/dashboard/patients/${patient.id}`}
-                  />
+                    {/* Enhanced clickable overlay */}
+                    <Link
+                      aria-label={`View ${patient.name}'s profile`}
+                      className="absolute inset-0 z-20 rounded-xl"
+                      href={`/dashboard/patients/${patient.id}` as Route}
+                    />
 
-                  {/* Enhanced scanning line effect */}
-                  <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                    {/* Enhanced scanning line effect */}
+                    <div className="duration-normal absolute inset-0 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="scan-line-primary group-hover:animate-scan absolute -left-full top-0 h-px w-full" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>

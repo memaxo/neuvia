@@ -11,9 +11,9 @@ import {
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import type { Message as VercelChatMessage} from "ai";
+import { streamText } from 'ai';
 import { NextResponse } from "next/server";
 import type { NextRequest} from "next/server";
-import { streamText } from 'ai';
 
 export const runtime = "edge";
 

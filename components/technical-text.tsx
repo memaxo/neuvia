@@ -21,8 +21,8 @@ export function TechnicalText({
 
   const variantStyles = {
     highlight:
-      "font-medium relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1px] after:bg-blue-400/10",
-    technical: 'font-mono text-blue-300 tracking-tight',
+      "font-medium relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1px] after:bg-[rgb(var(--primary)/0.1)]",
+    technical: 'font-mono text-[#004FFF] tracking-tight',
     mono: 'font-mono text-sm tracking-tight',
   }
 
@@ -39,7 +39,7 @@ export function TechnicalText({
     >
       {children}
       {variant === 'highlight' && (
-        <span className="absolute inset-0 rounded-sm bg-blue-400/[0.02]" />
+        <span className="after:bg-[#FF007F]/[0.02]" />
       )}
     </span>
   )

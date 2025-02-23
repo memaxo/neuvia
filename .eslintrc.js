@@ -92,14 +92,8 @@ module.exports = {
       'error',
       {
         devDependencies: [
-          'test/**/*',
-          'tests/**/*',
-          '**/*.test.ts',
-          '**/*.test.tsx',
-          '**/*.spec.ts',
-          '**/*.spec.tsx',
-          'vitest.config.ts',
-          'tailwind.config.js',
+          '**/*.config.js',
+          '**/*.config.ts',
           'postcss.config.js'
         ]
       }

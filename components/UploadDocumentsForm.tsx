@@ -43,7 +43,7 @@ export function UploadDocumentsForm() {
         >
           <svg
             aria-hidden="true"
-            className="size-6 animate-spin fill-sky-800 text-white dark:text-white"
+            className="size-6 animate-spin fill-[#004FFF] text-white dark:text-white"
             fill="none"
             viewBox="0 0 100 101"
             xmlns="http://www.w3.org/2000/svg"

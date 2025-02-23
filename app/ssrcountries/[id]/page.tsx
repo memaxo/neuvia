@@ -1,34 +1,41 @@
-import { prefetchQuery } from '@supabase-cache-helpers/postgrest-react-query'
-import {
-  dehydrate,
-  HydrationBoundary,
-  QueryClient,
-} from '@tanstack/react-query'
+import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { getCountryById } from '@/queries/country-by-id'
-import { createReadOnlyClient } from '@/utils/supabase'
+import { createClient } from '@/utils/supabase/server'
 
-import Country from './country'
+import CountryDisplay from './country'
+
+async function CountryContent({ id }: { id: number }) {
+  const supabase = await createClient()
+  
+  try {
+    const country = await getCountryById(supabase, id)
+    
+    if (!country) {
+      notFound()
+    }
+
+    return <CountryDisplay country={country} />
+  } catch (error) {
+    console.error('Error fetching country:', error)
+    throw error
+  }
+}
 
 export default async function CountryPage({
   params,
 }: {
   params: { id: string }
 }) {
-  const queryClient = new QueryClient()
-  const supabase = await createReadOnlyClient()
   const countryId = parseInt(params.id)
   if (isNaN(countryId)) {
-    throw new Error('Invalid country ID')
+    notFound()
   }
 
-  await prefetchQuery(queryClient, getCountryById(supabase, countryId))
-
   return (
-    // Neat! Serialization is now as easy as passing props.
-    // HydrationBoundary is a Client Component, so hydration will happen there.
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <Country id={countryId} />
-    </HydrationBoundary>
+    <Suspense fallback={<div>Loading...</div>}>
+      <CountryContent id={countryId} />
+    </Suspense>
   )
 }

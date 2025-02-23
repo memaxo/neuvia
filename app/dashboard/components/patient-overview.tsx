@@ -14,38 +14,38 @@ import { PieChart } from './visualizations/pie-chart'
 
 export function PatientOverview() {
   return (
-    <div className="card-premium rounded-lg border border-white/10 bg-black/30 backdrop-blur-xl">
-      <div className="card-premium-header border-b border-white/5">
-        <div className="card-premium-header-content">
-          <h3 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 bg-clip-text text-xl font-bold text-transparent">
+    <div className="card-premium animate-fade-in">
+      <div className="border-b border-[rgb(var(--border)/var(--opacity-10))] p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-bold text-[rgb(var(--foreground)/var(--opacity-90))]">
             Patient Overview
           </h3>
           <Button
-            className="group relative overflow-hidden bg-black/20 text-white/70 transition-all duration-300 hover:scale-105 hover:bg-black/40 hover:text-white hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+            className="action-button px-4"
             size="sm"
             variant="ghost"
           >
             <span className="relative z-10">View All</span>
             <div className="absolute inset-0 overflow-hidden">
-              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+              <div className="scan-line-primary group-hover:animate-scan absolute -left-full top-0 h-px w-full" />
             </div>
           </Button>
         </div>
       </div>
-      <div className="card-premium-content">
+      <div className="p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Patient Distribution */}
-          <div className="group relative rounded-xl border border-white/5 bg-black/20 p-4 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/40">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+          <div className="card-premium group">
+            <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
 
             <div className="relative z-10">
               <div className="flex items-start gap-4">
                 <div className="group/chart relative">
                   <PieChart data={mockPatientDistribution} size={100} />
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/20 to-transparent opacity-0 transition-opacity duration-300 group-hover/chart:opacity-100" />
+                  <div className="duration-normal absolute inset-0 rounded-full bg-gradient-to-t from-[rgb(var(--background)/var(--opacity-20))] to-transparent opacity-0 transition-opacity group-hover/chart:opacity-100" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="mb-3 text-sm font-medium text-white/90">
+                  <h4 className="mb-3 text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-90))]">
                     Distribution
                   </h4>
                   <div className="space-y-2">
@@ -53,17 +53,17 @@ export function PatientOverview() {
                       <TooltipProvider key={index}>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="group/item flex cursor-help items-center justify-between rounded-lg p-2 transition-all duration-300 hover:bg-black/40">
+                            <div className="group/item duration-normal flex cursor-help items-center justify-between rounded-lg p-2 transition-all hover:bg-[rgb(var(--background)/var(--opacity-40))]">
                               <div className="flex items-center gap-2">
                                 <div
-                                  className="size-2 rounded-full transition-transform duration-300 group-hover/item:scale-125"
+                                  className="duration-normal size-2 rounded-full transition-transform group-hover/item:scale-125"
                                   style={{ backgroundColor: item.color }}
                                 />
-                                <span className="text-sm text-white/70 transition-colors duration-300 group-hover/item:text-white">
+                                <span className="duration-normal text-sm text-[rgb(var(--foreground)/var(--opacity-70))] transition-colors group-hover/item:text-[rgb(var(--foreground)/var(--opacity-100))]">
                                   {item.status}
                                 </span>
                               </div>
-                              <span className="text-sm font-medium text-white/90 transition-colors duration-300 group-hover/item:text-white">
+                              <span className="duration-normal text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-90))] transition-colors group-hover/item:text-[rgb(var(--foreground)/var(--opacity-100))]">
                                 {item.count}
                               </span>
                             </div>
@@ -73,10 +73,10 @@ export function PatientOverview() {
                               <p className="font-medium">
                                 {item.status} Patients
                               </p>
-                              <p className="text-xs text-white/70">
+                              <p className="text-xs text-[rgb(var(--foreground)/var(--opacity-70))]">
                                 Count: {item.count}
                               </p>
-                              <p className="text-xs text-white/70">
+                              <p className="text-xs text-[rgb(var(--foreground)/var(--opacity-70))]">
                                 {Math.round(
                                   (item.count /
                                     mockPatientDistribution.reduce(
@@ -99,14 +99,14 @@ export function PatientOverview() {
           </div>
 
           {/* Mini Calendar */}
-          <div className="group relative rounded-xl border border-white/5 bg-black/20 p-4 transition-all duration-300 hover:border-cyan-500/30 hover:bg-black/40">
-            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+          <div className="card-premium group">
+            <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
 
             <div className="relative z-10">
-              <h4 className="mb-3 text-sm font-medium text-white/90">
+              <h4 className="mb-3 text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-90))]">
                 Upcoming Appointments
               </h4>
-              <div className="rounded-lg bg-black/30 p-3 backdrop-blur-sm">
+              <div className="rounded-lg bg-[rgb(var(--background)/var(--opacity-30))] p-3 backdrop-blur-sm">
                 <MiniCalendar appointments={mockAppointments} />
               </div>
             </div>

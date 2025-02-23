@@ -37,17 +37,17 @@ export function SecuritySettings() {
     <div className="space-y-6">
       {/* Password Change */}
       <div className="space-y-4">
-        <h3 className="text-lg font-medium text-white/90">Change Password</h3>
+        <h3 className="text-lg font-medium text-[#050505]">Change Password</h3>
         <div className="space-y-3">
           {/* Current Password */}
           <div className="space-y-2">
             <Label className="text-white/70">Current Password</Label>
             <div className="group relative">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 via-transparent to-purple-500/20 opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
+bg-gradient-to-r from-[#004FFF]/20 via-transparent to-[#004FFF]/20
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
-                  className="border-white/5 bg-black/40 pl-10 text-white/70 placeholder:text-white/40 focus:border-cyan-500/30 focus:ring-2 focus:ring-cyan-500/20"
+                  className="border-[#6B818C]/5 bg-[#D8E4FF] pl-10 text-[#050505] placeholder:text-[#6B818C] focus:border-[#004FFF]/30 focus:ring-2 focus:ring-[#004FFF]/20"
                   placeholder="Enter current password"
                   type="password"
                 />
@@ -88,7 +88,7 @@ export function SecuritySettings() {
           </div>
 
           {/* Update Password Button */}
-          <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg transition-all duration-300 hover:from-cyan-600 hover:to-blue-600 hover:shadow-[0_0_30px_rgba(0,255,255,0.3)]">
+            <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
             Update Password
             <div className="absolute inset-0 overflow-hidden">
               <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
@@ -105,16 +105,16 @@ export function SecuritySettings() {
             <div
               className={cn(
                 'group relative rounded-xl p-4',
-                'bg-black/20 backdrop-blur-sm',
-                'border border-white/5 hover:border-cyan-500/30',
+                'bg-[#D8E4FF] backdrop-blur-sm',
+                'border border-[#6B818C]/5 hover:border-[#004FFF]/30',
                 'transition-all duration-300',
-                'hover:bg-black/40',
-                'hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]'
+                'hover:bg-[#D8E4FF]/80',
+                'hover:shadow-[0_0_20px_rgba(0,0,0,0.1)]'
               )}
               key={feature.id}
             >
               {/* Enhanced gradient overlay */}
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
 
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">

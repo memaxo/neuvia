@@ -76,96 +76,85 @@ const mockPatients: Patient[] = [
   },
 ]
 
-const statusStyles = {
+const statusConfig = {
   'High Risk': {
-    color: 'text-red-400',
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/20',
+    badge: 'status-badge-high-risk',
     icon: AlertCircle,
   },
   'At Risk': {
-    color: 'text-orange-400',
-    bg: 'bg-orange-500/10',
-    border: 'border-orange-500/20',
+    badge: 'status-badge-at-risk',
     icon: AlertCircle,
   },
-  Stable: {
-    color: 'text-green-400',
-    bg: 'bg-green-500/10',
-    border: 'border-green-500/20',
+  'Stable': {
+    badge: 'status-badge-stable',
     icon: User,
   },
-  New: {
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/10',
-    border: 'border-blue-500/20',
+  'New': {
+    badge: 'status-badge-new',
     icon: User,
   },
 }
 
+const getRiskScoreClass = (score: number): string => {
+  if (score >= 75) return 'risk-score-high'
+  if (score >= 50) return 'risk-score-medium'
+  return 'risk-score-low'
+}
+
 export function PatientList() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30 backdrop-blur-xl">
+    <div className="card-premium animate-fade-in">
       <div className="p-6">
         <div className="space-y-4">
           {mockPatients.map((patient) => {
-            const StatusIcon = statusStyles[patient.status].icon
+            const StatusIcon = statusConfig[patient.status].icon
+            const statusBadgeClass = statusConfig[patient.status].badge
+            const riskScoreClass = getRiskScoreClass(patient.riskScore)
+
             return (
               <div
-                className={cn(
-                  'group relative rounded-xl p-4',
-                  'bg-black/20 backdrop-blur-sm',
-                  'border border-white/5 hover:border-cyan-500/30',
-                  'transition-all duration-300',
-                  'hover:translate-x-1 hover:bg-black/40',
-                  'hover:shadow-[0_0_30px_rgba(0,255,255,0.1)]'
-                )}
+                className="patient-card group"
                 key={patient.id}
               >
                 {/* Enhanced gradient overlay */}
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                <div className="gradient-overlay-primary absolute inset-0 rounded-xl opacity-0 transition-opacity duration-normal group-hover:opacity-100" />
 
                 {/* Content wrapper */}
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between">
+                <div className="relative z-10 w-full">
+                  <div className="patient-card-header">
                     {/* Patient info */}
-                    <div className="flex items-start gap-4">
-                      <div className="relative">
-                        <div className="rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2.5 transition-all duration-300 group-hover:border-cyan-500/20 group-hover:shadow-[0_0_20px_rgba(0,255,255,0.1)]">
-                          <StatusIcon className="size-5 text-cyan-400 transition-colors duration-300 group-hover:text-cyan-300" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-white/90 transition-colors duration-300 group-hover:text-white">
-                            {patient.name}
-                          </span>
-                          <span className="text-sm text-white/50">
-                            {patient.id}
-                          </span>
-                          <div
-                            className={cn(
-                              'rounded-full px-2.5 py-1 text-sm font-medium',
-                              statusStyles[patient.status].bg,
-                              statusStyles[patient.status].color,
-                              statusStyles[patient.status].border
-                            )}
-                          >
-                            {patient.status}
+                    <div className="patient-info">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="rounded-xl border border-[rgb(var(--border)/var(--opacity-10))] bg-[rgb(var(--background)/var(--opacity-20))] p-2.5 transition-all duration-normal group-hover:border-[rgb(var(--primary)/var(--opacity-20))] group-hover:shadow-[0_0_20px_rgba(var(--primary),0.1)]">
+                            <StatusIcon className="size-5 text-[rgb(var(--primary)/var(--opacity-100))] transition-colors duration-normal group-hover:text-[rgb(var(--primary)/var(--opacity-90))]" />
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4 text-sm text-white/70">
-                          <span>Age: {patient.age}</span>
-                          <span>Condition: {patient.condition}</span>
-                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-[rgb(var(--foreground)/var(--opacity-90))] transition-colors duration-normal group-hover:text-[rgb(var(--foreground)/var(--opacity-100))]">
+                              {patient.name}
+                            </span>
+                            <span className="text-sm text-[rgb(var(--foreground)/var(--opacity-50))]">
+                              {patient.id}
+                            </span>
+                            <div className={cn('status-badge', statusBadgeClass)}>
+                              {patient.status}
+                            </div>
+                          </div>
 
-                        <div className="flex items-center gap-4 text-sm text-white/50">
-                          <span>Last visit: {patient.lastVisit}</span>
-                          {patient.nextAppointment && (
-                            <span>Next: {patient.nextAppointment}</span>
-                          )}
+                          <div className="flex items-center gap-4 text-sm text-[rgb(var(--foreground)/var(--opacity-70))]">
+                            <span>Age: {patient.age}</span>
+                            <span>Condition: {patient.condition}</span>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-sm text-[rgb(var(--foreground)/var(--opacity-50))]">
+                            <span>Last visit: {patient.lastVisit}</span>
+                            {Boolean(patient.nextAppointment) && (
+                              <span>Next: {patient.nextAppointment}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -176,7 +165,7 @@ export function PatientList() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
-                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="action-button"
                               size="icon"
                               variant="ghost"
                             >
@@ -191,7 +180,7 @@ export function PatientList() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
-                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="action-button"
                               size="icon"
                               variant="ghost"
                             >
@@ -206,7 +195,7 @@ export function PatientList() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
-                              className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                              className="action-button"
                               size="icon"
                               variant="ghost"
                             >
@@ -215,15 +204,15 @@ export function PatientList() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
                             align="end"
-                            className="w-48 border-white/10 bg-black/80 backdrop-blur-xl"
+                            className="w-48 border-[rgb(var(--border)/var(--opacity-10))] bg-[rgb(var(--background)/var(--opacity-80))] backdrop-blur-xl"
                           >
-                            <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
+                            <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
                               View Profile
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
+                            <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
                               Edit Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white">
+                            <DropdownMenuItem className="text-[rgb(var(--foreground)/var(--opacity-70))] hover:bg-[rgb(var(--primary)/var(--opacity-10))] hover:text-[rgb(var(--foreground)/var(--opacity-100))] focus:bg-[rgb(var(--primary)/var(--opacity-10))] focus:text-[rgb(var(--foreground)/var(--opacity-100))]">
                               View History
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -233,44 +222,24 @@ export function PatientList() {
                   </div>
 
                   {/* Risk score bar */}
-                  <div className="mt-4 space-y-1">
+                  <div className="risk-score-container">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-white/70">Risk Score</span>
-                      <span
-                        className={cn(
-                          'font-medium',
-                          patient.riskScore >= 75
-                            ? 'text-red-400'
-                            : patient.riskScore >= 50
-                              ? 'text-orange-400'
-                              : patient.riskScore >= 25
-                                ? 'text-yellow-400'
-                                : 'text-green-400'
-                        )}
-                      >
+                      <span className="text-[rgb(var(--foreground)/var(--opacity-70))]">Risk Score</span>
+                      <span className={cn('font-medium', riskScoreClass)}>
                         {patient.riskScore}%
                       </span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-black/40">
+                    <div className="risk-score-bar">
                       <div
-                        className={cn(
-                          'h-full rounded-full transition-all duration-300',
-                          patient.riskScore >= 75
-                            ? 'bg-gradient-to-r from-red-500 to-red-600'
-                            : patient.riskScore >= 50
-                              ? 'bg-gradient-to-r from-orange-500 to-orange-600'
-                              : patient.riskScore >= 25
-                                ? 'bg-gradient-to-r from-yellow-500 to-yellow-600'
-                                : 'bg-gradient-to-r from-green-500 to-green-600'
-                        )}
+                        className={cn('risk-score-progress', riskScoreClass)}
                         style={{ width: `${patient.riskScore}%` }}
                       />
                     </div>
                   </div>
 
                   {/* Enhanced scanning line effect */}
-                  <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+                  <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-normal group-hover:opacity-100">
+                    <div className="scan-line-primary group-hover:animate-scan absolute -left-full top-0 h-px w-full" />
                   </div>
                 </div>
               </div>

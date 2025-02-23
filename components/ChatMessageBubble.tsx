@@ -28,7 +28,7 @@ export function ChatMessageBubble(props: {
 
         {props.sources && props.sources.length ? (
           <>
-            <code className="mr-auto mt-4 rounded bg-primary px-2 py-1">
+            <code className="mr-auto mt-4 rounded bg-[#004FFF] px-2 py-1">
               <h2>🔍 Sources:</h2>
             </code>
             <code className="mr-2 mt-1 rounded bg-primary px-2 py-1 text-xs">

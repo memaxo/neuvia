@@ -28,20 +28,20 @@ export default function Step({ step, segment }: StepProps) {
             'h-[33px] w-[33px] rounded-full border',
             'transition-colors duration-300',
             step.segment === segment
-              ? 'bg-light-blue text-marine-blue border-transparent'
-              : 'border-white bg-transparent text-white',
+              ? 'bg-[#004FFF] text-white border-transparent'
+              : 'border-[#6B818C] bg-transparent text-[#6B818C]',
             'text-sm font-bold'
           )}
         >
           {step.number}
         </button>
         <div className="hidden flex-col uppercase lg:flex">
-          <h3 className={clsx('text-cool-gray text-[13px] font-normal')}>
+            <h3 className={clsx('text-[#6B818C] text-[13px] font-normal')}>
             Step {step.number}
           </h3>
           <h2
             className={clsx(
-              'text-[14px] font-bold tracking-[0.1em] text-white'
+              'text-[14px] font-bold tracking-[0.1em] text-[#35605A]'
             )}
           >
             {step.heading}
