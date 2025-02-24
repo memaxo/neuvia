@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import type { Report } from '@/lib/reports.types'
 import { cn } from '@/lib/utils'
 
@@ -127,6 +128,17 @@ export function ReportDetail({ report }: ReportDetailProps) {
           )}
         </div>
       </div>
+    </div>
+    <div className="mt-4 flex justify-end">
+      <button
+        className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-4 py-2"
+        onClick={() => {
+          const router = useRouter();
+          router.push(\`/dashboard/chat?reportId=\${report.id}\`);
+        }}
+      >
+        Open in Chat
+      </button>
     </div>
   )
 } 

@@ -11,6 +11,7 @@ import {
   Eye,
   RefreshCw,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import filterXSS from 'xss'
 
@@ -66,12 +67,13 @@ interface ReportsListProps {
 }
 
 export function ReportsList({ reports, onRetry }: ReportsListProps) {
+  const router = useRouter();
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (selectedReport && contentRef.current) {
-      const sanitizedHTML = filterXSS(selectedReport.content || '', {
+      const sanitizedHTML = filterXSS(String(selectedReport.content || ''), {
         whiteList: {
           p: ['class'],
           div: ['class'],
@@ -105,7 +107,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
         <div className="p-6">
           <div className="space-y-4">
             {reports.map((report) => {
-              const TypeIcon = typeIcons[report.type]
+              const TypeIcon = typeIcons[report.type as 'diagnostic' | 'progress' | 'analytics']
               return (
                 <div
                   className={cn(
@@ -143,9 +145,9 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                             <div
                               className={cn(
                                 'rounded-full px-2.5 py-1 text-sm font-medium',
-                                statusStyles[report.status].bg,
-                                statusStyles[report.status].color,
-                                statusStyles[report.status].border
+                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].bg),
+                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].color),
+                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].border)
                               )}
                             >
                               {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
@@ -154,7 +156,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
 
                           <div className="flex items-center gap-4 text-sm text-white/70">
                             <span>Patient ID: {report.patient_id}</span>
-                            <span>Symptoms: {report.metadata.patientInfo.symptoms.length}</span>
+                            <span>Symptoms: {(report.metadata as any)?.patientInfo?.symptoms?.length || 0}</span>
                           </div>
 
                           <div className="text-sm text-white/50">
@@ -181,6 +183,25 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <p>View report</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* New "Open in Chat" Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
+                                    onClick={() => {
+                                      router.push(`/dashboard/chat?reportId=${report.id}`)
+                                    }}
+                                    size="icon"
+                                    variant="ghost"
+                                  >
+                                    <Eye className="size-4 rotate-180" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Open in Chat</p>
                                 </TooltipContent>
                               </Tooltip>
 
@@ -281,7 +302,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
         <DialogContent className="max-h-[80vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedReport?.type.charAt(0).toUpperCase() + selectedReport?.type.slice(1)} Report
+              {selectedReport!.type.charAt(0).toUpperCase() + selectedReport!.type.slice(1)} Report
             </DialogTitle>
           </DialogHeader>
 
@@ -290,10 +311,10 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
               <div className="rounded-lg bg-black/20 p-4">
                 <h3 className="mb-2 font-medium text-white/90">Patient Information</h3>
                 <div className="space-y-2 text-sm text-white/70">
-                  <p>Symptoms: {selectedReport.metadata.patientInfo.symptoms.join(", ")}</p>
-                  <p>Medical History: {selectedReport.metadata.patientInfo.medicalHistory}</p>
-                  <p>Current Medications: {selectedReport.metadata.patientInfo.currentMedications.join(", ")}</p>
-                  <p>Allergies: {selectedReport.metadata.patientInfo.allergies.join(", ")}</p>
+                  <p>Symptoms: {(selectedReport?.metadata as any)?.patientInfo?.symptoms?.join(", ") || "N/A"}</p>
+                  <p>Medical History: {(selectedReport?.metadata as any)?.patientInfo?.medicalHistory || "N/A"}</p>
+                  <p>Current Medications: {(selectedReport?.metadata as any)?.patientInfo?.currentMedications?.join(", ") || "N/A"}</p>
+                  <p>Allergies: {(selectedReport?.metadata as any)?.patientInfo?.allergies?.join(", ") || "N/A"}</p>
                 </div>
               </div>
 

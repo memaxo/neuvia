@@ -4,7 +4,7 @@ import Image from 'next/image'
 import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
-import { createClient } from '@/utils/supabase/client'
+import { createBrowserClient } from '@/lib/supabase'
 
 
 type AvatarError = {
@@ -25,7 +25,7 @@ export default function Avatar({
   email: string | null
   onUpload: (url: string) => void
 }) {
-  const supabase = createClient()
+  const supabase = createBrowserClient()
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<AvatarError | null>(null)

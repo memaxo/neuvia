@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 
 import type { Report } from "@/lib/reports.types";
-import { createClient } from "@/utils/supabase/client";
+import { createBrowserClient } from '@/lib/supabase'
 
 import { ReportsFilters } from "./components/reports-filters";
 import { ReportsList } from "./components/reports-list";
@@ -13,7 +13,7 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const supabase = createClient();
+  const supabase = createBrowserClient();
 
   useEffect(() => {
     async function fetchReports() {

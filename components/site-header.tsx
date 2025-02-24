@@ -9,7 +9,7 @@ import { MobileNav } from '@/components/mobile-nav'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { siteConfig } from '@/config/site'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/auth-context'
 
 export function SiteHeader() {
   const pathname = usePathname()

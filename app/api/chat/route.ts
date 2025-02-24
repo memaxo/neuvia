@@ -1,74 +1,201 @@
-import { PromptTemplate } from "@langchain/core/prompts";
-import { ChatOpenAI } from "@langchain/openai";
-import type { Message as VercelChatMessage} from "ai";
-import { StreamingTextResponse } from "ai";
-import { HttpResponseOutputParser } from "langchain/output_parsers";
-import type { NextRequest} from "next/server";
-import { NextResponse } from "next/server";
+import { FireCrawlLoader } from '@langchain/community/document_loaders/web/firecrawl';
+import FirecrawlApp from '@mendable/firecrawl-js';
+import {
+  type Message,
+  convertToCoreMessages,
+  createDataStreamResponse,
+  streamText,
+} from 'ai';
+import { z } from 'zod';
 
-export const runtime = "edge";
+import { getUser } from '@/app/auth/actions';
+import { customModel } from '@/lib/ai';
+import { models } from '@/lib/ai/models';
+import { systemPrompt } from '@/lib/ai/prompts';
+import { rateLimiter } from '@/lib/rate-limit';
 
-const formatMessage = (message: VercelChatMessage) => {
-  return `${message.role}: ${message.content}`;
-};
+const app = new FirecrawlApp({
+  apiKey: process.env.FIRECRAWL_API_KEY ?? '',
+});
 
-const TEMPLATE = `You are a pirate named Patchy. All responses must be extremely verbose and in pirate dialect.
+const activeTools = ['search', 'extract', 'scrape'] as ['search', 'extract', 'scrape'];
 
-Current conversation:
-{chat_history}
+interface ScrapeResult {
+  content: string;
+  metadata: {
+    title?: string;
+    description?: string;
+    keywords?: string;
+    robots?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogUrl?: string;
+    ogImage?: string;
+    ogLocaleAlternate?: string[];
+    ogSiteName?: string;
+    sourceURL: string;
+    pageStatusCode: number;
+  };
+}
 
-User: {input}
-AI:`;
+export async function POST(request: Request) {
+  const {
+    messages,
+    modelId,
+  }: {
+    messages: Array<Message>;
+    modelId: string;
+  } = await request.json();
 
-/**
- * This handler initializes and calls a simple chain with a prompt,
- * chat model, and output parser. See the docs for more information:
- *
- * https://js.langchain.com/docs/guides/expression_language/cookbook#prompttemplate--llm--outputparser
- */
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const messages = body.messages ?? [];
-    const formattedPreviousMessages = messages.slice(0, -1).map(formatMessage);
-    const currentMessageContent = messages[messages.length - 1].content;
-    const prompt = PromptTemplate.fromTemplate(TEMPLATE);
+  const session = await getUser();
 
-    /**
-     * You can also try e.g.:
-     *
-     * import { ChatAnthropic } from "@langchain/anthropic";
-     * const model = new ChatAnthropic({});
-     *
-     * See a full list of supported models at:
-     * https://js.langchain.com/docs/modules/model_io/models/
-     */
-    const model = new ChatOpenAI({
-      temperature: 0.8,
-      model: "gpt-4o-mini",
-    });
-
-    /**
-     * Chat models stream message chunks rather than bytes, so this
-     * output parser handles serialization and byte-encoding.
-     */
-    const outputParser = new HttpResponseOutputParser();
-
-    /**
-     * Can also initialize as:
-     *
-     * import { RunnableSequence } from "@langchain/core/runnables";
-     * const chain = RunnableSequence.from([prompt, model, outputParser]);
-     */
-    const chain = prompt.pipe(model).pipe(outputParser);
-
-    const stream = await chain.stream({
-      chat_history: formattedPreviousMessages.join("\n"),
-      input: currentMessageContent,
-    });
-
-    return new StreamingTextResponse(stream);
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: e.status ?? 500 });
+  if (!session?.data?.user) {
+    return new Response('Unauthorized', { status: 401 });
   }
+
+  try {
+    await (rateLimiter as any).check(request, 10, '1 m'); // 10 requests per minute
+  } catch (_error) {
+    return new Response('Too Many Requests', { status: 429 });
+  }
+
+  const model = models.find((m) => m.id === modelId) ?? models[0];
+
+  const userMessageId = crypto.randomUUID();
+  const coreMessages = convertToCoreMessages(messages);
+
+  return createDataStreamResponse({
+    execute: async (dataStream) => {
+      dataStream.writeData({
+        type: 'user-message-id',
+        content: userMessageId,
+      });
+
+      await streamText({
+        model: customModel(model.apiIdentifier, false),
+        system: systemPrompt,
+        messages: coreMessages,
+        maxSteps: 10,
+        experimental_activeTools: activeTools,
+        tools: {
+          search: {
+            description: "Search for web pages. Normally you should call the extract tool after this one to get a specific data point if search doesn't have the exact data you need.",
+            parameters: z.object({
+              query: z.string().describe('Search query to find relevant web pages'),
+              maxResults: z.number().optional().describe('Maximum number of results to return (default 10)'),
+            }),
+            execute: async ({ query }) => {
+              try {
+                const searchResult = await app.search(query);
+                if (!searchResult.success) {
+                  return {
+                    error: `Search failed: ${searchResult.error}`,
+                    success: false,
+                  };
+                }
+                const resultsWithFavicons = searchResult.data.map((result) => {
+                  const url = new URL(result.url ?? '');
+                  const favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
+                  return {
+                    favicon,
+                    title: result.title ?? '',
+                    url: result.url ?? '',
+                    description: result.description,
+                  };
+                });
+                return {
+                  data: resultsWithFavicons,
+                  success: true,
+                };
+              } catch (error) {
+                return {
+                  error: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  success: false,
+                };
+              }
+            },
+          },
+          extract: {
+            description: 'Extract structured data from web pages. Use this to get whatever data you need from a URL.',
+            parameters: z.object({
+              urls: z.array(z.string()).describe('Array of URLs to extract data from'),
+              prompt: z.string().describe('Description of what data to extract'),
+            }),
+            execute: async ({ urls, prompt }) => {
+              try {
+                const extractResult = await app.extract(urls, { prompt });
+                if (!extractResult.success) {
+                  return {
+                    error: `Failed to extract data: ${extractResult.error}`,
+                    success: false,
+                  };
+                }
+                return {
+                  data: extractResult.data,
+                  success: true,
+                };
+              } catch (error) {
+                return {
+                  error: `Extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  success: false,
+                };
+              }
+            },
+          },
+          scrape: {
+            description: 'Scrape and convert a webpage into clean markdown content with metadata using LangChain.',
+            parameters: z.object({
+              url: z.string().describe('URL to scrape'),
+            }),
+            execute: async ({ url }) => {
+              try {
+                const loader = new FireCrawlLoader({
+                  url,
+                  apiKey: process.env.FIRECRAWL_API_KEY,
+                  mode: 'scrape',
+                });
+
+                const docs = await loader.load();
+                if (!docs.length) {
+                  return {
+                    error: 'No content found on the page',
+                    success: false,
+                  };
+                }
+
+                const doc = docs[0];
+                const result: ScrapeResult = {
+                  content: doc.pageContent,
+                  metadata: {
+                    title: doc.metadata.title,
+                    description: doc.metadata.description,
+                    keywords: doc.metadata.keywords,
+                    robots: doc.metadata.robots,
+                    ogTitle: doc.metadata.ogTitle,
+                    ogDescription: doc.metadata.ogDescription,
+                    ogUrl: doc.metadata.ogUrl,
+                    ogImage: doc.metadata.ogImage,
+                    ogLocaleAlternate: doc.metadata.ogLocaleAlternate,
+                    ogSiteName: doc.metadata.ogSiteName,
+                    sourceURL: doc.metadata.sourceURL,
+                    pageStatusCode: doc.metadata.pageStatusCode ?? 200,
+                  },
+                };
+
+                return {
+                  data: result,
+                  success: true,
+                };
+              } catch (error) {
+                return {
+                  error: `Scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  success: false,
+                };
+              }
+            },
+          },
+        },
+      });
+    },
+  });
 }

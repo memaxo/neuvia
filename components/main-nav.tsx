@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { toast } from '@/components/ui/use-toast'
 import { siteConfig } from '@/config/site'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/auth-context'
 import { cn } from '@/lib/utils'
 
 import { ThemeToggle } from './theme-toggle'

@@ -2,10 +2,9 @@ import { PlusCircle } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 
-import { ResearchGraph } from '@/app/deep-research/components/research-graph'
 import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 
 import { DashboardHeader } from './components/dashboard-header'
 import { PatientOverview } from './components/patient-overview'
@@ -36,7 +35,12 @@ export default function DashboardPage() {
 
             {/* Patient overview card */}
             <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm">
-              <PatientOverview />
+              <PatientOverview 
+                activePatients={856}
+                criticalCases={12}
+                patientCount={1234}
+                upcomingAppointments={45}
+              />
             </div>
 
             {/* Patient shortcuts grid */}
@@ -46,10 +50,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Research Graph integrated into main content */}
-            <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm p-6">
-              <ResearchGraph />
-            </div>
+            {/* Note: ResearchGraph has been removed from dashboard as it should only be shown when deep research is active */}
+
           </div>
         </div>
 
@@ -67,7 +69,7 @@ export default function DashboardPage() {
           className: cn(
             'fixed bottom-6 right-6 flex items-center gap-2 rounded-full',
             'bg-[rgb(var(--primary))] text-white shadow-lg',
-            'transition-all duration-normal',
+            'duration-normal transition-all',
             'hover:bg-[rgb(var(--primary-dark))] hover:shadow-xl'
           )
         })}

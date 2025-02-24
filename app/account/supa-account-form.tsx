@@ -7,8 +7,7 @@ import { toast } from 'sonner'
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { createClient } from '@/utils/supabase/client'
-
+import { createBrowserClient } from '@/lib/supabase'
 
 import Avatar from './avatar'
 
@@ -26,7 +25,7 @@ type ProfileError = {
 }
 
 export default function AccountForm({ user }: { user: User | null }) {
-  const supabase = createClient()
+  const supabase = createBrowserClient()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<ProfileError | null>(null)
   const [fullname, setFullname] = useState<string | null>(null)

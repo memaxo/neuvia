@@ -1,13 +1,14 @@
 import './globals.css'
 
 import type { Metadata } from 'next'
+import { type ReactNode } from 'react'
 
 import { Analytics } from '@/components/analytics'
 import { TailwindIndicator } from '@/components/tailwind-indicator'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { siteConfig } from '@/config/site'
-import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthProvider } from '@/contexts/auth-context'
 import { fontSans, fontMono } from '@/lib/font'
 import { cn } from '@/lib/utils'
 
@@ -62,31 +63,31 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head />
-      <body
-        className={cn(
-          'min-h-screen bg-[rgb(var(--background))] font-sans antialiased',
-          fontSans.variable,
-          fontMono.variable
-        )}
-      >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          disableTransitionOnChange
-          enableSystem
+      <html lang="en" suppressHydrationWarning>
+        <head />
+        <body
+          className={cn(
+            'min-h-screen bg-[rgb(var(--background))] font-sans antialiased',
+            fontSans.variable,
+            fontMono.variable
+          )}
         >
-          <AuthProvider>
-            <div className="relative flex min-h-screen flex-col">
-              <div className="flex-1">{children}</div>
-            </div>
-            <TailwindIndicator />
-            <Toaster />
-            <Analytics />
-          </AuthProvider>
-        </ThemeProvider>
-      </body>
-    </html>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            disableTransitionOnChange
+            enableSystem
+          >
+            <AuthProvider>
+              <div className="relative flex min-h-screen flex-col">
+                <div className="flex-1">{children}</div>
+              </div>
+              <TailwindIndicator />
+              <Toaster />
+              <Analytics />
+            </AuthProvider>
+          </ThemeProvider>
+        </body>
+      </html>
   )
 }

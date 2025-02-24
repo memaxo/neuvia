@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
-import { createServerClient } from '@/utils/supabase'
+import { createServerClient } from '@/lib/supabase'
 
 // Validation schemas
 const emailSchema = z.string().email('Please enter a valid email address')

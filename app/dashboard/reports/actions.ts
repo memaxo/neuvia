@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { createClient } from '@/utils/supabase/server'
+import { createServerClient } from '@/lib/supabase/clients'
 
 import type { Database } from "@/lib/database.types";
 
@@ -150,10 +150,13 @@ export const auditLogSchema = z.object({
 
 export type AuditLog = z.infer<typeof auditLogSchema>;
 
-export async function generateReport(input: GenerateReportInput) {
-  const supabase = await createClient()
+export async function generateReport(input: GenerateReportInput & { verifiedData?: any }) {
+  const supabase = await createServerClient();
 
-  // 1. Start report generation
+  // Log the start of report generation for debugging
+  console.log("[generateReport] Starting report generation with input:", input);
+
+  // 1. Start report generation (insert a row with status='processing')
   const { data: report, error: createError } = await supabase
     .from("reports")
     .insert({
@@ -162,11 +165,12 @@ export async function generateReport(input: GenerateReportInput) {
       type: input.type,
       status: "processing",
       department_id: input.departmentId,
+      // Use verifiedData if present; otherwise, fallback to old patientInfo
       metadata: {
-        patientInfo: input.patientInfo,
+        patientInfo: input.verifiedData ?? input.patientInfo,
       },
       model_metadata: {
-        version: "1.0.0",
+        version: "1.1.0",
         training_date: new Date().toISOString(),
         reasoning_chain: [],
       },
@@ -185,34 +189,111 @@ export async function generateReport(input: GenerateReportInput) {
     .single();
 
   if (createError) {
-    throw new Error(`Failed to create report: ${  createError.message}`);
+    // Fail early if we can't create the report row
+    throw new Error(`Failed to create report: ${createError.message}`);
   }
 
-  // 2. Generate research topic from patient info
-  const researchTopic = `Medical diagnosis analysis for patient with symptoms: ${input.patientInfo.symptoms.join(", ")}. 
-    Medical history: ${input.patientInfo.medicalHistory}. 
-    Current medications: ${input.patientInfo.currentMedications.join(", ")}. 
-    Allergies: ${input.patientInfo.allergies.join(", ")}.`;
+  // 2. Build a final data object from the verified data
+  // Or if verifiedData not available, fallback to patientInfo
+  const finalData = input.verifiedData ?? input.patientInfo;
+  console.log("[generateReport] Using final verified data for LLM call:", finalData);
+
+  // We'll confirm we use "o3-mini" or "deep-research"
+  // let's say we do "o3-mini" for now, or brand it as "deepResearch" in logs
+  const chosenModel = "o3-mini";
+  console.log("[generateReport] Using chosen model:", chosenModel);
+
+  // We'll wrap the final LLM call with Zod validation after receiving response
+  // Also note any fallback for missing fields
+
+  // Create a short summary of the data for the "research topic"
+  const researchTopic = `Medical diagnosis analysis for patient with symptoms: ${
+    finalData.symptoms?.join(", ") || "N/A"
+  }.
+  Medical history: ${finalData.medicalHistory || "N/A"}.
+  Current medications: ${Array.isArray(finalData.currentMedications) ? finalData.currentMedications.join(", ") : "N/A"}.
+  Allergies: ${Array.isArray(finalData.allergies) ? finalData.allergies.join(", ") : "N/A"}.
+  Vital signs: ${finalData.vitalSigns ? JSON.stringify(finalData.vitalSigns) : "N/A"}.
+  `;
+
+  // Introduce optional timeout
+  // We'll let the user specify a maxDuration in ms, default to 30 seconds
+  const maxDuration = 30000;
+  let didTimeout = false;
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    abortController.abort();
+  }, maxDuration);
 
   try {
-    // 3. Call deep-research API
+    // Log the external LLM/deep research call
+    console.log("[generateReport] Making deep research call with topic:", researchTopic);
+
+    // 3. Call deep-research or LLM API
     const response = await fetch("/api/deep-research", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        topic: researchTopic,
-      }),
+      signal: abortController.signal,
+      body: JSON.stringify({ topic: researchTopic }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Deep research failed: ${  response.statusText}`);
+    // If we timed out, let's handle that
+    if (didTimeout) {
+      console.error("[generateReport] LLM call timed out");
+      await supabase
+        .from("reports")
+        .update({
+          status: "failed",
+          error_message: "Report generation timed out. Please retry.",
+        })
+        .eq("id", report.id);
+
+      throw new Error("LLM call timed out. Please retry.");
     }
 
-    const result = await response.json();
+    clearTimeout(timeout);
 
-    // 4. Update report with results
+    if (!response.ok) {
+      throw new Error(`Deep research failed: ${response.statusText}`);
+    }
+
+    const rawLLMData = await response.json();
+    console.log("[generateReport] Received deep research result:", rawLLMData);
+
+    // Attempt to parse with our existing reportSchema
+    let validatedLLMData: any;
+    try {
+      validatedLLMData = reportSchema.parse(rawLLMData.data);
+    } catch (parseErr) {
+      console.error("[generateReport] Zod parse failed, applying fallback logic:", parseErr);
+      // We'll create a partial fallback:
+      validatedLLMData = {
+        content: rawLLMData.data?.content ?? "<p>No content</p>",
+        summary: rawLLMData.data?.summary ?? "No summary",
+        findings: rawLLMData.data?.findings ?? null,
+        recommendations: rawLLMData.data?.recommendations ?? null,
+        differential_diagnoses: rawLLMData.data?.differentialDiagnoses ?? null,
+        evidence_mapping: rawLLMData.data?.evidenceMapping ?? null,
+        snomed_codes: rawLLMData.data?.snomedCodes ?? null,
+        icd_codes: rawLLMData.data?.icdCodes ?? null,
+        confidence_score: rawLLMData.data?.confidenceScore ?? 0.0,
+        source_documents: rawLLMData.data?.sourceDocuments ?? null,
+        medical_references: rawLLMData.data?.medicalReferences ?? null,
+        clinical_guidelines: rawLLMData.data?.clinicalGuidelines ?? null,
+        reasoningChain: rawLLMData.data?.reasoningChain ?? [],
+      };
+    }
+
+    console.log("[generateReport] Validated or fallback LLM data:", validatedLLMData);
+
+    // 4. Partial update if needed - mark 'processing' or store partial results
+    // For demonstration, we do final in one shot.
+    // If partial streaming is desired, we'd do frequent updates here.
+
+    // 5. Update report with final results
     const { error: updateError } = await supabase
       .from("reports")
       .update({
@@ -231,19 +312,40 @@ export async function generateReport(input: GenerateReportInput) {
         clinical_guidelines: result.data.clinicalGuidelines,
         model_metadata: {
           ...report.model_metadata,
-          reasoning_chain: result.data.reasoningChain,
+          reasoning_chain: result.data.reasoningChain || [],
         },
         completed_at: new Date().toISOString(),
       })
       .eq("id", report.id);
 
     if (updateError) {
-      throw new Error(`Failed to update report: ${  updateError.message}`);
+      console.error("[generateReport] Error updating final report:", updateError);
+      await supabase
+        .from("reports")
+        .update({
+          status: "failed",
+          error_message: `Failed final update: ${updateError.message}`,
+        })
+        .eq("id", report.id);
+
+      throw new Error(`Failed to update report: ${updateError.message}`);
     }
 
+    // 6. Return success
+    console.log("[generateReport] Report generation completed successfully for report ID:", report.id);
     return { success: true, reportId: report.id };
-  } catch (error) {
-    // 5. Handle errors by updating report status
+
+  } catch (error: any) {
+    clearTimeout(timeout);
+
+    // If the error is from abort, we've already updated status
+    if (didTimeout) {
+      console.error("[generateReport] Caught abort error after timeout.");
+      throw error;
+    }
+
+    // 7. Handle errors by updating the report record
+    console.error("[generateReport] Error during LLM call:", error);
     await supabase
       .from("reports")
       .update({

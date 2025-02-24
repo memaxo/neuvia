@@ -181,6 +181,62 @@ export type Database = {
           },
         ]
       }
+      document_embeddings: {
+        Row: {
+          content: string
+          created_at: string
+          document_id: number | null
+          embedding: string
+          id: number
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          document_id?: number | null
+          embedding: string
+          id?: never
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          document_id?: number | null
+          embedding?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_embeddings_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          content: string
+          created_at: string
+          id: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: never
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: never
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       inqueries: {
         Row: {
           created_at: string | null
@@ -296,6 +352,66 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "patient_documents_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_summaries: {
+        Row: {
+          created_at: string
+          created_by: string
+          department_id: string | null
+          document_count: number
+          generated_at: string
+          id: string
+          last_modified_by: string
+          patient_id: string
+          summary: Json
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          department_id?: string | null
+          document_count: number
+          generated_at?: string
+          id?: string
+          last_modified_by: string
+          patient_id: string
+          summary: Json
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          department_id?: string | null
+          document_count?: number
+          generated_at?: string
+          id?: string
+          last_modified_by?: string
+          patient_id?: string
+          summary?: Json
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_summaries_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_summaries_patient_id_fkey"
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
@@ -855,6 +971,17 @@ export type Database = {
             }
             Returns: unknown
           }
+      match_documents: {
+        Args: {
+          query_embedding: string
+          match_threshold: number
+          match_count: number
+        }
+        Returns: {
+          content: string
+          similarity: number
+        }[]
+      }
       match_patient_documents: {
         Args: {
           embedding: string

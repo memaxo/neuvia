@@ -88,16 +88,6 @@ module.exports = {
     }],
     'import/newline-after-import': 'error',
     'import/no-duplicates': 'error',
-    'import/no-extraneous-dependencies': [
-      'error',
-      {
-        devDependencies: [
-          '**/*.config.js',
-          '**/*.config.ts',
-          'postcss.config.js'
-        ]
-      }
-    ],
     'import/no-cycle': 'warn',
     'import/no-self-import': 'error',
     'import/no-useless-path-segments': 'error',
@@ -162,6 +152,11 @@ module.exports = {
       typescript: {
         alwaysTryTypes: true,
         project: './tsconfig.json'
+      },
+      node: {
+        paths: ['.'],
+        extensions: ['.js', '.jsx', '.ts', '.tsx'],
+        moduleDirectory: ['node_modules', '.pnpm']
       }
     }
   },
@@ -191,6 +186,7 @@ module.exports = {
     'public/',
     '**/*.config.js',
     '**/*.config.mjs',
+    'app/open-deep-research/**/*'
   ],
   // Add note about max-warnings usage
   // To use max-warnings in your scripts, add: eslint . --max-warnings=50

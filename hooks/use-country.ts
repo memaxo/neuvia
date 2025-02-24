@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { getCountryById, countryKeys, type Country } from '@/queries/country-by-id'
-import { createBrowserClient } from '@/utils/supabase'
+import { createBrowserClient } from '@/lib/supabase'
 
 export function useCountry(countryId: number) {
   const supabase = useMemo(() => createBrowserClient(), [])

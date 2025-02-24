@@ -1,4 +1,4 @@
-import { createClient } from '@/utils/supabase/client'
+import { createBrowserClient } from '@/lib/supabase'
 
 export type DocumentType = 
   | 'medical-image'  // DICOM, NIfTI, JPEG, PNG
@@ -105,7 +105,7 @@ const ALLOWED_MIME_TYPES = {
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 export class StorageService {
-  private supabase = createClient()
+  private supabase = createBrowserClient()
   private edgeFunctionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL  }/functions/v1`
   private activeUploads = new Map<string, XMLHttpRequest>()
   private pausedUploads = new Map<string, { file: File; metadata?: UploadMetadata; progress: number }>()

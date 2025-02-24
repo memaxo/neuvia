@@ -1,27 +1,54 @@
 "use client";
 
-import React from "react";
+import { useParams } from 'next/navigation';
+import { Suspense } from 'react';
 
-import { ChatWindow } from "@/components/ChatWindow";
-import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { ChatProvider } from '@app/contexts/chat-context';
+
+import { ChatErrorBoundary } from './components/chat-error-boundary';
+import { ChatInterface } from './components/chat-interface';
+import { ChatLoading } from './components/chat-loading';
+
+// Valid chat modes for type safety
+type ChatMode = 'regular' | 'verification';
+
+// Validation function for patient ID
+function isValidPatientId(id: string): boolean {
+  // Add your validation logic here
+  // Example: UUID format or specific pattern
+  return id.length > 0 && id.length <= 50 && /^[a-zA-Z0-9-_]+$/.test(id);
+}
+
+interface ChatPageProps {
+  params: {
+    patientId?: string;
+  };
+}
 
 export default function ChatPage() {
-  const InfoCard = (
-    <GuideInfoBox>
-      <ul>
-        <li className="text-l">
-          Ask about patient details or report insights…
-        </li>
-      </ul>
-    </GuideInfoBox>
-  );
+  const params = useParams();
+  
+  // Patient ID validation and resolution
+  const patientId = (() => {
+    const rawId = typeof params?.patientId === 'string' ? params.patientId : 'default';
+    return isValidPatientId(rawId) ? rawId : 'default';
+  })();
+
+  // Initial mode with type safety
+  const initialMode: ChatMode = 'regular';
 
   return (
-    <ChatWindow
-      emptyStateComponent={InfoCard}
-      endpoint="/api/chat/rag"
-      placeholder="Ask about patient details or report insights…"
-      showIntermediateStepsToggle={true}
-    />
+    <ChatErrorBoundary>
+      <Suspense fallback={<ChatLoading />}>
+        <ChatProvider>
+          <div className="flex h-full flex-col">
+            <ChatInterface 
+              initialMode={initialMode}
+              patientId={patientId}
+            />
+          </div>
+        </ChatProvider>
+      </Suspense>
+    </ChatErrorBoundary>
   );
 }
