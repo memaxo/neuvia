@@ -1,5 +1,3 @@
-import { FireCrawlLoader } from '@langchain/community/document_loaders/web/firecrawl';
-import FirecrawlApp from '@mendable/firecrawl-js';
 import {
   type Message,
   convertToCoreMessages,
@@ -13,10 +11,8 @@ import { customModel } from '@/lib/ai';
 import { models } from '@/lib/ai/models';
 import { systemPrompt } from '@/lib/ai/prompts';
 import { rateLimiter } from '@/lib/rate-limit';
-
-const app = new FirecrawlApp({
-  apiKey: process.env.FIRECRAWL_API_KEY ?? '',
-});
+import { search, extract, scrape } from '@/lib/services/firecrawl/actions';
+import type { ScrapeResult as FirecrawlScrapeResult } from '@/lib/services/firecrawl/types';
 
 const activeTools = ['firecrawlSearch', 'firecrawlExtract', 'firecrawlScrape'] as ['firecrawlSearch', 'firecrawlExtract', 'firecrawlScrape'];
 
@@ -90,35 +86,17 @@ export async function POST(request: Request) {
               query: z.string().describe('Search query to find relevant web pages'),
               maxResults: z.number().optional().describe('Maximum number of results to return (default 10)'),
             }),
-            execute: async ({ query }) => {
-              try {
-                const searchResult = await app.search(query);
-                if (!searchResult.success) {
-                  return {
-                    error: `Search failed: ${searchResult.error}`,
-                    success: false,
-                  };
-                }
-                const resultsWithFavicons = searchResult.data.map((result) => {
-                  const url = new URL(result.url ?? '');
-                  const favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=32`;
-                  return {
-                    favicon,
-                    title: result.title ?? '',
-                    url: result.url ?? '',
-                    description: result.description,
-                  };
-                });
-                return {
-                  data: resultsWithFavicons,
-                  success: true,
-                };
-              } catch (error) {
-                return {
-                  error: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                  success: false,
-                };
-              }
+            execute: async ({ query, maxResults }) => {
+              const searchResponse = await search(query, { 
+                maxResults,
+                includeFavicons: true 
+              });
+              
+              return {
+                data: searchResponse.data,
+                success: searchResponse.success,
+                error: searchResponse.error
+              };
             },
           },
           firecrawlExtract: {
@@ -128,24 +106,13 @@ export async function POST(request: Request) {
               prompt: z.string().describe('Description of what data to extract'),
             }),
             execute: async ({ urls, prompt }) => {
-              try {
-                const extractResult = await app.extract(urls, { prompt });
-                if (!extractResult.success) {
-                  return {
-                    error: `Failed to extract data: ${extractResult.error}`,
-                    success: false,
-                  };
-                }
-                return {
-                  data: extractResult.data,
-                  success: true,
-                };
-              } catch (error) {
-                return {
-                  error: `Extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                  success: false,
-                };
-              }
+              const extractResponse = await extract(urls, prompt);
+              
+              return {
+                data: extractResponse.data,
+                success: extractResponse.success,
+                error: extractResponse.error
+              };
             },
           },
           firecrawlScrape: {
@@ -154,50 +121,43 @@ export async function POST(request: Request) {
               url: z.string().describe('URL to scrape'),
             }),
             execute: async ({ url }) => {
-              try {
-                const loader = new FireCrawlLoader({
-                  url,
-                  apiKey: process.env.FIRECRAWL_API_KEY,
-                  mode: 'scrape',
-                });
-
-                const docs = await loader.load();
-                if (!docs.length) {
-                  return {
-                    error: 'No content found on the page',
-                    success: false,
-                  };
-                }
-
-                const doc = docs[0];
-                const result: ScrapeResult = {
-                  content: doc.pageContent,
-                  metadata: {
-                    title: doc.metadata.title,
-                    description: doc.metadata.description,
-                    keywords: doc.metadata.keywords,
-                    robots: doc.metadata.robots,
-                    ogTitle: doc.metadata.ogTitle,
-                    ogDescription: doc.metadata.ogDescription,
-                    ogUrl: doc.metadata.ogUrl,
-                    ogImage: doc.metadata.ogImage,
-                    ogLocaleAlternate: doc.metadata.ogLocaleAlternate,
-                    ogSiteName: doc.metadata.ogSiteName,
-                    sourceURL: doc.metadata.sourceURL,
-                    pageStatusCode: doc.metadata.pageStatusCode ?? 200,
-                  },
-                };
-
+              const scrapeResponse = await scrape(url, { 
+                includeMetadata: true,
+                format: 'markdown'
+              });
+              
+              if (!scrapeResponse.success) {
                 return {
-                  data: result,
-                  success: true,
-                };
-              } catch (error) {
-                return {
-                  error: `Scraping failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
                   success: false,
+                  error: scrapeResponse.error
                 };
               }
+              
+              const firecrawlResult = scrapeResponse.data as FirecrawlScrapeResult;
+              const result: ScrapeResult = {
+                content: firecrawlResult.data,
+                metadata: {
+                  title: firecrawlResult.title,
+                  description: firecrawlResult.metadata?.description,
+                  keywords: firecrawlResult.metadata?.keywords,
+                  robots: firecrawlResult.metadata?.robots,
+                  ogTitle: firecrawlResult.metadata?.ogTitle,
+                  ogDescription: firecrawlResult.metadata?.ogDescription,
+                  ogUrl: firecrawlResult.metadata?.ogUrl,
+                  ogImage: firecrawlResult.metadata?.ogImage,
+                  ogLocaleAlternate: Array.isArray(firecrawlResult.metadata?.ogLocaleAlternate) 
+                    ? firecrawlResult.metadata?.ogLocaleAlternate 
+                    : firecrawlResult.metadata?.ogLocaleAlternate ? [firecrawlResult.metadata?.ogLocaleAlternate] : undefined,
+                  ogSiteName: firecrawlResult.metadata?.ogSiteName,
+                  sourceURL: firecrawlResult.metadata?.sourceURL || url,
+                  pageStatusCode: firecrawlResult.metadata?.pageStatusCode || 200,
+                }
+              };
+              
+              return {
+                data: result,
+                success: true
+              };
             },
           },
         },

@@ -4,11 +4,13 @@ import React, { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
 import { FileUploader } from '@/components/file-uploader';
+import type { ProcessingStatus } from '@/lib/processing/document-extraction';
 import { processDocument } from '@/lib/processing/document-extraction';
 
 export default function DocumentUpload() {
   const [progresses, setProgresses] = useState<Record<string, number>>({});
   const [currentFiles, setCurrentFiles] = useState<File[]>([]);
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
 
   const handleUpload = useCallback(async (files: File[], progressCallback: (progress: number, file: File) => void) => {
     if (!files.length) return;
@@ -28,11 +30,23 @@ export default function DocumentUpload() {
         { 
           category: 'clinical', 
           type: 'chat-upload' 
+        },
+        (status: ProcessingStatus) => {
+          setProcessingStatus(status);
+          // Update the FileUploader progress based on the status
+          progressCallback(status.progress, file);
+          setProgresses((prev) => ({ ...prev, [file.name]: status.progress }));
+          
+          // Show toast messages for key status changes
+          if (status.status === 'processing' && status.currentStep) {
+            toast.info(`${status.currentStep} - ${status.progress}%`);
+          } else if (status.status === 'error') {
+            toast.error(status.message || 'Error processing document');
+          }
         }
       );
 
-      progressCallback(100, file);
-      setProgresses((prev) => ({ ...prev, [file.name]: 100 }));
+      // Process is complete at this point
       toast.success('File processed successfully');
 
       // Clear the current files after successful upload
@@ -70,8 +84,24 @@ export default function DocumentUpload() {
         onUpload={handleUpload}
         onValueChange={handleValueChange}
         progresses={progresses}
+        statusMessage={processingStatus?.currentStep}
         value={currentFiles}
       />
+      
+      {/* Display additional processing status information */}
+      {processingStatus && (
+        <div className="bg-muted mt-4 rounded border p-4">
+          <h3 className="text-sm font-medium">Processing Status</h3>
+          <p className="mt-1 text-sm">Status: {processingStatus.status}</p>
+          {processingStatus.currentStep && (
+            <p className="mt-1 text-sm">Step: {processingStatus.currentStep}</p>
+          )}
+          <p className="mt-1 text-sm">Progress: {processingStatus.progress}%</p>
+          {processingStatus.message && (
+            <p className="text-destructive mt-1 text-sm">{processingStatus.message}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 } 
