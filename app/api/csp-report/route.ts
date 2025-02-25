@@ -19,6 +19,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error processing CSP report:', error)
-    return NextResponse.json({ error: 'Failed to process CSP report' }, { status: 500 })
+    return NextResponse.json({ success: false, error: 'Failed to process CSP report' }, { status: 500 })
   }
 } 

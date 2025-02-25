@@ -8,12 +8,12 @@ import type { FormEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
-import { ChatMessageBubble } from "@/components/ChatMessageBubble";
+import { ChatMessageBubble } from "@/components/chat/chat-message-bubble";
 import { cn } from "@/utils/cn";
 
-import { IntermediateStep } from "./IntermediateStep";
-import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
+import { IntermediateStep } from "../IntermediateStep";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./ui/dialog";
+} from "../ui/dialog";
 import { UploadDocumentsForm } from "./UploadDocumentsForm";
 
 function ChatMessages(props: {
@@ -78,7 +78,7 @@ export function ChatInput(props: {
         }
       }}
     >
-      <div className="mx-auto flex w-full max-w-screen-md flex-col gap-2 rounded-lg border border-input bg-secondary">
+      <div className="border-input bg-secondary mx-auto flex w-full max-w-screen-md flex-col gap-2 rounded-lg border">
         <input
           className="border-none bg-transparent p-4 outline-none"
           onChange={props.onChange}

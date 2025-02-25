@@ -1,4 +1,4 @@
-import { ChatWindow } from "@/components/ChatWindow";
+import { ChatWindow } from "@/components/chat/chat-window";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
 
 export default function AgentsPage() {

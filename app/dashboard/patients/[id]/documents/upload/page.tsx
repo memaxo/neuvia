@@ -10,7 +10,8 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 
-import { processDocument } from '../../../../../../lib/processing/gemini';
+import { FileUploader } from '@/components/file-uploader';
+import { processDocument } from '../../../../../../lib/processing/document-extraction';
 import type { ProcessingStatus, DocumentCategory, DocumentType } from '../../../../../../lib/processing/types';
 
 const DOCUMENT_CATEGORIES: { value: DocumentCategory; label: string }[] = [
@@ -182,50 +183,25 @@ export default function DocumentUploadPage() {
           </div>
 
           {/* File Upload */}
-          <div className="flex w-full items-center justify-center">
-            <label 
-              aria-label="Upload document"
-              className="flex h-64 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed hover:bg-[rgb(var(--primary))/0.05]"
-              htmlFor="file-upload"
-            >
-              <div className="flex flex-col items-center justify-center pb-6 pt-5">
-                <svg
-                  aria-hidden="true"
-                  className="mb-4 size-8 text-[rgb(var(--primary))]"
-                  fill="none"
-                  viewBox="0 0 20 16"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                  />
-                </svg>
-                <p className="mb-2 text-sm">
-                  <span className="font-semibold">Click to upload</span> or drag and drop
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  PDF, DOCX, or images (max 10MB)
-                </p>
-                {selectedFile && (
-                  <p className="text-muted-foreground mt-2 text-sm">
-                    Selected: {selectedFile.name}
-                  </p>
-                )}
-              </div>
-              <input
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                className="hidden"
-                disabled={isUploading}
-                id="file-upload"
-                onChange={handleFileChange}
-                type="file"
-              />
-            </label>
-          </div>
+          <FileUploader
+            multiple={false}
+            maxFileCount={1}
+            accept={{
+              'application/pdf': [],
+              'application/msword': [],
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [],
+              'image/jpeg': [],
+              'image/png': []
+            }}
+            disabled={isUploading}
+            onValueChange={(newFiles) => {
+              if (newFiles.length > 0) {
+                setSelectedFile(newFiles[0]);
+              } else {
+                setSelectedFile(null);
+              }
+            }}
+          />
 
           {isUploading && (
             <div className="space-y-2">

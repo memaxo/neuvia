@@ -59,6 +59,33 @@ export type Database = {
           },
         ]
       }
+      chats: {
+        Row: {
+          created_at: string | null
+          id: string
+          title: string
+          updated_at: string | null
+          user_id: string | null
+          visibility: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+          visibility?: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+          visibility?: string
+        }
+        Relationships: []
+      }
       countries: {
         Row: {
           continent: Database["public"]["Enums"]["continents"] | null
@@ -263,6 +290,41 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      messages: {
+        Row: {
+          chat_id: string | null
+          content: Json
+          created_at: string | null
+          id: string
+          role: string
+          updated_at: string | null
+        }
+        Insert: {
+          chat_id?: string | null
+          content: Json
+          created_at?: string | null
+          id?: string
+          role: string
+          updated_at?: string | null
+        }
+        Update: {
+          chat_id?: string | null
+          content?: Json
+          created_at?: string | null
+          id?: string
+          role?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       patient_documents: {
         Row: {
@@ -811,6 +873,93 @@ export type Database = {
           },
         ]
       }
+      votes: {
+        Row: {
+          chat_id: string
+          created_at: string | null
+          is_upvoted: boolean
+          message_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          chat_id: string
+          created_at?: string | null
+          is_upvoted: boolean
+          message_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          chat_id?: string
+          created_at?: string | null
+          is_upvoted?: boolean
+          message_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "votes_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_states: {
+        Row: {
+          chat_id: string | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          chat_id?: string | null
+          created_at?: string
+          current_step?: Database["public"]["Enums"]["workflow_step"]
+          id?: string
+          last_message_id?: string | null
+          metadata?: Json | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          chat_id?: string | null
+          created_at?: string
+          current_step?: Database["public"]["Enums"]["workflow_step"]
+          id?: string
+          last_message_id?: string | null
+          metadata?: Json | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_states_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_states_last_message_id_fkey"
+            columns: ["last_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1030,6 +1179,43 @@ export type Database = {
         }
         Returns: number
       }
+      update_workflow_state:
+        | {
+            Args: {
+              p_user_id: string
+              p_step: Database["public"]["Enums"]["workflow_step"]
+              p_metadata?: Json
+            }
+            Returns: {
+              chat_id: string | null
+              created_at: string
+              current_step: Database["public"]["Enums"]["workflow_step"]
+              id: string
+              last_message_id: string | null
+              metadata: Json | null
+              updated_at: string
+              user_id: string | null
+            }
+          }
+        | {
+            Args: {
+              p_user_id: string
+              p_step: Database["public"]["Enums"]["workflow_step"]
+              p_metadata?: Json
+              p_chat_id?: string
+              p_last_message_id?: string
+            }
+            Returns: {
+              chat_id: string | null
+              created_at: string
+              current_step: Database["public"]["Enums"]["workflow_step"]
+              id: string
+              last_message_id: string | null
+              metadata: Json | null
+              updated_at: string
+              user_id: string | null
+            }
+          }
       validate_document_type: {
         Args: {
           doc_type: Json
@@ -1104,6 +1290,17 @@ export type Database = {
         | "administrative"
       medical_role: "admin" | "doctor" | "nurse" | "staff" | "researcher"
       patient_status: "active" | "inactive" | "archived" | "deceased"
+      workflow_step:
+        | "idle"
+        | "uploading"
+        | "extracting"
+        | "verification"
+        | "report_generation"
+        | "complete"
+        | "chat_started"
+        | "chat_in_progress"
+        | "chat_completed"
+        | "chat_error"
     }
     CompositeTypes: {
       [_ in never]: never

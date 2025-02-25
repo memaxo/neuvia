@@ -353,7 +353,9 @@ export async function generateReport(input: GenerateReportInput & { verifiedData
         error_message: error instanceof Error ? error.message : "Unknown error occurred",
       })
       .eq("id", report.id);
-
-    throw error;
+    
+    // Re-throw with consistent shape
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message);
   }
 } 

@@ -1,47 +1,59 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
-import { FileUploader } from '@/components/file-uploader/file-uploader';
-import { processDocument } from '@/lib/processing/gemini';
-import type { ProcessingStatus } from '@/lib/processing/types';
+import { FileUploader } from '@/components/file-uploader';
+import { processDocument } from '@/lib/processing/document-extraction';
 
 export default function DocumentUpload() {
   const [progresses, setProgresses] = useState<Record<string, number>>({});
-import { processDocument } from "@/lib/processing/document-extraction";
+  const [currentFiles, setCurrentFiles] = useState<File[]>([]);
 
-// ...
-
-// Instead of fetch to gemini-flash, call the new processDocument method directly:
-// (Example usage, may need adjustments depending on local code)
-
-const fileObj = formData.get("file") as File;
-const patientId = "somePatientId"; // or read from context/props
-const documentType = {
-  category: "clinical",
-  type: "progressNote"
-};
-
-try {
-  const result = await processDocument(fileObj, patientId, documentType);
-  // Handle result, e.g. show success or data
-} catch (error) {
-  console.error("Error processing document:", error);
-  // Handle error state
-}
+  const handleUpload = useCallback(async (files: File[], progressCallback: (progress: number, file: File) => void) => {
     if (!files.length) return;
+
+    const file = files[0]; // We only handle one file at a time
 
     try {
       toast('Processing file. Please wait...');
-      // Use default category "clinical" and type "chat-upload" or similar
-      await processDocument(files[0], 'chat-patient', { category: 'clinical', type: 'chat-upload' } );
+      
+      // Track progress for this specific file
+      progressCallback(0, file);
+      setProgresses((prev) => ({ ...prev, [file.name]: 0 }));
+      
+      await processDocument(
+        file, 
+        'chat-patient', 
+        { 
+          category: 'clinical', 
+          type: 'chat-upload' 
+        }
+      );
+
+      progressCallback(100, file);
+      setProgresses((prev) => ({ ...prev, [file.name]: 100 }));
       toast.success('File processed successfully');
+
+      // Clear the current files after successful upload
+      setCurrentFiles([]);
     } catch (err) {
-      console.error(err);
       toast.error('Error occurred during file processing');
+      throw err; // Let the FileUploader component handle the error state
     }
-  };
+  }, []);
+
+  const handleValueChange = useCallback((files: File[]) => {
+    // Update current files
+    setCurrentFiles(files);
+    
+    // Reset progress for new files
+    const newProgresses: Record<string, number> = {};
+    files.forEach(file => {
+      newProgresses[file.name] = 0;
+    });
+    setProgresses(newProgresses);
+  }, []);
 
   return (
     <div className="p-4">
@@ -50,13 +62,15 @@ try {
         accept={{
           'application/pdf': [],
           'text/plain': [],
-          'application/msword': []
+          'application/msword': [],
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': []
         }}
         maxFileCount={1}
         multiple={false}
         onUpload={handleUpload}
-        onValueChange={(files) => console.log('Files changed', files)}
+        onValueChange={handleValueChange}
         progresses={progresses}
+        value={currentFiles}
       />
     </div>
   );

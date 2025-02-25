@@ -18,7 +18,7 @@ const app = new FirecrawlApp({
   apiKey: process.env.FIRECRAWL_API_KEY ?? '',
 });
 
-const activeTools = ['search', 'extract', 'scrape'] as ['search', 'extract', 'scrape'];
+const activeTools = ['firecrawlSearch', 'firecrawlExtract', 'firecrawlScrape'] as ['firecrawlSearch', 'firecrawlExtract', 'firecrawlScrape'];
 
 interface ScrapeResult {
   content: string;
@@ -50,13 +50,19 @@ export async function POST(request: Request) {
   const session = await getUser();
 
   if (!session?.data?.user) {
-    return new Response('Unauthorized', { status: 401 });
+    return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
     await (rateLimiter as any).check(request, 10, '1 m'); // 10 requests per minute
   } catch (_error) {
-    return new Response('Too Many Requests', { status: 429 });
+    return new Response(JSON.stringify({ success: false, error: 'Too Many Requests' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   const model = models.find((m) => m.id === modelId) ?? models[0];
@@ -78,8 +84,8 @@ export async function POST(request: Request) {
         maxSteps: 10,
         experimental_activeTools: activeTools,
         tools: {
-          search: {
-            description: "Search for web pages. Normally you should call the extract tool after this one to get a specific data point if search doesn't have the exact data you need.",
+          firecrawlSearch: {
+            description: "Search for web pages using FireCrawl. Normally you should call the firecrawlExtract tool next.",
             parameters: z.object({
               query: z.string().describe('Search query to find relevant web pages'),
               maxResults: z.number().optional().describe('Maximum number of results to return (default 10)'),
@@ -115,8 +121,8 @@ export async function POST(request: Request) {
               }
             },
           },
-          extract: {
-            description: 'Extract structured data from web pages. Use this to get whatever data you need from a URL.',
+          firecrawlExtract: {
+            description: 'Extract structured data from web pages using FireCrawl. Provide URLs and a prompt describing what data you want.',
             parameters: z.object({
               urls: z.array(z.string()).describe('Array of URLs to extract data from'),
               prompt: z.string().describe('Description of what data to extract'),
@@ -142,8 +148,8 @@ export async function POST(request: Request) {
               }
             },
           },
-          scrape: {
-            description: 'Scrape and convert a webpage into clean markdown content with metadata using LangChain.',
+          firecrawlScrape: {
+            description: 'Scrape and convert a webpage into clean markdown content with metadata using FireCrawl.',
             parameters: z.object({
               url: z.string().describe('URL to scrape'),
             }),

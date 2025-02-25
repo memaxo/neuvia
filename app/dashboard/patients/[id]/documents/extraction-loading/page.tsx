@@ -12,7 +12,7 @@ export default function ExtractionLoadingPage() {
         We are currently processing and extracting data from your uploaded document.
       </p>
       <p className="text-muted-foreground mt-2">
-        Patient ID: {params.id}
+        router.push(`/dashboard/chat?mode=verification&patientId=${params.id}`);
       </p>
       <div className="mt-4 flex items-center space-x-2">
         <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary" />

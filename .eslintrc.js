@@ -71,21 +71,6 @@ module.exports = {
     'import/namespace': 'error',
     'import/default': 'error',
     'import/export': 'error',
-    'import/order': ['error', { 
-      'alphabetize': { 
-        'order': 'asc', 
-        'caseInsensitive': true 
-      },
-      'groups': [
-        'builtin',
-        'external',
-        'internal',
-        'parent',
-        'sibling',
-        'index'
-      ],
-      'newlines-between': 'always'
-    }],
     'import/newline-after-import': 'error',
     'import/no-duplicates': 'error',
     'import/no-cycle': 'warn',
