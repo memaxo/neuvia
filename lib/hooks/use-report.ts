@@ -1,18 +1,20 @@
 import { useState, useCallback, useMemo } from 'react';
 import { DocumentProcessingService } from '@/lib/processing/document-processing-service';
 import type { 
-  ResearchDocument, 
+  ResearchDocument,
+  VerifiedDocument, 
   ReportData, 
   ReportOptions, 
   ProcessingStatus, 
   ReportFormat,
-  ReportDocument
+  ReportDocument,
+  ResearchResult
 } from '@/lib/processing/types/index';
 
 /**
  * Hook for report generation operations
  */
-export function useReport(researchDocument: ResearchDocument | null) {
+export function useReport(documentInput: ResearchDocument | VerifiedDocument | null) {
   // State for report data
   const [reportData, setReportData] = useState<ReportData | null>(null);
   
@@ -20,7 +22,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
   const [status, setStatus] = useState<ProcessingStatus>({
     status: 'idle',
     progress: 0,
-    phase: 'report'
+    phase: 'generation'
   });
   
   // State for the formatted report
@@ -32,19 +34,24 @@ export function useReport(researchDocument: ResearchDocument | null) {
   // State for report document
   const [reportDocument, setReportDocument] = useState<ReportDocument | null>(null);
   
+  // Determine document type
+  const isVerifiedDocument = useMemo(() => {
+    return documentInput && 'verifiedData' in documentInput;
+  }, [documentInput]);
+  
   // Create the processing service
   const processingService = useMemo(() => new DocumentProcessingService(), []);
   
   /**
-   * Generate a report
+   * Generate a report from research or verified document
    */
   const generateReport = useCallback(async (options?: Omit<ReportOptions, 'onProgress'>) => {
-    if (!researchDocument) {
+    if (!documentInput) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'report',
-        error: 'No research document available'
+        phase: 'generation',
+        error: 'No document available'
       });
       return null;
     }
@@ -54,25 +61,64 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'processing',
         progress: 0,
-        phase: 'report',
+        phase: 'generation',
         currentStep: 'Starting report generation'
       });
       
-      // Generate the report
-      const result = await processingService.generateReport(
-        researchDocument,
-        {
-          ...options,
-          onProgress: (progress: number) => {
-            setStatus({
-              status: 'processing',
-              progress,
-              phase: 'report',
-              currentStep: `Generating report (${progress}%)`
-            });
+      let result: ReportData;
+      
+      // Handle different document types
+      if (isVerifiedDocument) {
+        // For verified document, use it directly
+        const verifiedDocument = documentInput as VerifiedDocument;
+        
+        // Use empty research results if not available
+        const emptyResearch: ResearchResult[] = [{
+          query: 'Direct verification-to-report',
+          sources: [],
+          summary: 'Direct report generation from verified data',
+          timestamp: new Date(),
+          confidence: 1.0,
+          keyFindings: ['Generated directly from verified data']
+        }];
+        
+        // Generate report from verified document
+        result = await processingService.generateReport(
+          verifiedDocument,
+          emptyResearch,
+          {
+            ...options,
+            onProgress: (phase, progress) => {
+              setStatus({
+                status: 'processing',
+                progress,
+                phase: 'generation',
+                currentStep: `Generating report (${progress}%)`
+              });
+            }
           }
-        }
-      );
+        );
+      } else {
+        // For research document, use previous implementation
+        const researchDocument = documentInput as ResearchDocument;
+        
+        // Generate the report
+        result = await processingService.generateReport(
+          researchDocument.verifiedDocument, // Use the verified document inside research document
+          researchDocument.researchResults || [], // Use the research results
+          {
+            ...options,
+            onProgress: (phase, progress) => {
+              setStatus({
+                status: 'processing',
+                progress,
+                phase: 'generation',
+                currentStep: `Generating report (${progress}%)`
+              });
+            }
+          }
+        );
+      }
       
       // Update state with result
       setReportData(result);
@@ -81,12 +127,15 @@ export function useReport(researchDocument: ResearchDocument | null) {
       const newReportDocument: ReportDocument = {
         id: crypto.randomUUID(),
         createdAt: new Date(),
-        documentType: researchDocument.documentType,
-        patientId: researchDocument.patientId,
-        researchDocument,
+        documentType: isVerifiedDocument 
+          ? (documentInput as VerifiedDocument).extractedDocument.documentType
+          : (documentInput as ResearchDocument).documentType,
+        patientId: documentInput.patientId,
+        researchDocument: isVerifiedDocument 
+          ? {} as ResearchDocument // Empty research document for direct verification
+          : (documentInput as ResearchDocument),
         reportData: result,
-        format: reportFormat,
-        formattedContent: null // Will be set after formatting
+        format: reportFormat
       };
       
       setReportDocument(newReportDocument);
@@ -95,7 +144,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'success',
         progress: 100,
-        phase: 'report',
+        phase: 'generation',
         currentStep: 'Report generated'
       });
       
@@ -107,7 +156,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'report',
+        phase: 'generation',
         error: errorMessage,
         currentStep: 'Report generation failed'
       });
@@ -115,7 +164,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       console.error('Error in useReport:', error);
       return null;
     }
-  }, [researchDocument, reportFormat, processingService]);
+  }, [documentInput, isVerifiedDocument, reportFormat, processingService]);
   
   /**
    * Format the report into the specified format
@@ -125,7 +174,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'format',
+        phase: 'formatting',
         error: 'No report data available'
       });
       return null;
@@ -136,7 +185,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'processing',
         progress: 0,
-        phase: 'format',
+        phase: 'formatting',
         currentStep: `Starting ${format} formatting`
       });
       
@@ -150,7 +199,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
           setStatus({
             status: 'processing',
             progress,
-            phase: 'format',
+            phase: 'formatting',
             currentStep: `Formatting to ${format} (${progress}%)`
           });
         }
@@ -163,8 +212,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       if (reportDocument) {
         const updatedReportDocument: ReportDocument = {
           ...reportDocument,
-          format,
-          formattedContent
+          format
         };
         
         setReportDocument(updatedReportDocument);
@@ -174,7 +222,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'success',
         progress: 100,
-        phase: 'format',
+        phase: 'formatting',
         currentStep: `Report formatted to ${format}`
       });
       
@@ -186,7 +234,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'format',
+        phase: 'formatting',
         error: errorMessage,
         currentStep: 'Report formatting failed'
       });
@@ -206,7 +254,7 @@ export function useReport(researchDocument: ResearchDocument | null) {
     setStatus({
       status: 'idle',
       progress: 0,
-      phase: 'report'
+      phase: 'generation'
     });
   }, []);
   
@@ -220,6 +268,8 @@ export function useReport(researchDocument: ResearchDocument | null) {
     formatReport,
     reset,
     // Expose the service for direct access
-    processingService
+    processingService,
+    // Expose input type
+    isVerifiedDocument
   };
 }

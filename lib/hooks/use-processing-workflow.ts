@@ -123,6 +123,30 @@ export function useProcessingWorkflow() {
   }, [verification]);
   
   /**
+   * Complete verification and proceed directly to report generation
+   * (skipping the research step)
+   */
+  const completeVerificationToReport = useCallback(async () => {
+    setError(null);
+    
+    try {
+      const result = await verification.completeVerification();
+      
+      if (result) {
+        // Skip research and go directly to report generation
+        setWorkflowStep('report_generation');
+        return result;
+      } else {
+        throw new Error('Verification failed');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      return null;
+    }
+  }, [verification]);
+  
+  /**
    * Perform research based on verified data
    */
   const performResearch = useCallback(async (
@@ -249,6 +273,7 @@ export function useProcessingWorkflow() {
     // Workflow actions
     processDocument,
     completeVerification,
+    completeVerificationToReport,
     performResearch,
     generateReport,
     formatReport,

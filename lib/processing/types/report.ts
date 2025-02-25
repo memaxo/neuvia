@@ -74,6 +74,36 @@ export interface ReportMetadata {
    * Flags for any issues or concerns
    */
   flags?: string[];
+  
+  /**
+   * Verification metadata if report is based on verified data
+   */
+  verification?: {
+    /**
+     * When the document was verified
+     */
+    verifiedAt: Date;
+    
+    /**
+     * User who verified the document
+     */
+    verifiedBy?: string;
+    
+    /**
+     * Average confidence score of verification items (0-1)
+     */
+    verificationConfidence: number;
+    
+    /**
+     * Number of verified items
+     */
+    verifiedItemCount: number;
+    
+    /**
+     * Number of corrections made during verification
+     */
+    correctionCount: number;
+  };
 }
 
 /**
@@ -109,6 +139,11 @@ export interface ReportData {
    * Structured sections of the report
    */
   sections?: ReportSections;
+  
+  /**
+   * Verified data that was used to generate the report
+   */
+  verifiedData?: Record<string, any>;
 }
 
 /**

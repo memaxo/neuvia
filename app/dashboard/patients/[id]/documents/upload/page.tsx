@@ -22,7 +22,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { FileUploader } from '@/components/file-uploader';
+import { DocumentUploader } from '@/components/upload/document-uploader';
 import { processDocument } from '../../../../../../lib/processing/document-extraction';
 
 // Type definitions - since the imported types may not be available
@@ -316,44 +316,6 @@ export default function DocumentUploadPage() {
               <CardTitle>Upload Document</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* File Upload */}
-              <div className="space-y-4">
-                <Label htmlFor="file">Select File</Label>
-                <FileUploader
-                  accept={{
-                    'application/pdf': [],
-                    'application/msword': [],
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [],
-                    'image/jpeg': [],
-                    'image/png': []
-                  }}
-                  disabled={isUploading}
-                  maxFileCount={1}
-                  multiple={false}
-                  onValueChange={(newFiles) => {
-                    if (newFiles.length > 0) {
-                      setSelectedFile(newFiles[0]);
-                    } else {
-                      setSelectedFile(null);
-                    }
-                  }}
-                />
-              </div>
-              
-              {selectedFile && detectionResult && (
-                <Alert>
-                  <Info className="size-4" />
-                  <AlertTitle>AI Suggestion</AlertTitle>
-                  <AlertDescription className="space-y-2">
-                    <p>The AI suggests this might be: <span className="font-medium">{DOCUMENT_CATEGORIES.find(c => c.value === detectionResult.suggestedCategory)?.label} - {DOCUMENT_TYPES[detectionResult.suggestedCategory || 'clinical'].find(t => t.value === detectionResult.suggestedType)?.label}</span></p>
-                    <p className="text-muted-foreground text-sm">Confidence: {detectionResult.confidence}%</p>
-                    <Button onClick={applySuggestion} size="sm" variant="outline">
-                      Apply Suggestion
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              )}
-              
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 {/* Document Title */}
                 <div className="space-y-2">
@@ -450,14 +412,38 @@ export default function DocumentUploadPage() {
                 </div>
               </div>
               
-              {isUploading && (
-                <div className="space-y-2">
-                  <Progress value={processingStatus.progress} />
-                  <p className="text-muted-foreground text-center text-sm">
-                    {processingStatus.currentStep || 'Processing...'}
-                  </p>
-                </div>
-              )}
+              <Separator />
+              
+              {/* Document Uploader */}
+              <div className="space-y-4">
+                <Label>Upload File</Label>
+                <DocumentUploader
+                  description="Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG"
+                  documentType={{
+                    category: selectedCategory,
+                    type: selectedType || 'document'
+                  }}
+                  onComplete={(fileUpload) => {
+                    // Handle successful upload
+                    toast({
+                      title: 'Document Processed',
+                      description: 'Document has been successfully uploaded and processed.',
+                    });
+                    
+                    // Navigate back to the patient documents page
+                    router.push(`/dashboard/patients/${params.id}/documents` as any);
+                  }}
+                  onError={(error) => {
+                    toast({
+                      title: 'Upload Error',
+                      description: error,
+                      variant: 'destructive',
+                    });
+                  }}
+                  patientId={params.id}
+                  showProgress={true}
+                />
+              </div>
             </CardContent>
             <CardFooter className="flex justify-between">
               <Button
@@ -465,13 +451,6 @@ export default function DocumentUploadPage() {
                 variant="outline"
               >
                 Cancel
-              </Button>
-              <Button
-                disabled={isUploading || !selectedFile || !selectedCategory || !selectedType}
-                onClick={handleUpload}
-                variant="default"
-              >
-                Upload & Process
               </Button>
             </CardFooter>
           </Card>
