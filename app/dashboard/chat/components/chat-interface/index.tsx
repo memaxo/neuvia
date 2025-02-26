@@ -18,7 +18,8 @@ import type { ChatMode } from "@/lib/chat/types";
 import type { VerificationItem, ExtractedData } from "@/lib/processing/types";
 import type { Vote } from "@/lib/types/vote";
 
-import { VerificationUI } from "../verification/verification-ui";
+import { VerificationAdapter } from "../verification/verification-adapter";
+import { documentService } from '@/lib/services/document/document-service';
 
 type WorkflowStep =
   | "idle"
@@ -127,10 +128,17 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
       // Next step: extracting
       setWorkflowStep("extracting");
 
-      // Process document
-      await processDocument(file);
-      if ('extractedData' in state && state.extractedData) {
-        setExtractedData(state.extractedData as ExtractedData);
+      // Process document using unified document service
+      const { extractedDocument, workflowId } = await documentService.processDocument(file, {
+        patientId,
+        onStatusUpdate: (status) => {
+          // Update UI with processing status if needed
+          console.log('Document processing status:', status);
+        }
+      });
+      
+      if (extractedDocument && extractedDocument.isSuccessful) {
+        setExtractedData(extractedDocument.extractedData);
       }
 
       // Move to verification
@@ -205,13 +213,15 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
           );
         }
         return (
-          <VerificationUI
+          <VerificationAdapter
             departmentId="some-department-id"
+            documentId={activeDocument?.id || ""}
             extractedData={extractedData}
+            onCancel={() => setWorkflowStep("idle")}
             onComplete={handleReportGenerationComplete}
-            onVerify={handleVerificationComplete}
             originalText={originalText}
             patientId={patientId}
+            workflowId={activeDocument?.id || ""}
           />
         );
 

@@ -8,7 +8,7 @@ export interface ResearchSource {
   /**
    * Title of the source
    */
-  title: string;
+  title?: string;
   
   /**
    * URL of the source
@@ -18,7 +18,7 @@ export interface ResearchSource {
   /**
    * Brief description of the source
    */
-  description: string;
+  description?: string;
   
   /**
    * Optional content excerpt from the source
@@ -28,7 +28,7 @@ export interface ResearchSource {
   /**
    * Relevance score (0-1) indicating how relevant this source is to the query
    */
-  relevance: number;
+  relevance?: number;
   
   /**
    * Optional citation index for referencing
@@ -49,6 +49,16 @@ export interface ResearchSource {
    * Authors of the source (if applicable)
    */
   authors?: string[];
+  
+  /**
+   * Source snippet from API
+   */
+  snippet?: string;
+  
+  /**
+   * Source index in numbered references
+   */
+  index?: number;
 }
 
 /**
@@ -56,9 +66,14 @@ export interface ResearchSource {
  */
 export interface ResearchResult {
   /**
-   * The query that generated this research
+   * Generated research text
    */
-  query: string;
+  text: string;
+  
+  /**
+   * Research summary (processed text)
+   */
+  summary?: string;
   
   /**
    * Sources used in the research
@@ -66,29 +81,19 @@ export interface ResearchResult {
   sources: ResearchSource[];
   
   /**
-   * Summary of the research findings
-   */
-  summary: string;
-  
-  /**
-   * When the research was performed
-   */
-  timestamp: Date;
-  
-  /**
-   * Optional confidence score for the research (0-1)
-   */
-  confidence?: number;
-  
-  /**
-   * Optional key findings as bullet points
+   * Extracted key findings
    */
   keyFindings?: string[];
   
   /**
-   * Optional analysis of contradictions or conflicting information
+   * Timestamp of the research
    */
-  contradictions?: string[];
+  timestamp?: Date;
+  
+  /**
+   * Confidence score
+   */
+  confidence?: number;
 }
 
 /**
@@ -96,14 +101,9 @@ export interface ResearchResult {
  */
 export interface ResearchOptions {
   /**
-   * Depth of research to perform
+   * Research depth
    */
   depth?: 'basic' | 'standard' | 'comprehensive';
-  
-  /**
-   * Patient ID for contextual research
-   */
-  patientId?: string;
   
   /**
    * Maximum number of sources to include
@@ -111,14 +111,49 @@ export interface ResearchOptions {
   sourcesLimit?: number;
   
   /**
-   * Whether to include source content in results
+   * Whether to include source content
    */
   includeSourceContent?: boolean;
+  
+  /**
+   * Research type (standard or medical diagnosis)
+   */
+  researchType?: 'standard' | 'medical-diagnosis';
+  
+  /**
+   * Context data for specialized research
+   */
+  contextData?: Record<string, any>;
   
   /**
    * Progress callback
    */
   onProgress?: (progress: number) => void;
+  
+  /**
+   * Whether this is a medical diagnosis query
+   */
+  isMedicalDiagnosis?: boolean;
+  
+  /**
+   * Patient data for medical diagnosis
+   */
+  patientData?: string;
+  
+  /**
+   * Temperature for generation
+   */
+  temperature?: number;
+  
+  /**
+   * Maximum number of tokens in the response
+   */
+  maxTokens?: number;
+  
+  /**
+   * Whether to include images in the response
+   */
+  includeImages?: boolean;
 }
 
 /**

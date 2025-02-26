@@ -1,5 +1,5 @@
 import type { DocumentBase } from './base';
-import type { ResearchDocument, ResearchSource } from './research';
+import type { ResearchDocument, ResearchSource, ResearchResult } from './research';
 
 /**
  * Report data format
@@ -147,28 +147,87 @@ export interface ReportData {
 }
 
 /**
- * Options for report generation
+ * Report generation parameters
  */
-export interface ReportOptions {
+export interface ReportGenerationParams {
   /**
-   * Whether to include source content in the report
+   * Report type (e.g., 'medical-diagnosis', 'research', 'standard')
+   */
+  type: string;
+  
+  /**
+   * Patient ID (if applicable)
+   */
+  patientId: string;
+  
+  /**
+   * Research query (if not providing pre-researched data)
+   */
+  researchQuery?: string;
+  
+  /**
+   * Pre-researched data (if available)
+   */
+  researchData?: ResearchResult;
+  
+  /**
+   * Depth of research
+   */
+  researchDepth?: 'basic' | 'standard' | 'comprehensive';
+  
+  /**
+   * Maximum number of sources to include
+   */
+  sourcesLimit?: number;
+  
+  /**
+   * Whether to include source content in results
    */
   includeSourceContent?: boolean;
   
   /**
-   * Format of the report
+   * Whether to save the report to the database
    */
-  format?: ReportFormat;
+  saveToDatabase?: boolean;
   
   /**
-   * Depth of the report
+   * Additional context data for the report
    */
-  depth?: 'basic' | 'standard' | 'comprehensive';
+  contextData?: Record<string, any>;
+}
+
+/**
+ * Report generation options
+ */
+export interface ReportOptions {
+  /**
+   * Patient ID (if applicable)
+   */
+  patientId?: string;
   
   /**
-   * Progress callback
+   * Progress callback for report generation
+   * @param phase Current generation phase
+   * @param progress Progress percentage (0-100)
    */
-  onProgress?: (phase: 'research' | 'generation' | 'formatting', percent: number) => void;
+  onProgress?: (phase: 'initialization' | 'research' | 'generation' | 'complete', progress: number) => void;
+  
+  /**
+   * Success callback
+   * @param reportData Generated report data
+   */
+  onSuccess?: (reportData: ReportData) => void;
+  
+  /**
+   * Error callback
+   * @param error Error message
+   */
+  onError?: (error: string) => void;
+  
+  /**
+   * Whether to save the report to the database
+   */
+  saveToDatabase?: boolean;
 }
 
 /**

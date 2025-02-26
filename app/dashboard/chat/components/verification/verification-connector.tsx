@@ -4,16 +4,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader } from 'lucide-react';
-import { DocumentProcessingService } from '@/lib/processing/document-processing-service';
+import { documentService } from '@/lib/services/document/document-service';
 import { createBrowserClient } from '@/lib/supabase/clients';
-import { VerificationUI } from './verification-ui';
+import { VerificationAdapter } from './verification-adapter';
 
 // Import the types from the correct path
 import type { 
-  ExtractedDocument, 
-  VerificationItem, 
-  VerificationStatus 
-} from '@/lib/processing/types/index';
+  ExtractedDocument,
+  VerifiedDocument
+} from '@/lib/processing/types/verification/index';
 
 interface VerificationConnectorProps {
   workflowId: string;
@@ -35,7 +34,6 @@ export function VerificationConnector({
   const router = useRouter();
   const { toast } = useToast();
   const supabase = createBrowserClient();
-  const processingService = new DocumentProcessingService();
   
   // Load the workflow state and extracted document
   useEffect(() => {
@@ -95,7 +93,7 @@ export function VerificationConnector({
   // Start verification process
   const startVerification = async (document: ExtractedDocument, workflowId: string) => {
     try {
-      await processingService.startVerification(workflowId, document);
+      await documentService.startVerification(workflowId, document);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setError(errorMessage);
@@ -104,14 +102,14 @@ export function VerificationConnector({
   };
   
   // Handle verification completion
-  const handleVerificationComplete = async (items: VerificationItem[], status: VerificationStatus) => {
+  const handleVerificationComplete = async (items: VerifiedDocument[], status: VerificationStatus) => {
     if (!extractedDocument || !patientId) return;
     
     try {
       setIsLoading(true);
       
       // Save verification results
-      const verifiedDocument = await processingService.saveVerificationResults(
+      const verifiedDocument = await documentService.saveVerificationResults(
         workflowId,
         items,
         status,
@@ -148,13 +146,13 @@ export function VerificationConnector({
   };
   
   // Handle verification of items
-  const handleVerification = async (items: VerificationItem[]) => {
+  const handleVerification = async (items: VerifiedDocument[]) => {
     if (!extractedDocument) return;
     
     try {
       // Since updateWorkflowState is private, we'll use startVerification
       // which will update the workflow state
-      await processingService.startVerification(workflowId, extractedDocument);
+      await documentService.startVerification(workflowId, extractedDocument);
       
       toast({
         title: 'Verification Updated',
@@ -194,24 +192,13 @@ export function VerificationConnector({
   
   // Render verification UI
   return (
-    <VerificationUI
-      departmentId={departmentId}
-      extractedData={extractedDocument.extractedData}
-      onComplete={() => {
-        // Create verification status
-        const status: VerificationStatus = {
-          isVerified: true,
-          verifiedAt: new Date(),
-          verifiedBy: 'user' // This would be the actual user ID in production
-        };
-        
-        // Get verification items from the extracted document metadata
-        const items = (extractedDocument.extractedData.metadata as any)?.verificationItems || [];
-        handleVerificationComplete(items, status);
-      }}
-      onVerify={handleVerification}
-      originalText={extractedDocument.extractedData.rawText}
-      patientId={patientId}
+    <VerificationAdapter
+      departmentId={departmentId || ""}
+      documentId={workflowId}
+      extractedDocument={extractedDocument}
+      onCancel={() => onError?.("Verification canceled")}
+      onComplete={handleVerificationComplete}
+      patientId={patientId || ""}
       workflowId={workflowId}
     />
   );

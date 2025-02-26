@@ -23,7 +23,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import { DocumentUploader } from '@/components/upload/document-uploader';
-import { processDocument } from '../../../../../../lib/processing/document-extraction';
+import { documentService } from '@/lib/services/document/document-service';
 
 // Type definitions - since the imported types may not be available
 type DocumentCategory = 'clinical' | 'lab' | 'imaging' | 'prescription' | 'administrative';
@@ -247,31 +247,27 @@ export default function DocumentUploadPage() {
         tags: tags.length > 0 ? JSON.stringify(tags) : null
       };
 
-      // Initiate extraction using the same shared ingestion logic
+      // Initiate extraction using the centralized document service
       toast({
         title: 'Extraction In Progress',
         description: 'Please wait while we process the file. This may take a few minutes.',
       });
 
-      // Call processDocument with the required parameters
-      // Check if the function accepts metadata as a parameter
-      try {
-        await processDocument(
-          selectedFile,
-          params.id as string,
+      // Call the document service with the required parameters
+      await documentService.processDocument(
+        selectedFile,
+        {
+          patientId: params.id as string,
           documentType,
-          (status: ProcessingStatus) => {
+          metadata,
+          onStatusUpdate: (status) => {
             setProcessingStatus(status);
           }
-        );
-      } catch (processingError) {
-        console.error('Error in document processing:', processingError);
-        throw processingError;
-      }
+        }
+      );
 
       // Once the extraction is triggered, navigate to an extraction loading screen
       router.push(`/dashboard/patients/${params.id}/documents/extraction-loading`);
-
     } catch (error) {
       console.error('Error processing document:', error);
       toast({

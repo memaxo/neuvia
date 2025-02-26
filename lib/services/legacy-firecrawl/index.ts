@@ -1,4 +1,11 @@
 /**
+ * @deprecated DEPRECATED: This Firecrawl implementation has been replaced with the Perplexity
+ * Deep Research API integration. Please use the new implementation in lib/services/research/perplexity-client.ts.
+ * 
+ * This file is maintained for backward compatibility but will be removed in a future version.
+ */
+
+/**
  * Firecrawl Service
  * 
  * Central export file for Firecrawl functionality.
