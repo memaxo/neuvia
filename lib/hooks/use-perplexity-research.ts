@@ -4,9 +4,9 @@
  * React hook for using Perplexity Deep Research in components.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ResearchResult, ResearchOptions } from '@/lib/processing/types/research';
-import { ResearchProvider } from '@/lib/config/research';
-import { DocumentProcessingService } from '@/lib/processing/document-processing-service';
+import type { ResearchResult, ResearchOptions } from '@/lib/processing/types/research';
+import type { ResearchProvider } from '@/lib/config/research';
+import { perplexityService } from '@/lib/services/perplexity/perplexity-service';
 
 /**
  * Status of a research operation
@@ -109,49 +109,6 @@ export function usePerplexityResearch(options?: UsePerplexityResearchOptions) {
     };
   }, []);
   
-  // Service instance
-  const documentProcessingService = new DocumentProcessingService();
-  
-  // Create a mock verified document for standalone usage
-  const createMockDocument = (q: string) => ({
-    id: documentId || 'standalone-research',
-    patientId,
-    createdAt: new Date(),
-    documentType: {
-      category: 'research',
-      type: 'query',
-      metadata: {}
-    },
-    extractedDocument: {
-      id: documentId || 'standalone-research',
-      createdAt: new Date(),
-      documentType: {
-        category: 'research',
-        type: 'query',
-        metadata: {}
-      },
-      extractedData: {
-        rawText: q,
-        metadata: {
-          extractedAt: new Date(),
-          docType: 'research-query'
-        }
-      },
-      isSuccessful: true,
-      files: [],
-      processingStatus: {
-        status: 'completed',
-        progress: 100
-      }
-    },
-    verificationItems: [],
-    verifiedData: {},
-    verificationStatus: {
-      isVerified: true,
-      verifiedAt: new Date()
-    }
-  });
-  
   // Perform research
   const performResearch = useCallback(async (
     queryText: string,
@@ -172,24 +129,31 @@ export function usePerplexityResearch(options?: UsePerplexityResearchOptions) {
       // Use specified provider or current state
       const selectedProvider = researchOptions?.provider || provider;
       
-      // Create options for research
-      const options: ResearchOptions & { provider?: ResearchProvider } = {
-        ...researchOptions,
-        provider: selectedProvider,
-        onProgress: (value) => {
-          if (isMounted.current) {
-            setProgress(value);
-          }
+      // Create progress tracking callback
+      const progressCallback = (value: number) => {
+        if (isMounted.current) {
+          setProgress(value);
         }
       };
       
-      // Create mock document
-      const mockDocument = createMockDocument(queryText);
+      // Create options for research
+      const options: ResearchOptions = {
+        ...researchOptions,
+        onProgress: progressCallback
+      };
       
-      // Perform the research
-      const researchResult = await documentProcessingService.performResearch(
+      // Add context data if provided
+      if (patientId || documentId) {
+        options.contextData = {
+          ...(options.contextData || {}),
+          patientId,
+          documentId
+        };
+      }
+      
+      // Use the consolidated perplexityService
+      const researchResult = await perplexityService.performDeepResearch(
         queryText,
-        mockDocument,
         options
       );
       
@@ -238,7 +202,7 @@ export function usePerplexityResearch(options?: UsePerplexityResearchOptions) {
       
       return null;
     }
-  }, [documentProcessingService, provider, storeHistory, maxHistoryEntries, persistHistory, documentId, patientId]);
+  }, [provider, storeHistory, maxHistoryEntries, persistHistory, documentId, patientId]);
   
   // Clear current result
   const clearResult = useCallback(() => {

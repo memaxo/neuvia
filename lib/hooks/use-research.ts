@@ -1,12 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
-import { DocumentProcessingService } from '@/lib/processing/document-processing-service';
-import type { 
-  VerifiedDocument, 
-  ResearchResult, 
-  ResearchOptions,
-  ProcessingStatus,
-  ResearchDocument
-} from '@/lib/processing/types/index';
+import { perplexityService } from '@/lib/services/perplexity/perplexity-service';
+import type { ProcessingStatus } from '@/lib/processing/types/base';
+import type { VerifiedDocument } from '@/lib/processing/types/verification';
+import type { ResearchResult, ResearchOptions, ResearchDocument } from '@/lib/processing/types/research';
 
 /**
  * Hook for deep research operations
@@ -17,16 +13,13 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
   
   // State for research status
   const [status, setStatus] = useState<ProcessingStatus>({
-    status: 'idle',
+    status: 'pending',
     progress: 0,
-    phase: 'research'
+    phase: 'analysis'
   });
   
   // State for research document
   const [researchDocument, setResearchDocument] = useState<ResearchDocument | null>(null);
-  
-  // Create the processing service
-  const processingService = useMemo(() => new DocumentProcessingService(), []);
   
   /**
    * Perform deep research
@@ -39,7 +32,7 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'research',
+        phase: 'analysis',
         error: 'No verified document available'
       });
       return null;
@@ -50,21 +43,24 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
       setStatus({
         status: 'processing',
         progress: 0,
-        phase: 'research',
+        phase: 'analysis',
         currentStep: 'Starting research'
       });
       
       // Perform the research
-      const result = await processingService.performResearch(
+      const result = await perplexityService.performDeepResearch(
         query,
-        verifiedDocument,
         {
           ...options,
+          contextData: {
+            verifiedDocument,
+            patientId: verifiedDocument.patientId
+          },
           onProgress: (progress: number) => {
             setStatus({
               status: 'processing',
               progress,
-              phase: 'research',
+              phase: 'analysis',
               currentStep: `Researching (${progress}%)`
             });
           }
@@ -82,7 +78,7 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
         patientId: verifiedDocument.patientId,
         verifiedDocument,
         researchResults: [...researchResults, result],
-        queries: [...researchResults.map(r => r.query), query]
+        queries: [...(researchResults.map(r => r.text?.substring(0, 100) || 'Research')), query]
       };
       
       setResearchDocument(newResearchDocument);
@@ -91,7 +87,7 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
       setStatus({
         status: 'success',
         progress: 100,
-        phase: 'research',
+        phase: 'analysis',
         currentStep: 'Research completed'
       });
       
@@ -103,7 +99,7 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
       setStatus({
         status: 'error',
         progress: 0,
-        phase: 'research',
+        phase: 'analysis',
         error: errorMessage,
         currentStep: 'Research failed'
       });
@@ -111,7 +107,7 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
       console.error('Error in useResearch:', error);
       return null;
     }
-  }, [verifiedDocument, researchResults, processingService]);
+  }, [verifiedDocument, researchResults]);
   
   /**
    * Clear research results
@@ -119,9 +115,9 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
   const clearResults = useCallback(() => {
     setResearchResults([]);
     setStatus({
-      status: 'idle',
+      status: 'pending',
       progress: 0,
-      phase: 'research'
+      phase: 'analysis'
     });
     setResearchDocument(null);
   }, []);
@@ -131,8 +127,6 @@ export function useResearch(verifiedDocument: VerifiedDocument | null) {
     status,
     researchDocument,
     performResearch,
-    clearResults,
-    // Expose the service for direct access
-    processingService
+    clearResults
   };
 } 

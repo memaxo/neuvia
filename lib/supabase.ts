@@ -1120,17 +1120,33 @@ export type Database = {
             }
             Returns: unknown
           }
-      match_documents: {
-        Args: {
-          query_embedding: string
-          match_threshold: number
-          match_count: number
-        }
-        Returns: {
-          content: string
-          similarity: number
-        }[]
-      }
+      match_documents:
+        | {
+            Args: {
+              query_embedding: string
+              match_threshold: number
+              match_count: number
+            }
+            Returns: {
+              content: string
+              similarity: number
+            }[]
+          }
+        | {
+            Args: {
+              query_embedding: string
+              match_threshold: number
+              match_count: number
+              patient_id?: string
+            }
+            Returns: {
+              id: string
+              document_id: string
+              content: string
+              metadata: Json
+              similarity: number
+            }[]
+          }
       match_patient_documents: {
         Args: {
           embedding: string

@@ -4,15 +4,19 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader } from 'lucide-react';
-import { documentService } from '@/lib/services/document/document-service';
 import { createBrowserClient } from '@/lib/supabase/clients';
 import { VerificationAdapter } from './verification-adapter';
+import { verificationService } from '@/lib/services/verification/verification-service';
+import { useChatContext } from '@/contexts/chat-context';
 
-// Import the types from the correct path
+// Import the types from the standardized path
 import type { 
   ExtractedDocument,
-  VerifiedDocument
-} from '@/lib/processing/types/verification/index';
+  VerifiedDocument,
+  VerificationItem,
+  VerificationStatus,
+  WorkflowStep
+} from '@/lib/processing/types/verification';
 
 interface VerificationConnectorProps {
   workflowId: string;
@@ -20,6 +24,14 @@ interface VerificationConnectorProps {
   onError?: (error: string) => void;
 }
 
+/**
+ * VerificationConnector Component
+ * 
+ * Connects a workflow to the verification UI system
+ * 
+ * @deprecated This component uses document verification which is being phased out.
+ * Future implementations should use PatientSummaryService.verifySummary() for summary-based verification.
+ */
 export function VerificationConnector({ 
   workflowId, 
   onComplete,
@@ -27,9 +39,9 @@ export function VerificationConnector({
 }: VerificationConnectorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [extractedDocument, setExtractedDocument] = useState<ExtractedDocument | null>(null);
-  const [patientId, setPatientId] = useState<string | null>(null);
-  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  
+  // Get access to the workflow from chat context
+  const { workflow } = useChatContext();
   
   const router = useRouter();
   const { toast } = useToast();
@@ -41,38 +53,13 @@ export function VerificationConnector({
       try {
         setIsLoading(true);
         
-        // Fetch the workflow state
-        const { data: workflowStates, error: workflowError } = await supabase
-          .from('workflow_states')
-          .select('*')
-          .eq('metadata->workflowId', workflowId);
-          
-        if (workflowError) throw new Error(`Failed to fetch workflow: ${workflowError.message}`);
-        if (!workflowStates || workflowStates.length === 0) throw new Error('Workflow not found');
-        
-        const workflowState = workflowStates[0];
-        
-        // Extract document and patient ID from metadata
-        if (!workflowState.metadata) throw new Error('No metadata found in workflow');
-        
-        const metadata = workflowState.metadata as any;
-        const extractedDoc = metadata.extractedDocument as ExtractedDocument;
-        const patId = metadata.patientId as string;
-        const deptId = metadata.departmentId as string || '1'; // default to department ID 1 if not provided
-        
-        if (!extractedDoc) throw new Error('No extracted document found in workflow');
-        if (!patId) throw new Error('No patient ID found in workflow');
-        
-        // Set the extracted document and patient ID
-        setExtractedDocument(extractedDoc);
-        setPatientId(patId);
-        setDepartmentId(deptId);
-        
-        // Start verification if needed
-        if (workflowState.current_step === 'verification' && !metadata.verificationItems) {
-          await startVerification(extractedDoc, workflowId);
+        // Check if we have the extracted document in the workflow state
+        if (!workflow.extractedDocument) {
+          throw new Error('No extracted document found in workflow');
         }
         
+        // If everything is loaded, we're good to go
+        setIsLoading(false);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         setError(errorMessage);
@@ -88,117 +75,74 @@ export function VerificationConnector({
     }
     
     loadWorkflowData();
-  }, [workflowId, supabase, toast, onError]);
+  }, [workflow, toast, onError]);
   
-  // Start verification process
-  const startVerification = async (document: ExtractedDocument, workflowId: string) => {
+  /**
+   * Handle verification complete
+   */
+  const handleVerificationComplete = async (verifiedDoc: VerifiedDocument) => {
     try {
-      await documentService.startVerification(workflowId, document);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setError(errorMessage);
-      onError?.(errorMessage);
-    }
-  };
-  
-  // Handle verification completion
-  const handleVerificationComplete = async (items: VerifiedDocument[], status: VerificationStatus) => {
-    if (!extractedDocument || !patientId) return;
-    
-    try {
-      setIsLoading(true);
+      // In the updated approach, we would call a method like:
+      // workflow.saveVerificationResults(verifiedDoc.verificationItems, verifiedDoc.verificationStatus);
       
-      // Save verification results
-      const verifiedDocument = await documentService.saveVerificationResults(
-        workflowId,
-        items,
-        status,
-        extractedDocument
-      );
-      
-      toast({
-        title: 'Verification Complete',
-        description: 'Document has been successfully verified.',
-      });
-      
-      // Call the onComplete callback
-      onComplete?.();
-      
-      // Redirect to the next step if needed
-      if (status.isVerified) {
-        // Use the router.push with explicit cast to any to bypass the type error
-        // The URL is correctly formatted for Next.js routing
-        const url = `/dashboard/reports/new?patientId=${patientId}&workflowId=${workflowId}`;
-        (router as any).push(url);
+      // Move to the next workflow step
+      if (workflow.generateReport) {
+        await workflow.generateReport(verifiedDoc);
       }
+      
+      // Notify parent component
+      onComplete?.();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setError(errorMessage);
       onError?.(errorMessage);
       toast({
         title: 'Error',
-        description: `Failed to save verification results: ${errorMessage}`,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  
-  // Handle verification of items
-  const handleVerification = async (items: VerifiedDocument[]) => {
-    if (!extractedDocument) return;
-    
-    try {
-      // Since updateWorkflowState is private, we'll use startVerification
-      // which will update the workflow state
-      await documentService.startVerification(workflowId, extractedDocument);
-      
-      toast({
-        title: 'Verification Updated',
-        description: 'Verification progress has been saved.',
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      toast({
-        title: 'Warning',
-        description: `Couldn't save verification progress: ${errorMessage}`,
+        description: errorMessage,
         variant: 'destructive',
       });
     }
   };
   
-  // Render loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center p-8">
-        <Loader className="text-primary size-12 animate-spin" />
-        <p className="text-muted-foreground mt-4">Loading verification data...</p>
+      <div className="flex items-center justify-center p-8">
+        <Loader className="text-muted-foreground size-8 animate-spin" />
+        <span className="text-muted-foreground ml-2">Loading verification...</span>
       </div>
     );
   }
   
-  // Render error state
-  if (error || !extractedDocument || !patientId || !departmentId) {
+  if (error) {
     return (
-      <div className="border-destructive bg-destructive/10 rounded-lg border p-6">
-        <h3 className="text-destructive text-lg font-semibold">Verification Error</h3>
-        <p className="text-muted-foreground mt-2">
-          {error || "Couldn't load the verification data. Please try again."}
-        </p>
+      <div className="text-destructive p-4 text-center">
+        <p className="font-medium">Error</p>
+        <p className="text-sm">{error}</p>
       </div>
     );
   }
   
-  // Render verification UI
+  if (!workflow.extractedDocument) {
+    return (
+      <div className="text-destructive p-4 text-center">
+        <p className="font-medium">No Document Found</p>
+        <p className="text-sm">The document extraction failed or was not found.</p>
+      </div>
+    );
+  }
+  
   return (
     <VerificationAdapter
-      departmentId={departmentId || ""}
+      departmentId="1"
       documentId={workflowId}
-      extractedDocument={extractedDocument}
-      onCancel={() => onError?.("Verification canceled")}
+      extractedDocument={workflow.extractedDocument as unknown as ExtractedDocument}
+      onCancel={() => {
+        // Use workflow.resetWorkflow method
+        workflow.resetWorkflow();
+        onComplete?.();
+      }}
       onComplete={handleVerificationComplete}
-      patientId={patientId || ""}
+      patientId="patient-id" // Hardcoded for now - the actual ID would come from workflow in a complete implementation
       workflowId={workflowId}
     />
   );

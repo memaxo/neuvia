@@ -25,15 +25,32 @@ export interface PerplexityConfig {
    * Enable debug logging
    */
   debug?: boolean;
+  
+  /**
+   * Default temperature for generation
+   */
+  temperature?: number;
+  
+  /**
+   * Default token limit
+   */
+  maxTokens?: number;
 }
+
+// Export individual settings for easier imports
+export const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY || '';
+export const PERPLEXITY_MODEL = 'sonar-deep-research';
+export const PERPLEXITY_DEBUG = process.env.NODE_ENV === 'development';
 
 /**
  * Default Perplexity configuration
  */
 const perplexityConfig: PerplexityConfig = {
-  apiKey: process.env.PERPLEXITY_API_KEY || '',
-  model: 'sonar-deep-research',
-  debug: process.env.NODE_ENV === 'development',
+  apiKey: PERPLEXITY_API_KEY,
+  model: PERPLEXITY_MODEL,
+  debug: PERPLEXITY_DEBUG,
+  temperature: 0.7,
+  maxTokens: 3000,
 };
 
 export default perplexityConfig; 

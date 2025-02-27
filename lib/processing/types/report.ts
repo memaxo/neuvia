@@ -76,6 +76,31 @@ export interface ReportMetadata {
   flags?: string[];
   
   /**
+   * Report type (e.g., 'medical-diagnosis', 'research', 'standard')
+   */
+  reportType?: string;
+  
+  /**
+   * Title of the report
+   */
+  title?: string;
+  
+  /**
+   * User who created the report
+   */
+  createdBy?: string | null;
+  
+  /**
+   * Department ID associated with the report
+   */
+  departmentId?: string | null;
+  
+  /**
+   * Additional context data used in report generation
+   */
+  contextData?: Record<string, any>;
+  
+  /**
    * Verification metadata if report is based on verified data
    */
   verification?: {

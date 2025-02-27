@@ -1,10 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
-import { DocumentProcessingService } from '@/lib/processing/document-processing-service';
-import type { 
-  ProcessingStatus, 
-  ExtractedDocument, 
-  DocumentType 
-} from '@/lib/processing/types';
+import { useState, useCallback } from 'react';
+import { documentService } from '@/lib/services/document/document-service';
+import type { ProcessingStatus, DocumentType } from '@/lib/processing/types/base';
+import type { ExtractedDocument } from '@/lib/processing/types/extraction';
 
 /**
  * Hook for document processing operations
@@ -12,16 +9,13 @@ import type {
 export function useDocumentProcessing() {
   // State for the extracted document
   const [extractedDocument, setExtractedDocument] = useState<ExtractedDocument | null>(null);
-  
+
   // State for processing status
   const [status, setStatus] = useState<ProcessingStatus>({
     status: 'idle',
     progress: 0
   });
-  
-  // Create the processing service
-  const processingService = useMemo(() => new DocumentProcessingService(), []);
-  
+
   /**
    * Process a document
    */
@@ -34,53 +28,50 @@ export function useDocumentProcessing() {
       // Update status to processing
       setStatus({
         status: 'processing',
-        progress: 0,
-        currentStep: 'Starting document extraction',
-        phase: 'extraction'
+        progress: 0
       });
-      
-      // Process the document
-      const result = await processingService.processDocument(
+
+      // Call the unified document service
+      const result = await documentService.processDocument(
         file,
         patientId,
-        {
-          documentType,
-          onStatusUpdate: (newStatus) => setStatus(newStatus)
-        }
+        documentType,
+        (newStatus) => setStatus(newStatus)
       );
-      
+
       // Update state with the result
       setExtractedDocument(result);
-      
+
       // Update final status if needed
-      if (status.status !== 'success') {
+      if (result.isSuccessful) {
         setStatus({
-          status: result.isSuccessful ? 'success' : 'error',
-          progress: 100,
-          currentStep: result.isSuccessful ? 'Document processed successfully' : 'Failed to process document',
-          error: result.isSuccessful ? undefined : result.errorMessage,
-          phase: 'extraction'
+          status: 'success',
+          progress: 100
+        });
+      } else {
+        setStatus({
+          status: 'error',
+          progress: 0,
+          error: result.errorMessage
         });
       }
-      
+
       return result;
     } catch (error) {
       // Handle unexpected errors
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       setStatus({
         status: 'error',
         progress: 0,
-        currentStep: 'Error processing document',
-        error: errorMessage,
-        phase: 'extraction'
+        error: errorMessage
       });
-      
+
       console.error('Error in useDocumentProcessing:', error);
       return null;
     }
-  }, [processingService, status.status]);
-  
+  }, []);
+
   /**
    * Reset the document processing state
    */
@@ -91,13 +82,11 @@ export function useDocumentProcessing() {
       progress: 0
     });
   }, []);
-  
+
   return {
     extractedDocument,
     status,
     processDocument,
-    reset,
-    // Expose the service for direct access to its methods if needed
-    processingService
+    reset
   };
 } 

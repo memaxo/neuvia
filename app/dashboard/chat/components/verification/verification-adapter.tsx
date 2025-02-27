@@ -2,8 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { VerificationPanel } from '@/components/verification/VerificationPanel';
-import type { VerifiedDocument } from '@/lib/processing/types/verification/index';
-import type { ExtractedDocument } from '@/lib/processing/types/extraction';
+import { 
+  type VerifiedDocument, 
+  type ExtractedDocument,
+  toCompatibleExtractedDocument,
+  ensureISOString
+} from '@/lib/processing/types/verification';
 import type { ExtractedData } from '@/lib/processing/types';
 
 interface VerificationAdapterProps {
@@ -76,7 +80,7 @@ export function VerificationAdapter({
       // Create a simple extracted document structure from the raw data
       const doc: ExtractedDocument = {
         id: documentId,
-        patientId: patientId,
+        patientId,
         documentType: {
           category: 'clinical',
           type: 'report'
@@ -85,12 +89,12 @@ export function VerificationAdapter({
           ...extractedData,
           rawText: originalText || extractedData.rawText || '',
           metadata: {
-            extractedAt: new Date(),
-            ...extractedData.metadata
+            ...extractedData.metadata,
+            extractedAt: ensureISOString(new Date())
           }
         },
         isSuccessful: true,
-        createdAt: new Date()
+        createdAt: ensureISOString(new Date())
       };
       
       setConvertedDocument(doc);
@@ -98,16 +102,16 @@ export function VerificationAdapter({
   }, [extractedData, extractedDocument, convertedDocument, documentId, patientId, originalText]);
   
   return (
-    <div className="rounded-lg border bg-card shadow-sm">
+    <div className="bg-card rounded-lg border shadow-sm">
       <VerificationPanel
-        documentId={documentId}
-        workflowId={workflowId}
-        patientId={patientId}
         departmentId={departmentId}
+        documentId={documentId}
         extractedDocument={extractedDocument || convertedDocument}
         isEmbedded={true}
-        onVerificationComplete={onComplete}
         onCancel={onCancel}
+        onVerificationComplete={onComplete}
+        patientId={patientId}
+        workflowId={workflowId}
       />
     </div>
   );

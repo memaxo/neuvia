@@ -1,4 +1,5 @@
 import type { Message as AIMessage } from 'ai';
+import type { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow';
 
 export type ChatMode = 'regular' | 'verification';
 
@@ -78,43 +79,28 @@ export interface ChatState {
   error?: string;
 }
 
-// Extended chat state with workflow support
-export interface ExtendedChatState extends ChatState {
-  workflowStep: WorkflowStep;
-  researchResults?: ResearchResult[];
-  reportData?: ReportData;
-  reportFormat?: 'markdown' | 'html' | 'pdf';
-  researchProgress?: {
-    phase: 'research' | 'generation' | 'formatting';
-    percent: number;
-  };
-}
+// Export the type of the processing workflow hook result
+export type UseProcessingWorkflowResult = ReturnType<typeof useProcessingWorkflow>;
 
+// Basic chat context type
 export interface ChatContextType {
-  state: ChatState;
+  // Chat-specific state
+  messages: Message[];
+  isLoading: boolean;
+  error: string | null;
+  mode: ChatMode;
+  
+  // Chat-specific methods
   sendMessage: (content: string) => Promise<void>;
-  setMode: (mode: ChatMode) => void;
-  verifyData: (messageId: string, status: VerificationStatus) => void;
+  addSystemMessage: (content: string, type?: string, metadata?: any) => void;
   clearChat: () => void;
+  setMode: (mode: ChatMode) => void;
 }
 
-// Extended context type with research methods
+// Extended chat context type with workflow access
 export interface ExtendedChatContextType extends ChatContextType {
-  state: ExtendedChatState;
-  processDocument: (file: File) => Promise<void>;
-  performDeepResearch: (query: string, options?: {
-    depth?: 'basic' | 'standard' | 'comprehensive';
-    patientId?: string;
-    sourcesLimit?: number;
-  }) => Promise<ResearchResult | null>;
-  generateReport: (options?: {
-    includeSourceContent?: boolean;
-    format?: 'markdown' | 'html' | 'pdf';
-    depth?: 'basic' | 'standard' | 'comprehensive';
-    onProgress?: (phase: 'research' | 'generation' | 'formatting', percent: number) => void;
-  }) => Promise<ReportData | null>;
-  formatReport: (format: 'markdown' | 'html' | 'pdf') => Promise<string | null>;
-  setWorkflowStep: (step: WorkflowStep) => void;
+  // Direct access to workflow
+  workflow: UseProcessingWorkflowResult;
 }
 
 export interface ChatProps {
@@ -123,7 +109,7 @@ export interface ChatProps {
   isReadOnly?: boolean;
 }
 
-// Workflow step type
+// Workflow step type - kept for backwards compatibility
 export type WorkflowStep = 
   | "idle" 
   | "uploading" 

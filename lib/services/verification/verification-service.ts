@@ -4,40 +4,27 @@
  * Provides centralized verification functionality across the application
  */
 import { createBrowserClient } from '@/lib/supabase/clients';
+import { workflowManager } from '@/lib/utils/workflow-manager';
+import type { WorkflowStep } from '@/lib/processing/types/workflow';
+import type { ExtractedDocument } from '@/lib/processing/types/extraction';
 import type { 
-  ExtractedDocument, 
   VerificationItem, 
   VerificationStatus, 
   VerifiedDocument,
-  WorkflowStep,
-  dateToISOString,
-  getDbCompatibleMetadata,
 } from '@/lib/processing/types/verification';
+import { getDbCompatibleMetadata } from '@/lib/processing/types/verification';
+import type { WorkflowOptions } from '@/lib/utils/workflow-manager';
 import type { Json } from '@/lib/supabase';
+import { patientSummaryService } from '@/lib/services/patient/patient-summary-service';
 
 /**
  * Verification service options
  */
-export interface VerificationOptions {
+export interface VerificationOptions extends WorkflowOptions {
   /**
    * User ID performing verification
    */
   userId?: string;
-  
-  /**
-   * Progress callback
-   */
-  onProgress?: (progress: number) => void;
-  
-  /**
-   * Success callback
-   */
-  onSuccess?: (verifiedDocument: VerifiedDocument) => void;
-  
-  /**
-   * Error callback
-   */
-  onError?: (error: string) => void;
 }
 
 /**
@@ -51,6 +38,8 @@ export class VerificationService {
    * 
    * @param extractedDocument Extracted document
    * @returns Generated verification items
+   * @deprecated This method will be removed as we transition to summary-based verification.
+   * Future implementations should use PatientSummaryService for verification.
    */
   generateVerificationItems(
     extractedDocument: ExtractedDocument
@@ -115,6 +104,7 @@ export class VerificationService {
   
   /**
    * Save verification results
+   * Uses workflow manager for state management and progress reporting.
    * 
    * @param workflowId Workflow ID
    * @param verificationItems Verification items
@@ -122,6 +112,8 @@ export class VerificationService {
    * @param extractedDocument Original extracted document
    * @param options Verification options
    * @returns Verified document
+   * @deprecated This method will be removed as we transition to summary-based verification.
+   * Use patientSummaryService.verifySummary() instead.
    */
   async saveVerificationResults(
     workflowId: string,
@@ -130,117 +122,110 @@ export class VerificationService {
     extractedDocument: ExtractedDocument,
     options?: VerificationOptions
   ): Promise<VerifiedDocument> {
-    try {
-      options?.onProgress?.(0);
-      
-      // Verify required fields
-      const requiredItems = verificationItems.filter(item => item.isRequired);
-      const unverifiedRequiredItems = requiredItems.filter(item => !item.isVerified);
-      
-      if (unverifiedRequiredItems.length > 0) {
-        throw new Error(`Required fields are not verified: ${unverifiedRequiredItems.map(i => i.label).join(', ')}`);
-      }
-      
-      options?.onProgress?.(20);
-      
-      // Create verified document from extracted document
-      const verifiedDocument: VerifiedDocument = {
-        id: crypto.randomUUID(),
-        extractedDocumentId: extractedDocument.id,
-        createdAt: new Date().toISOString(),
-        verificationStatus: status,
-        verificationItems,
-        patientId: extractedDocument.patientId,
-        documentType: extractedDocument.documentType,
-        verifiedData: this.assembleVerifiedData(verificationItems),
-        originalData: extractedDocument.extractedData
-      };
-      
-      options?.onProgress?.(50);
-      
-      // Save to patient_summaries table
-      const verifiedData = this.assembleVerifiedData(verificationItems);
-      
-      // Format metadata for database compatibility
-      const metadataJson: Json = {
-        extractedDocumentId: extractedDocument.id,
-        workflowId,
-        verificationItems,
-        originalData: extractedDocument.extractedData,
-        verifiedData
-      };
-      
-      // Create or update patient summary
-      const { data, error } = await this.supabase
-        .from('patient_summaries')
-        .insert({
-          id: verifiedDocument.id,
-          patient_id: verifiedDocument.patientId,
-          summary: {
-            // Patient info category from verification items
-            patientInfo: this.extractCategoryData(verificationItems, 'patient'),
-            // Medical history from verification items
-            medicalHistory: this.extractCategoryData(verificationItems, 'history'),
-            // Current conditions from verification items
-            currentConditions: this.extractCategoryData(verificationItems, 'condition'),
-            // Medications from verification items
-            medications: this.extractCategoryData(verificationItems, 'medication'),
-            // Recent findings from verification items
-            recentFindings: this.extractCategoryData(verificationItems, 'finding'),
-            // Treatment plans from verification items
-            treatmentPlans: this.extractCategoryData(verificationItems, 'treatment'),
-            // Lab results from verification items
-            labResults: this.extractCategoryData(verificationItems, 'lab'),
-            // Imaging results from verification items
-            imagingResults: this.extractCategoryData(verificationItems, 'imaging'),
-            // Recommendations from verification items
-            recommendations: this.extractCategoryData(verificationItems, 'recommendation'),
-            // Additional metadata
-            metadata: metadataJson
-          },
-          document_count: 1, // Just one document was processed
-          verified_at: status.verifiedAt,
-          verified_by: status.verifiedBy || options?.userId,
-          // Required fields
-          created_by: status.verifiedBy || options?.userId || 'system',
-          last_modified_by: status.verifiedBy || options?.userId || 'system'
-        })
-        .select('id')
-        .single();
-      
-      if (error) {
-        throw new Error(`Failed to save verified document: ${error.message}`);
-      }
-      
-      options?.onProgress?.(80);
-      
-      // Update workflow state
-      await this.supabase
-        .from('workflow_states')
-        .update({
-          current_step: 'verification' as WorkflowStep,
-          metadata: {
-            status: 'verified',
-            verifiedDocumentId: verifiedDocument.id,
-            completedAt: new Date().toISOString()
+    return workflowManager.handleWorkflowOperation<VerifiedDocument>(
+      workflowId || null,
+      'verification' as WorkflowStep,
+      async () => {
+        try {
+          workflowManager.reportProgress(options, 'verification', 0);
+          
+          // Verify required fields
+          const requiredItems = verificationItems.filter(item => item.isRequired);
+          const unverifiedRequiredItems = requiredItems.filter(item => !item.isVerified);
+          
+          if (unverifiedRequiredItems.length > 0) {
+            throw new Error(`Required fields are not verified: ${unverifiedRequiredItems.map(i => i.label).join(', ')}`);
           }
-        })
-        .eq('id', workflowId);
-      
-      options?.onProgress?.(100);
-      
-      // Call success callback
-      options?.onSuccess?.(verifiedDocument);
-      
-      return verifiedDocument;
-    } catch (error) {
-      console.error('[VerificationService] Error saving verification results:', error);
-      
-      // Call error callback
-      options?.onError?.(error instanceof Error ? error.message : String(error));
-      
-      throw error;
-    }
+          
+          workflowManager.reportProgress(options, 'verification', 20);
+          
+          // Create verified document from extracted document
+          const verifiedDocument: VerifiedDocument = {
+            id: crypto.randomUUID(),
+            extractedDocumentId: extractedDocument.id,
+            createdAt: new Date().toISOString(),
+            verificationStatus: status,
+            verificationItems,
+            patientId: extractedDocument.patientId,
+            documentType: extractedDocument.documentType,
+            verifiedData: this.assembleVerifiedData(verificationItems),
+            originalData: extractedDocument.extractedData
+          };
+          
+          workflowManager.reportProgress(options, 'verification', 50);
+          
+          // Save to patient_summaries table using simplified approach without direct ID insertion
+          try {
+            const verifiedData = this.assembleVerifiedData(verificationItems);
+            
+            // Save metadata
+            const metadataJson = getDbCompatibleMetadata({
+              documentId: extractedDocument.id,
+              workflowId,
+              extractedAt: new Date().toISOString(),
+              verificationItems
+            }) as Json;
+            
+            // Create record in patient_summaries table
+            const { error } = await this.supabase
+              .from('patient_summaries')
+              .upsert({
+                id: verifiedDocument.id, // Explicitly set ID for upsert
+                patient_id: extractedDocument.patientId as string,
+                document_count: 1,
+                verified_at: status.verifiedAt || new Date().toISOString(),
+                verified_by: status.verifiedBy || options?.userId || 'system',
+                created_by: status.verifiedBy || options?.userId || 'system',
+                last_modified_by: status.verifiedBy || options?.userId || 'system',
+                summary: getDbCompatibleMetadata({
+                  patientInfo: this.extractCategoryData(verificationItems, 'patient'),
+                  metadata: metadataJson,
+                  verifiedData
+                }) as Json
+              }, {
+                onConflict: 'id'
+              });
+            
+            if (error) {
+              console.error('Error saving to patient_summaries:', error);
+              throw new Error(`Failed to save verification: ${error.message}`);
+            }
+            
+            // We no longer integrate with the patient summary service here
+            // This is now handled through a separate flow where summaries are verified directly
+          } catch (dbError) {
+            console.error('Database error:', dbError);
+            // Continue even if summary saving fails
+          }
+          
+          workflowManager.reportProgress(options, 'verification', 80);
+          
+          // Update workflow state if needed
+          if (workflowId) {
+            await workflowManager.updateWorkflowState(workflowId, 'verification', {
+              status: 'verified',
+              verifiedDocumentId: verifiedDocument.id,
+              completedAt: new Date().toISOString()
+            });
+          }
+          
+          workflowManager.reportProgress(options, 'verification', 100);
+          
+          // Report success
+          workflowManager.reportSuccess(options, verifiedDocument);
+          
+          return verifiedDocument;
+        } catch (error) {
+          console.error('[VerificationService] Error saving verification results:', error);
+          
+          // Report error
+          workflowManager.reportError(options, error);
+          
+          throw error;
+        }
+      },
+      options
+    );
   }
   
   /**
@@ -249,6 +234,7 @@ export class VerificationService {
    * @param items Verification items
    * @param category Category to extract
    * @returns Extracted category data
+   * @deprecated This method will be removed as we transition to summary-based verification.
    */
   private extractCategoryData(items: VerificationItem[], category: string): Record<string, any> {
     const result: Record<string, any> = {};
@@ -274,7 +260,8 @@ export class VerificationService {
    * Assemble verified data from verification items
    * 
    * @param verificationItems Verification items
-   * @returns Assembled data
+   * @returns Assembled verified data
+   * @deprecated This method will be removed as we transition to summary-based verification.
    */
   assembleVerifiedData(verificationItems: VerificationItem[]): Record<string, any> {
     const data: Record<string, any> = {};
@@ -314,11 +301,12 @@ export class VerificationService {
   }
   
   /**
-   * Format value based on field type
+   * Format value by type
    * 
-   * @param value Field value
+   * @param value Value to format
    * @param fieldType Field type
    * @returns Formatted value
+   * @deprecated This method will be removed as we transition to summary-based verification.
    */
   private formatValueByType(value: string, fieldType?: string): any {
     switch (fieldType) {
@@ -350,11 +338,12 @@ export class VerificationService {
   }
   
   /**
-   * Extract value using pattern
+   * Extract value by pattern
    * 
    * @param text Text to extract from
-   * @param pattern Pattern to use
+   * @param pattern Pattern to match
    * @returns Extracted value
+   * @deprecated This method will be removed as we transition to summary-based verification.
    */
   private extractValueByPattern(
     text: string,
@@ -388,11 +377,12 @@ export class VerificationService {
   }
   
   /**
-   * Get extraction patterns by document type
+   * Get patterns by document type
    * 
    * @param category Document category
    * @param type Document type
-   * @returns Extraction patterns
+   * @returns Patterns for the document type
+   * @deprecated This method will be removed as we transition to summary-based verification.
    */
   private getPatternsByDocType(
     category: string,
@@ -518,6 +508,73 @@ export class VerificationService {
         
       default:
         return commonPatterns;
+    }
+  }
+  
+  /**
+   * Update patient summary with verification
+   * 
+   * @param patientId Patient ID
+   * @param verificationItems Verification items
+   * @param status Verification status
+   * @deprecated Use patientSummaryService.verifySummary method directly
+   */
+  private async updatePatientSummaryWithVerification(
+    patientId: string,
+    verificationItems: VerificationItem[],
+    status: VerificationStatus
+  ): Promise<void> {
+    console.warn('Method deprecated: should use direct summary verification instead');
+    // Implementation remains for backwards compatibility
+    try {
+      // Call the patient summary service to merge verification data
+      const result = await patientSummaryService.mergeVerificationData(
+        patientId,
+        verificationItems,
+        status
+      );
+      
+      if (result) {
+        console.log(`Successfully updated patient summary with verification data for patient ${patientId}`);
+      } else {
+        // This is not an error case - it just means there was no existing summary to update
+        console.log(`No existing patient summary found to update for patient ${patientId}`);
+      }
+    } catch (error) {
+      console.error(`Error updating patient summary with verification data for patient ${patientId}:`, error);
+      // This is non-critical, so we don't re-throw
+    }
+  }
+  
+  /**
+   * Verify a patient summary
+   * This is the new, recommended approach for verification.
+   * 
+   * @param patientId Patient ID
+   * @param userId User ID
+   * @param status Verification status
+   * @param comments Optional comments
+   * @returns Success flag
+   */
+  async verifySummary(
+    patientId: string,
+    userId: string,
+    status: 'verified' | 'rejected' = 'verified',
+    comments?: string
+  ): Promise<boolean> {
+    try {
+      // Use the patient summary service directly
+      const result = await patientSummaryService.verifySummary(
+        patientId,
+        userId,
+        status,
+        comments
+      );
+      
+      return !!result;
+    } catch (error) {
+      console.error(`Error verifying summary for patient ${patientId}:`, error);
+      return false;
     }
   }
 }

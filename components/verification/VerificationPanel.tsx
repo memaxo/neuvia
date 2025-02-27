@@ -20,12 +20,12 @@ import { VerificationItemCard } from '@/components/verification/VerificationItem
 import { useVerification } from '@/lib/hooks/verification/useVerification';
 
 // Import types
-import type { ExtractedDocument } from '@/lib/processing/types/extraction';
+import type { ExtractedDocument } from '@/lib/processing/types/verification';
 import type { 
   VerificationItem, 
   VerificationStatus, 
   VerifiedDocument 
-} from '@/lib/processing/types/verification/index';
+} from '@/lib/processing/types/verification';
 
 /**
  * VerificationPanel Props

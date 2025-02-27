@@ -94,6 +94,16 @@ export interface ResearchResult {
    * Confidence score
    */
   confidence?: number;
+  
+  /**
+   * Patient data that was analyzed (for medical research)
+   */
+  patientData?: string;
+  
+  /**
+   * Name of the model used for research
+   */
+  modelName?: string;
 }
 
 /**
@@ -154,6 +164,11 @@ export interface ResearchOptions {
    * Whether to include images in the response
    */
   includeImages?: boolean;
+  
+  /**
+   * Specific model to use for the research
+   */
+  model?: string;
 }
 
 /**

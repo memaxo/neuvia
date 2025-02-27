@@ -8,26 +8,20 @@ import { useEffect, useState } from "react";
 import { DataStreamHandler } from "@/components/chat/data-stream-handler";
 import { DocumentPreview } from "@/components/chat/document-preview";
 import { Messages } from "@/components/chat/messages";
-import { DeepResearch } from "@/components/research/deep-research";
-import { ExtractResults } from "@/components/research/extract-results";
 
 // Internal components
 import { useToast } from "@/components/ui/use-toast";
-import { useChat } from "@/contexts/chat-context";
+import { useChatContext } from "@/contexts/chat-context";
 import type { ChatMode } from "@/lib/chat/types";
-import type { VerificationItem, ExtractedData } from "@/lib/processing/types";
+import type { ExtractedData } from "@/lib/processing/types/extraction";
+import type { VerificationItem } from "@/lib/processing/types/verification";
 import type { Vote } from "@/lib/types/vote";
 
 import { VerificationAdapter } from "../verification/verification-adapter";
 import { documentService } from '@/lib/services/document/document-service';
 
-type WorkflowStep =
-  | "idle"
-  | "uploading"
-  | "extracting"
-  | "verification"
-  | "report_generation"
-  | "complete";
+// Adjust this to use the same workflow step type from the workflow
+import type { WorkflowStep } from "@/lib/processing/types/workflow";
 
 interface ChatInterfaceProps {
   initialMode: string;
@@ -46,11 +40,14 @@ interface ChatState {
 export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
   const { toast } = useToast();
 
-  // Chat context / methods
-  const { state, sendMessage, processDocument } = useChat();
-
-  // Pipeline step to enforce flow: uploading -> extracting -> verification -> ...
-  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>("idle");
+  // Chat context / methods - updated to use the new structure
+  const { 
+    messages, 
+    isLoading, 
+    sendMessage, 
+    mode,
+    workflow 
+  } = useChatContext();
 
   // Chat messages / extraction data
   const [chatState, setChatState] = useState<ChatState>({
@@ -77,13 +74,18 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
 
   // Workflow: after verification completes, do we show "report generation" step or finalize?
   const handleVerificationComplete = (verificationItems: VerificationItem[]) => {
-    // If you'd like to confirm all verified, go next step
-    // For now, we go to "report_generation" or finalize
-    setWorkflowStep("report_generation");
+    // Use the workflow method to move to the next step
+    workflow.generateReport();
   };
 
   // Once user decides to skip or finish report generation
   const handleReportGenerationComplete = () => {
+    // Use the workflow method to mark workflow as complete
+    if (workflow.workflowStep !== 'complete') {
+      // Format the report to complete the workflow
+      workflow.formatReport('pdf');
+    }
+    
     // Suppose we already have the final report content from somewhere, or we fetch it:
     // For demonstration, let's embed a mock final report
     const finalReportMarkdown = "**Final Report**\n\n- Diagnosis: Example Condition\n- Recommendations: Follow instructions\n";
@@ -98,59 +100,36 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
           role: 'assistant',
           content: finalReportMarkdown,
           createdAt: new Date(),
-        },
-      ],
+        }
+      ]
     }));
-  
-    setWorkflowStep("complete");
-    toast({
-      title: "Workflow Complete",
-      description: "Your document is verified and (optionally) a report is generated.",
-    });
-  }
+  };
 
-  // Document upload from chat (unifying logic with the standard processDocument)
   const handleDocumentUpload = async (file: File) => {
-    setWorkflowStep("uploading");
     try {
       setIsProcessing(true);
-      // For preview
-      const documentId = crypto.randomUUID();
-      const fileText = await file.text();
-      setActiveDocument({
-        id: documentId,
-        title: file.name,
-        content: fileText,
-        kind: "text",
-      });
-      setOriginalText(fileText);
-
-      // Next step: extracting
-      setWorkflowStep("extracting");
-
-      // Process document using unified document service
-      const { extractedDocument, workflowId } = await documentService.processDocument(file, {
-        patientId,
-        onStatusUpdate: (status) => {
-          // Update UI with processing status if needed
-          console.log('Document processing status:', status);
-        }
-      });
       
-      if (extractedDocument && extractedDocument.isSuccessful) {
-        setExtractedData(extractedDocument.extractedData);
+      // Use workflow methods to process the document
+      await workflow.processDocument(file, patientId);
+      
+      // If we want to access extracted document data:
+      if (workflow.extractedDocument) {
+        setExtractedData(workflow.extractedDocument as unknown as ExtractedData);
+        
+        // Mock setting some document preview data
+        setActiveDocument({
+          id: crypto.randomUUID(),
+          title: file.name,
+          content: "Document content would appear here...",
+          kind: "text"
+        });
       }
-
-      // Move to verification
-      setWorkflowStep("verification");
     } catch (error) {
-      console.error("Error processing document:", error);
       toast({
-        title: "Error",
+        title: "Processing Error",
         description: "Failed to process document. Please retry or contact support.",
         variant: "destructive",
       });
-      setWorkflowStep("idle");
     } finally {
       setIsProcessing(false);
     }
@@ -175,9 +154,11 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
 
   // Conditionally render UI based on the pipeline step
   const renderContentByWorkflowStep = () => {
-    switch (workflowStep) {
-      case "idle":
-      case "uploading":
+    // Get the current workflow step from the workflow object
+    const currentWorkflowStep = workflow.workflowStep;
+
+    switch (currentWorkflowStep) {
+      case 'idle':
         return (
           <div className="bg-secondary/10 rounded border p-4">
             <p className="text-sm">
@@ -186,7 +167,7 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
           </div>
         );
 
-      case "extracting":
+      case 'extraction':
         return (
           <div className="bg-secondary/10 rounded border p-4">
             <h2 className="font-semibold">Extraction In Progress...</h2>
@@ -198,13 +179,10 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
                 <DocumentPreview isReadonly result={activeDocument} />
               </div>
             )}
-            {isProcessing && activeDocument && (
-              <DataStreamHandler id={activeDocument.id} />
-            )}
           </div>
         );
 
-      case "verification":
+      case 'verification':
         if (!extractedData) {
           return (
             <div className="bg-secondary/10 rounded border p-4">
@@ -217,7 +195,7 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
             departmentId="some-department-id"
             documentId={activeDocument?.id || ""}
             extractedData={extractedData}
-            onCancel={() => setWorkflowStep("idle")}
+            onCancel={() => workflow.resetWorkflow()}
             onComplete={handleReportGenerationComplete}
             originalText={originalText}
             patientId={patientId}
@@ -225,7 +203,7 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
           />
         );
 
-      case "report_generation":
+      case 'report_generation':
         // Possibly show a final screen or direct the user to a "Generate Report" UI
         return (
           <div className="bg-secondary/10 rounded border p-4">
@@ -251,7 +229,7 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
           </div>
         );
 
-      case "complete":
+      case 'complete':
         return (
           <div className="bg-secondary/10 rounded border p-4">
             <h2 className="mb-2 font-semibold">Process Complete</h2>
@@ -269,7 +247,7 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
       {/* Upload Button or drag area - sample approach */}
       <div className="mb-4">
         <input
-          disabled={workflowStep !== "idle" && workflowStep !== "complete"}
+          disabled={workflow.workflowStep !== "idle" && workflow.workflowStep !== "complete"}
           onChange={async (e) => {
             const files = e.target.files;
             if (!files || files.length === 0) return;
@@ -285,9 +263,8 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
       {renderContentByWorkflowStep()}
 
       {/* If not actively verifying, show the standard chat UI (except for extraction in progress, etc.) */}
-      {(workflowStep === "idle" ||
-        workflowStep === "complete" ||
-        workflowStep === "uploading") && (
+      {(workflow.workflowStep === "idle" ||
+        workflow.workflowStep === "complete") && (
         <div className="flex-1 overflow-y-auto rounded border p-4">
           <Messages
             chatId={patientId}
@@ -304,28 +281,26 @@ export function ChatInterface({ initialMode, patientId }: ChatInterfaceProps) {
 
       {/* Or if you'd like to show chat even during extraction, remove the condition above. */}
 
-      {/* Research / Extract Results (if you keep them in normal mode) */}
-      {state.mode === "verification" && chatState.extractResults.length > 0 && (
+      {/* Research / Extract Results - disabled temporarily */}
+      {/*
+      {mode === "verification" && chatState.extractResults.length > 0 && (
         <div className="space-y-4">
           <DeepResearch
-            activity={[]}
-            isActive={true}
-            isLoading={isProcessing}
-            onToggle={() => {}}
-            sources={[]}
+            isEditing={true}
+            onEdit={() => {}}
           />
           <ExtractResults
-            isLoading={chatState.isLoading}
+            title="Extracted Results"
+            description="Here are the results extracted from your document."
             results={chatState.extractResults}
-            title="Extracted Data"
           />
         </div>
       )}
+      */}
 
       {/* Basic message input for normal chat usage */}
-      {(workflowStep === "idle" ||
-        workflowStep === "complete" ||
-        workflowStep === "uploading") && (
+      {(workflow.workflowStep === "idle" ||
+        workflow.workflowStep === "complete") && (
         <div className="mt-auto">
           <form
             className="flex items-center space-x-2"

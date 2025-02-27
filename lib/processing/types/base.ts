@@ -3,13 +3,37 @@
  */
 
 /**
+ * All possible processing status values
+ */
+export type ProcessingStatusValue = 
+  | 'pending' 
+  | 'idle' 
+  | 'processing' 
+  | 'success' 
+  | 'error' 
+  | 'completed';
+
+/**
+ * All possible processing phases
+ */
+export type ProcessingPhase = 
+  | 'initialization' 
+  | 'extraction' 
+  | 'analysis' 
+  | 'verification' 
+  | 'research' 
+  | 'generation' 
+  | 'formatting' 
+  | 'reporting';
+
+/**
  * Status of a processing operation
  */
 export interface ProcessingStatus {
   /**
    * Current status of the processing operation
    */
-  status: 'idle' | 'processing' | 'success' | 'error' | 'completed';
+  status: ProcessingStatusValue;
   
   /**
    * Progress indicator (0-100)
@@ -29,7 +53,7 @@ export interface ProcessingStatus {
   /**
    * Phase of the process (for multi-phase operations)
    */
-  phase?: 'extraction' | 'verification' | 'research' | 'generation' | 'formatting';
+  phase?: ProcessingPhase;
 }
 
 /**

@@ -3,29 +3,14 @@ import { useDocumentProcessing } from './use-document-processing';
 import { useVerification } from './use-verification';
 import { useResearch } from './use-research';
 import { useReport } from './use-report';
-import type { 
-  ProcessingStatus, 
-  ResearchOptions, 
-  ReportOptions,
-  ExtractedDocument,
-  VerifiedDocument,
-  ResearchDocument,
-  ReportDocument,
-  ReportFormat,
-  VerificationItem
-} from '@/lib/processing/types/index';
 
-/**
- * Possible workflow steps
- */
-export type WorkflowStep = 
-  | 'idle'
-  | 'document_processing'
-  | 'verification'
-  | 'research'
-  | 'report_generation'
-  | 'report_formatting'
-  | 'complete';
+// Import types from specific modules
+import type { ProcessingStatus } from '@/lib/processing/types/base';
+import type { ExtractedDocument } from '@/lib/processing/types/extraction';
+import type { VerificationItem, VerifiedDocument } from '@/lib/processing/types/verification';
+import type { ResearchOptions, ResearchDocument } from '@/lib/processing/types/research';
+import type { ReportOptions, ReportDocument, ReportFormat } from '@/lib/processing/types/report';
+import type { WorkflowStep } from '@/lib/processing/types/workflow';
 
 /**
  * Integrated hook for the complete document processing workflow
@@ -46,22 +31,25 @@ export function useProcessingWorkflow() {
   // Overall status from the currently active step
   const getActiveStatus = useMemo(() => {
     switch (workflowStep) {
-      case 'document_processing':
+      case 'extracting':
         return documentProcessing.status;
       case 'verification':
         return { 
           status: verification.verificationStatus.isVerified ? 'success' : 'processing',
-          progress: verification.verificationItems.filter(item => item.verified).length / 
+          progress: verification.verificationItems.filter((item: VerificationItem) => item.isVerified).length / 
                    (verification.verificationItems.length || 1) * 100,
           phase: 'verification'
         } as ProcessingStatus;
-      case 'research':
-        return research.status;
       case 'report_generation':
-      case 'report_formatting':
+        return research.status;
+      case 'complete':
         return report.status;
       default:
-        return { status: 'idle', progress: 0 } as ProcessingStatus;
+        return { 
+          status: 'pending' as const, 
+          progress: 0,
+          phase: 'initialization'
+        };
     }
   }, [
     workflowStep, 
@@ -81,7 +69,7 @@ export function useProcessingWorkflow() {
     documentType?: string
   ) => {
     setError(null);
-    setWorkflowStep('document_processing');
+    setWorkflowStep('extracting');
     
     try {
       const result = await documentProcessing.processDocument(file, patientId, documentType);
@@ -110,7 +98,7 @@ export function useProcessingWorkflow() {
       const result = await verification.completeVerification();
       
       if (result) {
-        setWorkflowStep('research');
+        setWorkflowStep('report_generation');
         return result;
       } else {
         throw new Error('Verification failed');
@@ -183,7 +171,7 @@ export function useProcessingWorkflow() {
       const result = await report.generateReport(options);
       
       if (result) {
-        setWorkflowStep('report_formatting');
+        setWorkflowStep('report_generation');
         return result;
       } else {
         throw new Error('Report generation failed');
@@ -235,19 +223,13 @@ export function useProcessingWorkflow() {
   const goToPreviousStep = useCallback(() => {
     switch (workflowStep) {
       case 'verification':
-        setWorkflowStep('document_processing');
-        break;
-      case 'research':
-        setWorkflowStep('verification');
+        setWorkflowStep('extracting');
         break;
       case 'report_generation':
-        setWorkflowStep('research');
-        break;
-      case 'report_formatting':
-        setWorkflowStep('report_generation');
+        setWorkflowStep('verification');
         break;
       case 'complete':
-        setWorkflowStep('report_formatting');
+        setWorkflowStep('report_generation');
         break;
       default:
         break;

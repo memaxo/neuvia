@@ -3,15 +3,29 @@
  * All verification-related types and interfaces are defined or re-exported here
  */
 
-import type { DocumentBase } from '../base';
-import type { DocumentType } from '../index';
-import type { ExtractedDocument } from '../extraction';
+import type { DocumentBase, DocumentType } from '../base';
+import type { ExtractedDocument as OriginalExtractedDocument, DocumentMetadata } from '../extraction';
 import type { Json } from '@/lib/supabase';
 
 /**
- * Re-export ExtractedDocument for verification components
+ * Flexible date type for UI and database compatibility
  */
-export { type ExtractedDocument };
+export type FlexibleDate = Date | string;
+
+/**
+ * Modified ExtractedDocument that accepts both Date and string formats
+ * for compatibility with UI components and database storage
+ */
+export interface VerificationExtractedDocument extends Omit<OriginalExtractedDocument, 'createdAt'> {
+  /**
+   * Creation timestamp as Date or ISO string
+   */
+  createdAt: FlexibleDate;
+}
+
+// For backwards compatibility, also export as ExtractedDocument
+// Eventually this should be removed and all code updated to use VerificationExtractedDocument
+export type ExtractedDocument = VerificationExtractedDocument;
 
 /**
  * Status of a verification process
@@ -193,8 +207,11 @@ export interface VerifiedDocument extends BaseVerifiedDocument {
  * @param date Date object to convert
  * @returns ISO string representation
  */
-export function dateToISOString(date: Date): string {
-  return date.toISOString();
+export function dateToISOString(date: Date | string): string {
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  return date;
 }
 
 /**
@@ -207,18 +224,73 @@ export function isoStringToDate(isoString: string): Date {
 }
 
 /**
+ * Ensure a value is a Date object
+ * @param value Date or string to ensure is a Date
+ * @returns Date object
+ */
+export function ensureDate(value: Date | string): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+  return new Date(value);
+}
+
+/**
+ * Ensure a value is an ISO string
+ * @param value Date or string to ensure is an ISO string
+ * @returns ISO string
+ */
+export function ensureISOString(value: Date | string): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return value.toISOString();
+}
+
+/**
  * Get metadata in database-compatible format
  * @param metadata Object to convert to JSON-compatible format
  * @returns Database-compatible metadata object
  */
 export function getDbCompatibleMetadata(metadata: Record<string, any>): Json {
   // Replace Date objects with ISO strings
-  return JSON.parse(JSON.stringify(metadata, (key, value) => {
+  const jsonCompatible = JSON.parse(JSON.stringify(metadata, (key, value) => {
     if (value instanceof Date) {
       return value.toISOString();
     }
     return value;
   }));
+  
+  return jsonCompatible as Json;
+}
+
+/**
+ * Convert a standard ExtractedDocument to our flexible interface
+ * @param doc Original extracted document
+ * @returns Compatible extracted document
+ */
+export function toCompatibleExtractedDocument(
+  doc: OriginalExtractedDocument | null | undefined
+): ExtractedDocument | undefined {
+  if (!doc) return undefined;
+  
+  return {
+    ...doc,
+    createdAt: doc.createdAt instanceof Date 
+      ? doc.createdAt.toISOString() 
+      : String(doc.createdAt),
+    extractedData: {
+      ...doc.extractedData,
+      metadata: {
+        ...doc.extractedData.metadata,
+        extractedAt: doc.extractedData.metadata?.extractedAt 
+          ? (doc.extractedData.metadata.extractedAt instanceof Date 
+            ? doc.extractedData.metadata.extractedAt.toISOString() 
+            : String(doc.extractedData.metadata.extractedAt))
+          : new Date().toISOString()
+      }
+    }
+  };
 }
 
 /**

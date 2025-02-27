@@ -4,14 +4,42 @@
  * Single entry point for report generation across the application
  */
 import { createBrowserClient } from '@/lib/supabase/clients';
+import { workflowManager } from '@/lib/utils/workflow-manager';
+import { createWorkflowCallbacks, runWithWorkflow } from "@/lib/utils/langchain";
+import { langChainCore } from '@/lib/langchain/core'; 
+import type { WorkflowStep } from '@/lib/processing/types/workflow';
 import type { 
   ReportData, 
   ReportFormat, 
-  ReportGenerationParams, 
-  ReportOptions, 
-  ResearchResult 
-} from '@/lib/processing/types';
-import { perplexityService } from '@/lib/services/perplexity/perplexity-service';
+  ReportGenerationParams
+} from '@/lib/processing/types/report';
+import type { ResearchResult } from '@/lib/processing/types/research';
+import type { WorkflowOptions } from '@/lib/utils/workflow-manager';
+
+/**
+ * Report options with additional fields for Langchain integration
+ */
+export interface ExtendedReportOptions extends WorkflowOptions {
+  /**
+   * Report type
+   */
+  type?: string;
+  
+  /**
+   * Context data
+   */
+  contextData?: Record<string, any>;
+  
+  /**
+   * Whether to save the report to the database
+   */
+  saveToDatabase?: boolean;
+  
+  /**
+   * Progress callback with phase information
+   */
+  onProgress?: (phase: string, progress: number) => void;
+}
 
 /**
  * Report generation service
@@ -21,6 +49,7 @@ export class ReportService {
   
   /**
    * Generate a report based on provided parameters
+   * Uses workflow manager for state management.
    * 
    * @param params Report generation parameters
    * @param options Report options including callbacks
@@ -28,107 +57,102 @@ export class ReportService {
    */
   async generateReport(
     params: ReportGenerationParams,
-    options?: ReportOptions
+    options?: ExtendedReportOptions
   ): Promise<ReportData> {
-    try {
-      // Track start time for performance measurement
-      const startTime = Date.now();
-      
-      // Initial progress update
-      options?.onProgress?.('initialization', 0);
-      
-      // 1. First perform research if needed and not already provided
-      let researchData: ResearchResult | null = null;
-      
-      if (params.researchQuery && !params.researchData) {
-        options?.onProgress?.('research', 10);
+    return workflowManager.handleWorkflowOperation<ReportData>(
+      null, // No workflow ID for this operation
+      'report_generation' as WorkflowStep,
+      async () => {
+        // Track start time for performance measurement
+        const startTime = Date.now();
         
-        // Perform the research
-        researchData = await perplexityService.performDeepResearch(
-          params.researchQuery,
-          {
-            depth: params.researchDepth || 'standard',
-            sourcesLimit: params.sourcesLimit || 5,
-            includeSourceContent: params.includeSourceContent !== false,
-            researchType: params.type === 'medical-diagnosis' ? 'medical-diagnosis' : 'standard',
-            contextData: params.contextData,
-            onProgress: (progress) => {
-              options?.onProgress?.('research', progress);
-            },
-            isMedicalDiagnosis: params.type === 'medical-diagnosis',
-            patientData: params.contextData?.patientData,
-          }
+        // Initial progress update
+        if (options?.onProgress) {
+          options.onProgress('initialization', 0);
+        }
+        
+        // IMPORTANT: This service now expects research data to be provided
+        // and does not perform research itself
+        if (!params.researchData) {
+          throw new Error('Research data must be provided to generate a report');
+        }
+        
+        if (options?.onProgress) {
+          options.onProgress('generation', 30);
+        }
+        
+        // Format report based on type and provided research data
+        const reportContent = await this.formatReport(
+          params.type,
+          params.researchData.text || '',
+          params.contextData,
+          params.researchData.sources || []
         );
-      } else if (params.researchData) {
-        // Use provided research data
-        researchData = params.researchData;
-        options?.onProgress?.('research', 100);
+        
+        if (options?.onProgress) {
+          options.onProgress('generation', 75);
+        }
+        
+        // Create the report data object
+        const reportData: ReportData = {
+          content: reportContent,
+          sources: params.researchData.sources || [],
+          patientId: params.patientId,
+          generatedAt: new Date(),
+          metadata: {
+            modelName: params.researchData.modelName || 'unknown',
+            confidence: params.researchData.confidence || 0.8,
+            generationTime: Date.now() - startTime,
+            reportType: params.type,
+            contextData: params.contextData
+          },
+          sections: this.extractSections(reportContent)
+        };
+        
+        if (options?.onProgress) {
+          options.onProgress('generation', 90);
+        }
+        
+        // Save the report to the database if requested
+        if (params.saveToDatabase) {
+          await this.saveReport(reportData);
+        }
+        
+        if (options?.onProgress) {
+          options.onProgress('complete', 100);
+        }
+        
+        return reportData;
+      },
+      // Pass a compatible workflow options object
+      {
+        onSuccess: options?.onSuccess as any,
+        onError: options?.onError as any
       }
-      
-      options?.onProgress?.('generation', 50);
-      
-      // 2. Format report based on type and provided/researched data
-      const reportContent = await this.formatReport(
-        params.type,
-        researchData?.summary || researchData?.text || '',
-        params.contextData,
-        researchData?.sources || []
-      );
-      
-      options?.onProgress?.('generation', 75);
-      
-      // 3. Create the report data object
-      const reportData: ReportData = {
-        content: reportContent,
-        sources: researchData?.sources || [],
-        patientId: params.patientId,
-        generatedAt: new Date(),
-        metadata: {
-          modelName: 'sonar-deep-research',
-          confidence: researchData?.confidence || 0.8,
-          generationTime: Date.now() - startTime,
-          reportType: params.type,
-          contextData: params.contextData
-        },
-        sections: this.extractSections(reportContent)
-      };
-      
-      options?.onProgress?.('generation', 90);
-      
-      // 4. Save the report to the database if requested
-      if (params.saveToDatabase) {
-        await this.saveReport(reportData);
-      }
-      
-      options?.onProgress?.('complete', 100);
-      
-      return reportData;
-    } catch (error) {
-      console.error('[ReportService] Error generating report:', error);
-      throw new Error(`Report generation failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    );
   }
   
   /**
-   * Generate a medical diagnosis report directly without research
+   * Generate a medical diagnosis report from existing research data
+   * Uses workflow manager for state management.
    * 
-   * @param patientData Patient data extracted from document
-   * @param userQuery User query about the patient data
+   * @param researchData Research data from previous API call
+   * @param patientId Patient ID
    * @param options Report options
    * @returns Generated report data
    */
   async generateMedicalDiagnosisReport(
-    patientData: string,
-    userQuery: string,
-    options?: ReportOptions
+    researchData: ResearchResult,
+    patientId: string,
+    options?: ExtendedReportOptions
   ): Promise<ReportData> {
     return this.generateReport(
       {
         type: 'medical-diagnosis',
-        patientId: options?.patientId || '',
-        researchQuery: userQuery,
+        patientId,
+        researchData,
         contextData: {
-          patientData
+          patientData: researchData.patientData
         },
         saveToDatabase: options?.saveToDatabase !== false
       },
@@ -279,26 +303,80 @@ export class ReportService {
    * @returns Saved report ID
    */
   private async saveReport(report: ReportData): Promise<string> {
-    const { data, error } = await this.supabase.from('reports').insert({
-      patient_id: report.patientId,
-      content: report.content,
-      type: report.metadata.reportType || 'standard',
-      status: 'completed',
-      metadata: {
-        sources: report.sources,
-        generatedAt: report.generatedAt,
-        modelName: report.metadata.modelName,
-        confidence: report.metadata.confidence,
-        generationTime: report.metadata.generationTime,
-        contextData: report.metadata.contextData
+    try {
+      // Get the current user ID from Supabase
+      const { data: { user } } = await this.supabase.auth.getUser();
+      const userId = user?.id;
+      
+      if (!userId) {
+        throw new Error('User must be authenticated to save reports');
       }
-    }).select('id').single();
-    
-    if (error) {
-      throw new Error(`Failed to save report: ${error.message}`);
+      
+      // Prepare a valid report record that matches the database schema
+      const reportRecord = {
+        patient_id: report.patientId,
+        title: report.metadata.title || `${report.metadata.reportType || 'diagnostic'} Report`,
+        type: report.metadata.reportType === 'medical-diagnosis' ? 'diagnostic' : 
+              report.metadata.reportType === 'research' ? 'analytics' : 'diagnostic',
+        status: 'completed',
+        department_id: report.metadata.departmentId || '00000000-0000-0000-0000-000000000000', // Default placeholder
+        created_by: userId,
+        updated_by: userId,
+        
+        // Convert content from markdown to JSON if needed
+        content: typeof report.content === 'string' 
+          ? JSON.stringify({ markdown: report.content }) 
+          : report.content,
+        
+        // Required metadata with strict structure
+        metadata: {
+          patientInfo: {
+            symptoms: [],
+            medicalHistory: [],
+            currentMedications: [],
+            allergies: [],
+            vitalSigns: {}
+          }
+        },
+        
+        // Optional fields that might come from research
+        summary: report.sections?.summary || '',
+        findings: report.sections?.findings 
+          ? JSON.parse(`[{"description": "${report.sections.findings}", "category": "general", "severity": "medium"}]`) 
+          : null,
+        recommendations: report.sections?.recommendations 
+          ? JSON.parse(`[{"recommendation": "${report.sections.recommendations}", "priority": "medium"}]`)
+          : null,
+        
+        // Quality metrics
+        confidence_score: report.metadata.confidence || 0.8,
+        
+        // Supporting documentation
+        source_documents: report.sources && report.sources.length > 0 
+          ? report.sources.map(s => ({
+              title: s.title || 'Unnamed Source',
+              url: s.url,
+              description: s.description || '',
+            }))
+          : null
+      };
+      
+      // Insert the report
+      const { data, error } = await this.supabase
+        .from('reports')
+        .insert(reportRecord)
+        .select('id')
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to save report: ${error.message}`);
+      }
+      
+      return data.id;
+    } catch (error) {
+      console.error('[ReportService] Error saving report:', error);
+      throw new Error(`Failed to save report: ${error instanceof Error ? error.message : String(error)}`);
     }
-    
-    return data.id;
   }
   
   /**
@@ -329,6 +407,95 @@ export class ReportService {
     }
     
     return sections;
+  }
+  
+  /**
+   * Generate report using Langchain for improved structure and insights
+   */
+  async generateReportWithLangchain(
+    researchData: ResearchResult,
+    patientId: string,
+    options?: ExtendedReportOptions
+  ): Promise<ReportData> {
+    return runWithWorkflow(
+      'report_generation' as WorkflowStep,
+      async () => {
+        // Track start time for performance measurement
+        const startTime = Date.now();
+        
+        // Create model with callbacks
+        const llm = langChainCore.createChatOpenAI({
+          temperature: 0.4,
+          callbacks: createWorkflowCallbacks(
+            null,
+            'report_generation',
+            { onProgress: (progress: number) => {
+              options?.onProgress?.('generation', progress);
+            }}
+          )
+        });
+        
+        // First, generate analysis from research data
+        const analysisPrompt = await langChainCore.createPromptTemplate(
+          `Analyze the following research data and extract key insights:\n\n{researchText}\n\n` +
+          `Provide a structured analysis with sections for findings, diagnoses, and recommendations.`,
+          ['researchText']
+        );
+        
+        const analysisPromptFormatted = await analysisPrompt.format({
+          researchText: researchData.text
+        });
+        
+        const analysisResponse = await llm.invoke(analysisPromptFormatted);
+        const analysis = String(analysisResponse.content);
+        
+        // Then, format the analysis into a report
+        const formatPrompt = await langChainCore.createPromptTemplate(
+          `Format the following analysis into a professional medical report:\n\n{analysis}\n\n` +
+          `Include the following sections:\n- Summary\n- Findings\n- Diagnoses\n- Recommendations\n- References`,
+          ['analysis']
+        );
+        
+        const formatPromptFormatted = await formatPrompt.format({
+          analysis
+        });
+        
+        const formatResponse = await llm.invoke(formatPromptFormatted);
+        const formattedReport = String(formatResponse.content);
+        
+        // Extract sections from the formatted report
+        const sections = this.extractSections(formattedReport);
+        
+        // Create the report data object
+        const reportData: ReportData = {
+          content: formattedReport,
+          sources: researchData.sources || [],
+          patientId,
+          generatedAt: new Date(),
+          metadata: {
+            modelName: 'o3-mini',
+            confidence: 0.85,
+            generationTime: Date.now() - startTime,
+            reportType: options?.type || 'medical-diagnosis',
+            contextData: options?.contextData
+          },
+          sections
+        };
+        
+        // Save the report if requested
+        if (options?.saveToDatabase !== false) {
+          await this.saveReport(reportData);
+        }
+        
+        return reportData;
+      },
+      {
+        onProgress: (progress: number) => {
+          options?.onProgress?.('generation', progress);
+        },
+        onError: options?.onError
+      }
+    );
   }
 }
 
