@@ -8,18 +8,19 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import { BlockKind, UIBlock } from './block';
-import { FileIcon, FullscreenIcon, LoaderIcon } from './icons';
-import { cn, fetcher } from '@/lib/utils';
-import { Document } from '@/lib/db/schema';
-import { InlineDocumentSkeleton } from './document-skeleton';
 import useSWR from 'swr';
-import { Editor } from './editor';
-import { DocumentToolCall, DocumentToolResult } from './document';
-import { CodeEditor } from './code-editor';
+
+import { Document } from '@/lib/db/schema';
+import { cn, fetcher } from '@/lib/utils';
 import { useBlock } from '@/hooks/use-block';
-import equal from 'fast-deep-equal';
-import { SpreadsheetEditor } from './spreadsheet-editor';
+
+import { BlockKind, UIBlock } from '@/components/ui/block';
+import { FileIcon, FullscreenIcon, LoaderIcon } from '@/components/icons';
+import { InlineDocumentSkeleton } from '@/components/ui/document-skeleton';
+import { Editor } from '@/components/ui/editor';
+import { DocumentToolCall, DocumentToolResult } from '@/components/ui/document';
+import { CodeEditor } from '@/components/ui/code-editor';
+import { SpreadsheetEditor } from '@/components/ui/spreadsheet-editor';
 
 interface DocumentPreviewProps {
   isReadonly: boolean;

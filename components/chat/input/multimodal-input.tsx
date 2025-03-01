@@ -1,7 +1,6 @@
 'use client';
 
-import type { Attachment, CreateMessage, Message } from 'ai';
-import type { ChatRequestOptions } from '@/lib/types';
+import type { Attachment, CreateMessage, Message , ChatRequestOptions } from 'ai';
 import cx from 'classnames';
 import type React from 'react';
 import {
@@ -17,18 +16,17 @@ import {
 import { toast } from 'sonner';
 import { useLocalStorage, useWindowSize } from 'usehooks-ts';
 
-import { sanitizeUIMessages } from '@/lib/utils';
+import { sanitizeUIMessages } from '@/lib/utils/utils';
 
-import { ArrowUpIcon, PaperclipIcon, StopIcon, GlobeIcon } from './icons';
-import { PreviewAttachment } from './preview-attachment';
-import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
-import { SuggestedActions } from './suggested-actions';
+import { ArrowUp, Paperclip, Square, Globe, Telescope, Search } from 'lucide-react';
+import { PreviewAttachment } from '../ui/preview-attachment';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { SuggestedActions } from '../ui/suggested-actions';
 import equal from 'fast-deep-equal';
-import { useDeepResearch } from '@/lib/deep-research-context';
-import { DeepResearch } from './deep-research';
-import { Telescope, Search } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import { useResearch } from '@/lib/hooks/use-research';
+import { usePerplexityResearch } from '@/lib/hooks/use-perplexity-research';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type SearchMode = 'search' | 'deep-research';
 
@@ -73,8 +71,7 @@ function PureMultimodalInput({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
-  const { state: deepResearchState } = useDeepResearch();
-
+  const { status } = useResearch(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -131,7 +128,8 @@ function PureMultimodalInput({
     handleSubmit(undefined, {
       experimental_attachments: attachments,
       experimental_deepResearch: searchMode === 'deep-research',
-    });
+      // Type assertion to allow custom properties
+    } as ChatRequestOptions & { experimental_deepResearch?: boolean });
 
     setAttachments([]);
     setLocalStorageInput('');
@@ -167,7 +165,7 @@ function PureMultimodalInput({
         return {
           url,
           name: pathname,
-          contentType: contentType,
+          contentType,
         };
       }
       const { error } = await response.json();
@@ -204,7 +202,7 @@ function PureMultimodalInput({
   );
 
   return (
-    <div className="relative w-full flex flex-col gap-4">
+    <div className="relative flex w-full flex-col gap-4">
       {messages.length === 0 &&
         attachments.length === 0 &&
         uploadQueue.length === 0 && (
@@ -212,55 +210,48 @@ function PureMultimodalInput({
         )}
 
       <input
-        type="file"
-        className="fixed -top-4 -left-4 size-0.5 opacity-0 pointer-events-none"
-        ref={fileInputRef}
+        className="pointer-events-none fixed -left-4 -top-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}
+        ref={fileInputRef}
         tabIndex={-1}
+        type="file"
       />
 
       {(attachments.length > 0 || uploadQueue.length > 0) && (
-        <div className="flex flex-row gap-2 overflow-x-scroll items-end">
+        <div className="flex flex-row items-end gap-2 overflow-x-scroll">
           {attachments.map((attachment) => (
-            <PreviewAttachment key={attachment.url} attachment={attachment} />
+            <PreviewAttachment 
+              attachment={{
+                url: attachment.url || '',
+                name: attachment.name || '',
+                contentType: attachment.contentType || '',
+              }} 
+              key={attachment.url} 
+            />
           ))}
 
           {uploadQueue.map((filename) => (
             <PreviewAttachment
-              key={filename}
               attachment={{
                 url: '',
                 name: filename,
                 contentType: '',
               }}
               isUploading={true}
+              key={filename}
             />
           ))}
         </div>
       )}
 
       <div className="flex flex-col gap-2">
-        {searchMode === 'deep-research' && <DeepResearch
-          isActive={searchMode === 'deep-research'}
-          onToggle={() => {}}
-          isLoading={isLoading}
-          activity={deepResearchState.activity}
-          sources={deepResearchState.sources}
-          deepResearch={searchMode === 'deep-research'}
-        />}
-
         <Textarea
-          ref={textareaRef}
-          placeholder="Send a message..."
-          value={input}
-          onChange={handleInput}
           className={cx(
             'min-h-[24px] max-h-[calc(75dvh)] overflow-hidden resize-none rounded-2xl !text-base bg-muted pb-10 dark:border-zinc-700',
             className,
           )}
-          rows={2}
-          autoFocus
+          onChange={handleInput}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
@@ -274,25 +265,29 @@ function PureMultimodalInput({
               }
             }
           }}
+          placeholder="Send a message..."
+          ref={textareaRef}
+          rows={2}
+          value={input}
         />
       </div>
 
-      <div className="absolute bottom-0 p-2 flex flex-row gap-2 justify-start items-center">
+      <div className="absolute bottom-0 flex flex-row items-center justify-start gap-2 p-2">
         <AttachmentsButton fileInputRef={fileInputRef} isLoading={isLoading} />
-        <Tabs value={searchMode} onValueChange={(value) => {
+        <Tabs onValueChange={(value) => {
           setSearchMode(value as SearchMode);
-        }}>
-          <TabsList className="bg-transparent border rounded-full p-1 h-fit">
+        }} value={searchMode}>
+          <TabsList className="h-fit rounded-full border bg-transparent p-1">
             <TabsTrigger 
-              value="search" 
-              className="rounded-full px-3 py-1.5 h-fit flex items-center gap-2 data-[state=inactive]:bg-transparent data-[state=active]:bg-orange-50 hover:bg-orange-50/50 data-[state=active]:text-orange-600 border-0 data-[state=active]:shadow-none transition-colors"
+              className="flex h-fit items-center gap-2 rounded-full border-0 px-3 py-1.5 transition-colors hover:bg-orange-50/50 data-[state=active]:bg-orange-50 data-[state=inactive]:bg-transparent data-[state=active]:text-orange-600 data-[state=active]:shadow-none" 
+              value="search"
             >
               <Search size={14} />
               Search
             </TabsTrigger>
             <TabsTrigger 
+              className="flex h-fit items-center gap-2 rounded-full border-0 px-3 py-1.5 transition-colors hover:bg-orange-50/50 data-[state=active]:bg-orange-50 data-[state=inactive]:bg-transparent data-[state=active]:text-orange-600 data-[state=active]:shadow-none"
               value="deep-research"
-              className="rounded-full px-3 py-1.5 h-fit flex items-center gap-2 data-[state=inactive]:bg-transparent data-[state=active]:bg-orange-50 hover:bg-orange-50/50 data-[state=active]:text-orange-600 border-0 data-[state=active]:shadow-none transition-colors"
             >
               <Telescope size={14} />
               Deep Research
@@ -301,9 +296,9 @@ function PureMultimodalInput({
         </Tabs>
       </div>
 
-      <div className="absolute bottom-0 right-0 p-2 w-fit flex flex-row justify-end">
+      <div className="absolute bottom-0 right-0 flex w-fit flex-row justify-end p-2">
         {isLoading ? (
-          <StopButton stop={stop} setMessages={setMessages} />
+          <StopButton setMessages={setMessages} stop={stop} />
         ) : (
           <SendButton
             input={input}
@@ -336,15 +331,15 @@ function PureAttachmentsButton({
 }) {
   return (
     <Button
-      className="rounded-md rounded-bl-lg p-[7px] h-fit dark:border-zinc-700 hover:dark:bg-zinc-900 hover:bg-zinc-200"
+      className="h-fit rounded-md rounded-bl-lg p-[7px] hover:bg-zinc-200 dark:border-zinc-700 hover:dark:bg-zinc-900"
+      disabled={isLoading}
       onClick={(event) => {
         event.preventDefault();
         fileInputRef.current?.click();
       }}
-      disabled={isLoading}
       variant="ghost"
     >
-      <PaperclipIcon size={14} />
+      <Paperclip size={14} />
     </Button>
   );
 }
@@ -360,14 +355,14 @@ function PureStopButton({
 }) {
   return (
     <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
+      className="h-fit rounded-full border p-1.5 dark:border-zinc-600"
       onClick={(event) => {
         event.preventDefault();
         stop();
         setMessages((messages) => sanitizeUIMessages(messages));
       }}
     >
-      <StopIcon size={14} />
+      <Square size={14} />
     </Button>
   );
 }
@@ -385,14 +380,14 @@ function PureSendButton({
 }) {
   return (
     <Button
-      className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
+      className="h-fit rounded-full border p-1.5 dark:border-zinc-600"
+      disabled={input.length === 0 || uploadQueue.length > 0}
       onClick={(event) => {
         event.preventDefault();
         submitForm();
       }}
-      disabled={input.length === 0 || uploadQueue.length > 0}
     >
-      <ArrowUpIcon size={14} />
+      <ArrowUp size={14} />
     </Button>
   );
 }

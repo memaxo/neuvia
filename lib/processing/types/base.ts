@@ -2,6 +2,8 @@
  * Base types for document processing across the application
  */
 
+import type { ProcessingPhase } from '@/lib/workflow/types';
+
 /**
  * All possible processing status values
  */

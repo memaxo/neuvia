@@ -6,6 +6,11 @@
 import type { DocumentBase, DocumentType } from '../base';
 import type { ExtractedDocument as OriginalExtractedDocument, DocumentMetadata } from '../extraction';
 import type { Json } from '@/lib/supabase';
+import type { 
+  VerificationMetadata, 
+  VerificationStatusType,
+  MessageMetadata
+} from '@/lib/workflow/types';
 
 /**
  * Flexible date type for UI and database compatibility
@@ -98,38 +103,189 @@ export interface BaseVerificationItem {
 }
 
 /**
- * Enhanced verification item with additional properties for the UI
+ * Verification item represents a specific content element
+ * that requires verification
  */
-export interface VerificationItem extends BaseVerificationItem {
+export interface VerificationItem {
   /**
-   * Original value before any edits
+   * Unique identifier for this verification item
    */
-  originalValue: string;
+  id: string;
   
   /**
-   * Category of the field (patient, medical, etc.)
+   * Title/label for this verification item
    */
-  category: string;
+  title: string;
   
   /**
-   * Whether this field is required for verification
+   * Description of what needs to be verified
+   */
+  description?: string;
+  
+  /**
+   * The original content extracted from the document
+   */
+  originalContent: string;
+  
+  /**
+   * The current content after any corrections
+   */
+  currentContent: string;
+  
+  /**
+   * Whether this item has been verified by a user
+   */
+  isVerified: boolean;
+  
+  /**
+   * Whether this item has been modified during verification
+   */
+  isModified: boolean;
+  
+  /**
+   * History of content changes
+   */
+  changeHistory: Array<{
+    /**
+     * Version ID
+     */
+    id: string;
+    
+    /**
+     * Content at this version
+     */
+    content: string;
+    
+    /**
+     * Timestamp of the change
+     */
+    timestamp: string;
+    
+    /**
+     * User who made the change (if applicable)
+     */
+    userId?: string;
+  }>;
+  
+  /**
+   * Metadata for this verification item
+   */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Options for the verification process
+ */
+export interface VerificationOptions {
+  /**
+   * Whether verification is required
    */
   isRequired: boolean;
   
   /**
-   * Type of field (text, date, number, etc.)
+   * Timeout for verification (in milliseconds)
    */
-  fieldType?: string;
+  timeoutMs?: number;
   
   /**
-   * Field name in the database
+   * Whether to auto-approve after timeout
    */
-  fieldName?: string;
+  autoApproveOnTimeout?: boolean;
   
   /**
-   * Display label for the field
+   * User ID performing verification
    */
-  label?: string;
+  userId?: string;
+  
+  /**
+   * Additional metadata
+   */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Verification result after user review
+ */
+export interface VerificationResult {
+  /**
+   * Whether verification was completed
+   */
+  isCompleted: boolean;
+  
+  /**
+   * Whether the content was approved
+   */
+  isApproved: boolean;
+  
+  /**
+   * List of verification items with their verification status
+   */
+  items: VerificationItem[];
+  
+  /**
+   * Timestamp of verification completion
+   */
+  completedAt?: string;
+  
+  /**
+   * User who completed verification
+   */
+  completedBy?: string;
+  
+  /**
+   * Time taken for verification (in milliseconds)
+   */
+  verificationTime?: number;
+  
+  /**
+   * Detailed metadata about the verification process
+   */
+  verificationMetadata: VerificationMetadata;
+}
+
+/**
+ * Interface for chat messages related to verification
+ */
+export interface VerificationMessage {
+  /**
+   * Message ID
+   */
+  id: string;
+  
+  /**
+   * Message content
+   */
+  content: string;
+  
+  /**
+   * Message role (system, user, assistant)
+   */
+  role: 'system' | 'user' | 'assistant';
+  
+  /**
+   * Whether this message is a verification request
+   */
+  isVerificationRequest?: boolean;
+  
+  /**
+   * Whether this message contains summary content
+   */
+  isSummary?: boolean;
+  
+  /**
+   * Whether this message is a correction
+   */
+  isCorrection?: boolean;
+  
+  /**
+   * Metadata for this message
+   */
+  metadata: MessageMetadata;
+  
+  /**
+   * Creation timestamp
+   */
+  createdAt: Date | string;
 }
 
 /**
@@ -306,4 +462,99 @@ export type WorkflowStep =
   | 'chat_started'
   | 'chat_in_progress'
   | 'chat_completed'
-  | 'chat_error'; 
+  | 'chat_error';
+
+/**
+ * Helper functions for verification process
+ */
+
+/**
+ * Check if a verification process is complete
+ */
+export function isVerificationComplete(
+  verificationMetadata?: VerificationMetadata
+): boolean {
+  return verificationMetadata?.verificationStatus === 'completed';
+}
+
+/**
+ * Create a new verification metadata object
+ */
+export function createVerificationMetadata(
+  originalSummaryId: string,
+  currentVersionId: string
+): VerificationMetadata {
+  return {
+    verificationStatus: 'pending',
+    originalSummaryId,
+    currentVersionId,
+    correctionCount: 0,
+    corrections: []
+  };
+}
+
+/**
+ * Update verification status
+ */
+export function updateVerificationStatus(
+  metadata: VerificationMetadata,
+  status: VerificationStatusType
+): VerificationMetadata {
+  return {
+    ...metadata,
+    verificationStatus: status,
+    ...(status === 'completed' ? { 
+      verifiedAt: new Date().toISOString() 
+    } : {})
+  };
+}
+
+/**
+ * Add a correction to verification metadata
+ */
+export function addCorrection(
+  metadata: VerificationMetadata,
+  correctionText: string
+): VerificationMetadata {
+  const newCorrection = {
+    id: `correction-${Date.now()}`,
+    text: correctionText,
+    timestamp: new Date().toISOString()
+  };
+  
+  return {
+    ...metadata,
+    verificationStatus: 'in_progress',
+    correctionCount: metadata.correctionCount + 1,
+    corrections: [...metadata.corrections, newCorrection]
+  };
+}
+
+/**
+ * Create message metadata for a verification message
+ */
+export function createVerificationMessageMetadata(
+  verificationMetadata: VerificationMetadata,
+  isRequest: boolean = false
+): MessageMetadata {
+  return {
+    isVerificationRequest: isRequest,
+    isSummary: !isRequest,
+    summaryVersionId: verificationMetadata.currentVersionId,
+    verificationMetadata
+  };
+}
+
+/**
+ * Create message metadata for a correction message
+ */
+export function createCorrectionMessageMetadata(
+  verificationMetadata: VerificationMetadata,
+  summaryVersionId: string
+): MessageMetadata {
+  return {
+    isCorrection: true,
+    summaryVersionId,
+    verificationMetadata
+  };
+} 

@@ -5,13 +5,31 @@
  */
 import { createBrowserClient } from '@/lib/supabase/clients';
 import type { Database } from '@/lib/supabase';
-import type { 
-  WorkflowStep, 
-  WorkflowContext, 
-  DBWorkflowStep, 
-  ExtendedWorkflowStep 
-} from '@/lib/processing/types/workflow';
+import type { WorkflowStep } from '@/lib/workflow/types';
 import type { ProcessingStatus } from '@/lib/processing/types/base';
+
+// Type alias for database workflow step enum
+type DBWorkflowStep = Database['public']['Enums']['workflow_step'];
+
+/**
+ * Workflow context for operations
+ */
+export interface WorkflowContext {
+  /**
+   * Workflow ID for database tracking
+   */
+  workflowId?: string | null;
+  
+  /**
+   * Current workflow step
+   */
+  step: WorkflowStep;
+  
+  /**
+   * Custom step description for UI display
+   */
+  stepDescription?: string;
+}
 
 /**
  * Progress callback type
@@ -69,34 +87,6 @@ export interface WorkflowOptions<T = any> {
 }
 
 /**
- * Database workflow step mapping
- * Maps our internal WorkflowStep types to the database enum values
- */
-const DB_WORKFLOW_STEP_MAP: Record<WorkflowStep, DBWorkflowStep | null> = {
-  // Common steps (from database)
-  'idle': 'idle',
-  'complete': 'complete',
-  
-  // App-specific steps that need mapping
-  'error': null, // Not a valid DB value
-  
-  // Document processing specific
-  'extraction': 'extracting', // Map to DB value
-  'extracting': 'extracting',
-  'verification': 'verification',
-  'research': null, // Not a valid DB value
-  'report_generation': 'report_generation',
-  
-  // Chat specific
-  'uploading': 'uploading',
-  'chat_started': 'chat_started',
-  'chat_in_progress': 'chat_in_progress',
-  'chat_completed': 'chat_completed',
-  'chat_error': 'chat_error',
-  'report_presentation': null // Not a valid DB value
-};
-
-/**
  * Workflow State Manager
  */
 class WorkflowManager {
@@ -118,28 +108,27 @@ class WorkflowManager {
     if (!workflowId) return;
     
     try {
-      // Use the mapping to convert internal step values to database values
-      const dbStep = DB_WORKFLOW_STEP_MAP[step];
+      // Check if the step is a valid database step
+      const isDbStep = this.isDbWorkflowStep(step);
       
-      // Only update if we have a valid DB step
-      if (dbStep !== null) {
+      if (isDbStep) {
         await this.supabase
           .from('workflow_states')
           .update({
-            current_step: dbStep,
+            current_step: step as DBWorkflowStep, // Cast to database enum type
             metadata: {
               ...metadata,
-              originalStep: step, // Store the original step for reference
               updatedAt: new Date().toISOString()
             }
           })
           .eq('id', workflowId);
       } else {
         console.warn(`[WorkflowManager] Step '${step}' cannot be stored in database. Recording in metadata only.`);
-        // Still update metadata but don't change the step
+        // Use a default DB step (idle) and store the actual step in metadata
         await this.supabase
           .from('workflow_states')
           .update({
+            current_step: 'idle' as DBWorkflowStep, // Use a default
             metadata: {
               ...metadata,
               appStep: step, // Store the app-only step in metadata
@@ -151,6 +140,18 @@ class WorkflowManager {
     } catch (error) {
       console.error('[WorkflowManager] Error updating workflow state:', error);
     }
+  }
+  
+  /**
+   * Helper method to determine if a step is directly storable in the database
+   */
+  private isDbWorkflowStep(step: WorkflowStep): step is DBWorkflowStep {
+    const dbSteps: DBWorkflowStep[] = [
+      'idle', 'uploading', 'extracting', 'verification', 
+      'report_generation', 'complete', 'chat_started',
+      'chat_in_progress', 'chat_completed', 'chat_error'
+    ];
+    return dbSteps.includes(step as DBWorkflowStep);
   }
   
   /**

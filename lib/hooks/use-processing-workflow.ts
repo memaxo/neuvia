@@ -1,16 +1,16 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useDocumentProcessing } from './use-document-processing';
-import { useVerification } from './use-verification';
 import { useResearch } from './use-research';
 import { useReport } from './use-report';
+import { createBrowserClient } from '@/lib/supabase/clients';
 
 // Import types from specific modules
-import type { ProcessingStatus } from '@/lib/processing/types/base';
+import type { ProcessingStatus, DocumentType } from '@/lib/processing/types/base';
 import type { ExtractedDocument } from '@/lib/processing/types/extraction';
-import type { VerificationItem, VerifiedDocument } from '@/lib/processing/types/verification';
 import type { ResearchOptions, ResearchDocument } from '@/lib/processing/types/research';
 import type { ReportOptions, ReportDocument, ReportFormat } from '@/lib/processing/types/report';
-import type { WorkflowStep } from '@/lib/processing/types/workflow';
+import type { WorkflowStep } from '@/lib/workflow/types';
+import type { Json } from '@/lib/supabase';
 
 /**
  * Integrated hook for the complete document processing workflow
@@ -22,24 +22,22 @@ export function useProcessingWorkflow() {
   // Error state
   const [error, setError] = useState<string | null>(null);
   
-  // Use all specialized hooks
+  // Use document processing hook
   const documentProcessing = useDocumentProcessing();
-  const verification = useVerification(documentProcessing.extractedDocument);
-  const research = useResearch(verification.verifiedDocument);
+  
+  // Ensure we're passing the correct type to useResearch
+  const research = useResearch(null); // No verified document is passed now
+  
   const report = useReport(research.researchDocument);
+  
+  // Initialize Supabase client
+  const supabase = createBrowserClient();
   
   // Overall status from the currently active step
   const getActiveStatus = useMemo(() => {
     switch (workflowStep) {
       case 'extracting':
         return documentProcessing.status;
-      case 'verification':
-        return { 
-          status: verification.verificationStatus.isVerified ? 'success' : 'processing',
-          progress: verification.verificationItems.filter((item: VerificationItem) => item.isVerified).length / 
-                   (verification.verificationItems.length || 1) * 100,
-          phase: 'verification'
-        } as ProcessingStatus;
       case 'report_generation':
         return research.status;
       case 'complete':
@@ -54,11 +52,66 @@ export function useProcessingWorkflow() {
   }, [
     workflowStep, 
     documentProcessing.status, 
-    verification.verificationItems, 
-    verification.verificationStatus, 
     research.status, 
     report.status
   ]);
+  
+  /**
+   * Load document by ID
+   */
+  const loadDocument = useCallback(async (documentId: string) => {
+    setError(null);
+    
+    try {
+      // Fetch document from the database
+      const { data, error } = await supabase
+        .from('patient_documents')
+        .select('*')
+        .eq('id', documentId)
+        .single();
+        
+      if (error || !data) {
+        throw new Error(error?.message || 'Document not found');
+      }
+      
+      // Parse document type from database
+      const docType: DocumentType = { 
+        category: (data.category as string) || 'clinical',
+        type: 'note'
+      };
+      
+      // Try to extract type from document_type if it exists and has a type property
+      if (data.document_type && typeof data.document_type === 'object') {
+        const docTypeObj = data.document_type as Record<string, any>;
+        if (docTypeObj.type && typeof docTypeObj.type === 'string') {
+          docType.type = docTypeObj.type;
+        }
+      }
+      
+      // Create an ExtractedDocument from the database data
+      const extractedDoc: ExtractedDocument = {
+        id: data.id,
+        patientId: data.patient_id || '',
+        documentType: docType,
+        extractedData: {
+          rawText: data.content_text || '',
+          metadata: {
+            extractedAt: new Date(),
+            ...(typeof data.metadata === 'object' ? data.metadata : {})
+          }
+        },
+        isSuccessful: Boolean(data.is_processed) || true,
+        createdAt: new Date(data.created_at || Date.now())
+      };
+      
+      setWorkflowStep('report_generation');
+      return extractedDoc;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      return null;
+    }
+  }, [supabase]);
   
   /**
    * Process a document file
@@ -72,10 +125,15 @@ export function useProcessingWorkflow() {
     setWorkflowStep('extracting');
     
     try {
-      const result = await documentProcessing.processDocument(file, patientId, documentType);
+      // Convert documentType string to DocumentType object if needed
+      const docType: DocumentType | undefined = documentType 
+        ? { category: 'clinical', type: documentType } // Default to clinical category
+        : undefined;
+      
+      const result = await documentProcessing.processDocument(file, patientId, docType);
       
       if (result) {
-        setWorkflowStep('verification');
+        setWorkflowStep('report_generation');
         return result;
       } else {
         throw new Error('Document processing failed');
@@ -87,52 +145,6 @@ export function useProcessingWorkflow() {
       return null;
     }
   }, [documentProcessing]);
-  
-  /**
-   * Complete verification and proceed to research
-   */
-  const completeVerification = useCallback(async () => {
-    setError(null);
-    
-    try {
-      const result = await verification.completeVerification();
-      
-      if (result) {
-        setWorkflowStep('report_generation');
-        return result;
-      } else {
-        throw new Error('Verification failed');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(errorMessage);
-      return null;
-    }
-  }, [verification]);
-  
-  /**
-   * Complete verification and proceed directly to report generation
-   * (skipping the research step)
-   */
-  const completeVerificationToReport = useCallback(async () => {
-    setError(null);
-    
-    try {
-      const result = await verification.completeVerification();
-      
-      if (result) {
-        // Skip research and go directly to report generation
-        setWorkflowStep('report_generation');
-        return result;
-      } else {
-        throw new Error('Verification failed');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(errorMessage);
-      return null;
-    }
-  }, [verification]);
   
   /**
    * Perform research based on verified data
@@ -210,23 +222,19 @@ export function useProcessingWorkflow() {
    */
   const resetWorkflow = useCallback(() => {
     documentProcessing.reset();
-    verification.reset();
     research.clearResults();
     report.reset();
     setWorkflowStep('idle');
     setError(null);
-  }, [documentProcessing, verification, research, report]);
+  }, [documentProcessing, research, report]);
   
   /**
    * Go back to the previous step
    */
   const goToPreviousStep = useCallback(() => {
     switch (workflowStep) {
-      case 'verification':
-        setWorkflowStep('extracting');
-        break;
       case 'report_generation':
-        setWorkflowStep('verification');
+        setWorkflowStep('extracting');
         break;
       case 'complete':
         setWorkflowStep('report_generation');
@@ -244,8 +252,6 @@ export function useProcessingWorkflow() {
     
     // Document data from each step
     extractedDocument: documentProcessing.extractedDocument,
-    verificationItems: verification.verificationItems,
-    verifiedDocument: verification.verifiedDocument,
     researchResults: research.researchResults,
     researchDocument: research.researchDocument,
     reportData: report.reportData,
@@ -253,23 +259,16 @@ export function useProcessingWorkflow() {
     reportDocument: report.reportDocument,
     
     // Workflow actions
+    loadDocument,
     processDocument,
-    completeVerification,
-    completeVerificationToReport,
     performResearch,
     generateReport,
     formatReport,
     resetWorkflow,
     goToPreviousStep,
     
-    // Verification specific actions
-    verifyItem: verification.verifyItem,
-    verifyAllItems: verification.verifyAllItems,
-    updateVerificationItem: verification.updateVerificationItem,
-    
     // Direct access to specialized hooks
     documentProcessing,
-    verification,
     research,
     report
   };

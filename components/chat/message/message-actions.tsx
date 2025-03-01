@@ -2,20 +2,20 @@ import type { Message } from 'ai';
 import { toast } from 'sonner';
 import { useSWRConfig } from 'swr';
 import { useCopyToClipboard } from 'usehooks-ts';
+import { memo } from 'react';
+import equal from 'fast-deep-equal';
 
 import type { Vote } from '@/lib/db/schema';
 import { getMessageIdFromAnnotations } from '@/lib/utils';
 
-import { CopyIcon, ThumbDownIcon, ThumbUpIcon } from './icons';
-import { Button } from './ui/button';
+import { CopyIcon, ThumbDownIcon, ThumbUpIcon } from '@/components/icons';
+import { Button } from '@/components/ui/button';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from './ui/tooltip';
-import { memo } from 'react';
-import equal from 'fast-deep-equal';
+} from '@/components/ui/tooltip';
 
 export function PureMessageActions({
   chatId,
@@ -42,12 +42,12 @@ export function PureMessageActions({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              className="py-1 px-2 h-fit text-muted-foreground"
-              variant="outline"
+              className="text-muted-foreground h-fit px-2 py-1"
               onClick={async () => {
                 await copyToClipboard(message.content as string);
                 toast.success('Copied to clipboard!');
               }}
+              variant="outline"
             >
               <CopyIcon />
             </Button>

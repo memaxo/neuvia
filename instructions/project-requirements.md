@@ -28,7 +28,7 @@ The primary user flows are:
 3.  **Patient Management:**
 
     - User navigates to `/dashboard/patients`.
-    - Sees a list/table of patients (currently a placeholder).
+    - Sees a list/table of patients 
     - Can search/filter patients by name, ID, etc.
 
 4.  **Add New Patient:**

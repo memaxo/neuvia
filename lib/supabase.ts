@@ -915,33 +915,42 @@ export type Database = {
       workflow_states: {
         Row: {
           chat_id: string | null
+          correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
           updated_at: string
           user_id: string | null
+          verification_metadata: Json | null
         }
         Insert: {
           chat_id?: string | null
+          correction_history?: Json | null
           created_at?: string
           current_step?: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id?: string | null
           id?: string
           last_message_id?: string | null
           metadata?: Json | null
           updated_at?: string
           user_id?: string | null
+          verification_metadata?: Json | null
         }
         Update: {
           chat_id?: string | null
+          correction_history?: Json | null
           created_at?: string
           current_step?: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id?: string | null
           id?: string
           last_message_id?: string | null
           metadata?: Json | null
           updated_at?: string
           user_id?: string | null
+          verification_metadata?: Json | null
         }
         Relationships: [
           {
@@ -965,6 +974,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      begin_report_generation: {
+        Args: {
+          p_user_id: string
+          p_report_metadata?: Json
+        }
+        Returns: {
+          chat_id: string | null
+          correction_history: Json | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+          verification_metadata: Json | null
+        }
+      }
       binary_quantize:
         | {
             Args: {
@@ -991,6 +1019,25 @@ export type Database = {
           required_level: Database["public"]["Enums"]["access_level"]
         }
         Returns: boolean
+      }
+      complete_verification: {
+        Args: {
+          p_user_id: string
+          p_final_summary_id: string
+        }
+        Returns: {
+          chat_id: string | null
+          correction_history: Json | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+          verification_metadata: Json | null
+        }
       }
       gtrgm_compress: {
         Args: {
@@ -1069,6 +1116,26 @@ export type Database = {
           "": unknown
         }
         Returns: unknown
+      }
+      initiate_verification: {
+        Args: {
+          p_user_id: string
+          p_extracted_data: Json
+          p_chat_id: string
+        }
+        Returns: {
+          chat_id: string | null
+          correction_history: Json | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+          verification_metadata: Json | null
+        }
       }
       ivfflat_bit_support: {
         Args: {
@@ -1161,6 +1228,45 @@ export type Database = {
           similarity: number
         }[]
       }
+      process_verification_correction: {
+        Args: {
+          p_user_id: string
+          p_correction_text: string
+          p_summary_id: string
+          p_last_message_id: string
+        }
+        Returns: {
+          chat_id: string | null
+          correction_history: Json | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+          verification_metadata: Json | null
+        }
+      }
+      reset_verification: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: {
+          chat_id: string | null
+          correction_history: Json | null
+          created_at: string
+          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_summary_id: string | null
+          id: string
+          last_message_id: string | null
+          metadata: Json | null
+          updated_at: string
+          user_id: string | null
+          verification_metadata: Json | null
+        }
+      }
       set_limit: {
         Args: {
           "": number
@@ -1204,13 +1310,16 @@ export type Database = {
             }
             Returns: {
               chat_id: string | null
+              correction_history: Json | null
               created_at: string
               current_step: Database["public"]["Enums"]["workflow_step"]
+              current_summary_id: string | null
               id: string
               last_message_id: string | null
               metadata: Json | null
               updated_at: string
               user_id: string | null
+              verification_metadata: Json | null
             }
           }
         | {
@@ -1223,13 +1332,16 @@ export type Database = {
             }
             Returns: {
               chat_id: string | null
+              correction_history: Json | null
               created_at: string
               current_step: Database["public"]["Enums"]["workflow_step"]
+              current_summary_id: string | null
               id: string
               last_message_id: string | null
               metadata: Json | null
               updated_at: string
               user_id: string | null
+              verification_metadata: Json | null
             }
           }
       validate_document_type: {
@@ -1317,6 +1429,10 @@ export type Database = {
         | "chat_in_progress"
         | "chat_completed"
         | "chat_error"
+        | "verification_pending"
+        | "verification_in_progress"
+        | "verification_completed"
+        | "verification_failed"
     }
     CompositeTypes: {
       [_ in never]: never
