@@ -71,8 +71,8 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
     return (
       <aside
         className={cn(
-          'group/sidebar relative flex h-screen flex-col overflow-hidden bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl transition-all duration-normal',
-          'after:absolute after:right-0 after:h-full after:w-[1px] after:bg-gradient-to-b after:from-transparent after:via-[rgb(var(--border))/var(--opacity-5)] after:to-transparent',
+          'group/sidebar duration-normal relative flex h-screen flex-col overflow-hidden bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl transition-all',
+          'after:absolute after:right-0 after:h-full after:w-px after:bg-gradient-to-b after:from-transparent after:via-[rgb(var(--border))/var(--opacity-5)] after:to-transparent',
           className
         )}
         data-collapsed={isCollapsed}
@@ -170,7 +170,7 @@ export function DashboardSidebar() {
             return (
               <Link
                 className={cn(
-                  'group flex items-center gap-3 rounded-lg px-4 py-3 transition-all duration-normal',
+                  'duration-normal group flex items-center gap-3 rounded-lg px-4 py-3 transition-all',
                   'hover:bg-[rgb(var(--primary))/var(--opacity-10)]',
                   isActive
                     ? 'bg-[rgb(var(--primary))/var(--opacity-10)] text-[rgb(var(--primary))]'
@@ -204,7 +204,7 @@ export function DashboardSidebar() {
             'h-[calc(100vh-3.5rem)] min-h-0',
             'border-r border-[rgb(var(--border))/var(--opacity-10)]',
             'bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl',
-            'overflow-hidden transition-[width] duration-normal ease-in-out',
+            'duration-normal overflow-hidden transition-[width] ease-in-out',
             isCollapsed ? 'w-[80px]' : 'w-[280px]'
           )}
         >
@@ -227,10 +227,10 @@ export function DashboardSidebar() {
             <div className="h-[72px] shrink-0 border-b border-[rgb(var(--border))/var(--opacity-10)]">
               <div
                 className={cn(
-                  'h-full transition-[opacity,transform] duration-normal',
+                  'duration-normal h-full transition-[opacity,transform]',
                   isCollapsed
-                    ? 'opacity-0 translate-x-[-100%]'
-                    : 'opacity-100 translate-x-0'
+                    ? '-translate-x-full opacity-0'
+                    : 'translate-x-0 opacity-100'
                 )}
               >
                 <div className="p-4">
@@ -247,19 +247,19 @@ export function DashboardSidebar() {
                       <TooltipTrigger asChild>
                         <Link
                           className={cn(
-                            'group grid items-start transition-all duration-normal rounded-lg',
+                            'duration-normal group grid items-start rounded-lg transition-all',
                             'hover:bg-[rgb(var(--primary))/var(--opacity-10)]',
                             isActive
                               ? 'bg-[rgb(var(--primary))/var(--opacity-10)] text-[rgb(var(--primary))]'
                               : 'text-[rgb(var(--foreground))/var(--opacity-70)] hover:text-[rgb(var(--foreground))]',
                             isCollapsed
-                              ? 'px-2 py-3 grid-cols-1 justify-items-center'
-                              : 'p-3 grid-cols-[24px,1fr] gap-3'
+                              ? 'grid-cols-1 justify-items-center px-2 py-3'
+                              : 'grid-cols-[24px,1fr] gap-3 p-3'
                           )}
                           href={link.href}
                         >
                           <link.icon
-                            className={cn('size-5 mt-0.5', {
+                            className={cn('mt-0.5 size-5', {
                               'text-[rgb(var(--primary))]': isActive,
                               'text-[rgb(var(--foreground))/var(--opacity-60)]':
                                 !isActive,
@@ -267,16 +267,16 @@ export function DashboardSidebar() {
                           />
                           <div
                             className={cn(
-                              'transition-[width,opacity,transform] duration-normal overflow-hidden',
+                              'duration-normal overflow-hidden transition-[width,opacity,transform]',
                               isCollapsed
-                                ? 'w-0 opacity-0 hidden'
+                                ? 'hidden w-0 opacity-0'
                                 : 'w-auto opacity-100'
                             )}
                           >
-                            <span className="block font-medium leading-none whitespace-nowrap">
+                            <span className="block whitespace-nowrap font-medium leading-none">
                               {link.title}
                             </span>
-                            <span className="mt-1 block text-sm leading-none text-[rgb(var(--foreground))/var(--opacity-60)] whitespace-nowrap">
+                            <span className="mt-1 block whitespace-nowrap text-sm leading-none text-[rgb(var(--foreground))/var(--opacity-60)]">
                               {link.description}
                             </span>
                           </div>

@@ -1,4 +1,4 @@
-import { Vote } from '@/lib/db/schema'
+import type { Vote } from '@/lib/db/schema'
 import type { ChatRequestOptions } from '@/lib/types'
 import type { Message } from 'ai'
 import equal from 'fast-deep-equal'
@@ -51,23 +51,18 @@ function PureMessages({
 
   return (
     <div
+      className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-scroll pt-4"
       ref={messagesContainerRef}
-      className="flex flex-col min-w-0 gap-6 flex-1 overflow-y-scroll pt-4"
     >
       {/* {messages.length === 0 && <Overview />} */}
 
       {messages.map((message, index) => (
         <PreviewMessage
-          key={message.id}
           chatId={chatId}
-          message={message}
           isLoading={isLoading && messages.length - 1 === index}
-          vote={
-            votes
-              ? votes.find((vote) => vote.messageId === message.id)
-              : undefined
-          }
-          setMessages={setMessages}
+          isReadonly={isReadonly}
+          key={message.id}
+          message={message}
           reload={async (options?: ChatRequestOptions) => {
             try {
               return await reload(options)
@@ -76,7 +71,12 @@ function PureMessages({
               return null
             }
           }}
-          isReadonly={isReadonly}
+          setMessages={setMessages}
+          vote={
+            votes
+              ? votes.find((vote) => vote.messageId === message.id)
+              : undefined
+          }
         />
       ))}
 
@@ -85,8 +85,8 @@ function PureMessages({
         messages[messages.length - 1].role === 'user' && <ThinkingMessage />}
 
       <div
+        className="min-h-[24px] min-w-[24px] shrink-0"
         ref={messagesEndRef}
-        className="shrink-0 min-w-[24px] min-h-[24px]"
       />
     </div>
   )

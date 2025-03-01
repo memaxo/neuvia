@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase-adapters'
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)

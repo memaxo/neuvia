@@ -46,7 +46,6 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
         const Icon = getIcon(stat.name)
         return (
           <div
-            key={index}
             className={cn(
               // Base card styles
               'relative overflow-hidden rounded-xl',
@@ -58,6 +57,7 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
               // Group hover
               'group'
             )}
+            key={index}
           >
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-[rgb(var(--primary)/0.1)] via-transparent to-[rgb(var(--accent)/0.1)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -90,7 +90,7 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
 
             {/* Scanning line effect */}
             <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary)/0.3)] to-transparent group-hover:animate-scan" />
+              <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary)/0.3)] to-transparent" />
             </div>
           </div>
         )

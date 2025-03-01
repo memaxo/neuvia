@@ -90,8 +90,8 @@ export function SummaryDiffViewer({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+    <Dialog onOpenChange={(open) => !open && onClose()} open={isOpen}>
+      <DialogContent className="max-h-[80vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Summary Version History</DialogTitle>
           <DialogDescription>
@@ -99,44 +99,44 @@ export function SummaryDiffViewer({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex-1 text-sm text-muted-foreground">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-muted-foreground flex-1 text-sm">
             Version {selectedVersionIndex + 1}:{' '}
             {formatTimestamp(selectedVersion.timestamp)}
           </div>
 
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrevious}
               disabled={selectedVersionIndex === 0}
+              onClick={handlePrevious}
+              size="sm"
+              variant="outline"
             >
-              <ChevronLeft className="h-4 w-4 mr-1" />
+              <ChevronLeft className="mr-1 size-4" />
               Previous
             </Button>
 
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNext}
               disabled={comparisonVersionIndex === versions.length - 1}
+              onClick={handleNext}
+              size="sm"
+              variant="outline"
             >
               Next
-              <ChevronRight className="h-4 w-4 ml-1" />
+              <ChevronRight className="ml-1 size-4" />
             </Button>
           </div>
 
-          <div className="flex-1 text-right text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex-1 text-right text-sm">
             Version {comparisonVersionIndex + 1}:{' '}
             {formatTimestamp(comparisonVersion.timestamp)}
           </div>
         </div>
 
-        <div className="border rounded-md p-4 bg-muted/10">
+        <div className="bg-muted/10 rounded-md border p-4">
           <DiffView
-            oldContent={selectedVersion.content}
             newContent={comparisonVersion.content}
+            oldContent={selectedVersion.content}
           />
         </div>
       </DialogContent>

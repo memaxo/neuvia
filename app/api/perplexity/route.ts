@@ -110,11 +110,12 @@ export async function POST(req: NextRequest) {
             .order('page_number', { ascending: true })
 
           if (chunks && chunks.length > 0) {
-            patientData = chunks.map((chunk: any) => chunk.content).join('\n\n')
+            patientData = chunks
+              .map((chunk) => (chunk as { content: string }).content)
+              .join('\n\n')
           }
         } catch (chunkError) {
-          console.log('[API] Error fetching document chunks:', chunkError)
-          // Continue with alternative method - this is not fatal
+          // Silent catch - continue with alternative method - this is not fatal
         }
 
         // If still no data, use document content directly - check both field names
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
           researchOptions.depth = options?.depth || 'comprehensive'
         }
       } catch (dbError) {
-        console.error('[API] Database error while fetching document:', dbError)
+        // Database error handled in error response
         return NextResponse.json(
           {
             error: 'Failed to retrieve document data',
@@ -207,7 +208,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(response)
     } catch (apiError) {
       // Use more detailed error handling for API errors
-      console.error('[API] Perplexity API error:', apiError)
 
       // Return a structured error response
       const errorResponse: ApiError = {
@@ -226,7 +226,6 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     // Global error handler for unexpected errors
-    console.error('[API] Perplexity research unexpected error:', error)
 
     return NextResponse.json(
       {

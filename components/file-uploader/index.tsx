@@ -211,14 +211,14 @@ export function FileUploader({
   return (
     <div className="space-y-4">
       <Dropzone
-        disabled={disabled}
-        onDrop={onDrop}
-        onDropRejected={onDropRejected}
         accept={accept}
-        multiple={multiple || maxFileCount > 1}
+        disabled={disabled}
         maxSize={maxSize}
+        multiple={multiple || maxFileCount > 1}
         onDragEnter={() => setDragActive(true)}
         onDragLeave={() => setDragActive(false)}
+        onDrop={onDrop}
+        onDropRejected={onDropRejected}
       >
         {({ getRootProps, getInputProps, isDragActive }) => {
           return (
@@ -259,12 +259,12 @@ export function FileUploader({
         <div className="flex justify-center">
           <Button onClick={handleBrowseClick}>Select Files</Button>
           <input
+            accept={Object.keys(accept).join(',')}
             className="hidden"
+            multiple={multiple || maxFileCount > 1}
+            onChange={handleFileSelect}
             ref={inputRef}
             type="file"
-            onChange={handleFileSelect}
-            accept={Object.keys(accept).join(',')}
-            multiple={multiple || maxFileCount > 1}
           />
         </div>
       )}
@@ -293,7 +293,7 @@ export function FileUploader({
         <div className="mt-2">
           <Progress value={overallProgress} />
           {statusMessage && (
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-muted-foreground mt-1 text-sm">
               {statusMessage}
             </p>
           )}

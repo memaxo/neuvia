@@ -10,7 +10,7 @@ type FormData = {
 
 type FormResponse = {
   success: boolean
-  data?: any
+  data?: Record<string, unknown>
   error?: string
 }
 
@@ -37,7 +37,7 @@ export async function updateInqueries(data: FormData): Promise<FormResponse> {
       data: inqueries,
     }
   } catch (error) {
-    console.error('Error updating inqueries:', error)
+    // Error handled in the response object
     return {
       success: false,
       error: 'Failed to send message. Please try again later.',

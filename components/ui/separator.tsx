@@ -14,14 +14,14 @@ const Separator = React.forwardRef<
     ref
   ) => (
     <SeparatorPrimitive.Root
-      ref={ref}
-      decorative={decorative}
-      orientation={orientation}
       className={cn(
-        'shrink-0 bg-[rgb(var(--border)/var(--opacity-10))] transition-colors duration-normal',
-        orientation === 'horizontal' ? 'h-[1px] w-full' : 'h-full w-[1px]',
+        'duration-normal shrink-0 bg-[rgb(var(--border)/var(--opacity-10))] transition-colors',
+        orientation === 'horizontal' ? 'h-px w-full' : 'h-full w-px',
         className
       )}
+      decorative={decorative}
+      orientation={orientation}
+      ref={ref}
       {...props}
     />
   )

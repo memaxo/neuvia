@@ -43,32 +43,32 @@ export function DocumentUploader({
   return (
     <div className="flex items-center gap-2">
       <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        className="hidden"
         accept=".pdf,.doc,.docx,.txt"
+        className="hidden"
+        onChange={handleFileChange}
+        ref={fileInputRef}
+        type="file"
       />
       <Button
-        onClick={handleUploadClick}
-        variant="outline"
-        size="sm"
-        disabled={disabled || isUploading}
         className="text-xs"
+        disabled={disabled || isUploading}
+        onClick={handleUploadClick}
+        size="sm"
+        variant="outline"
       >
         {isUploading ? (
           <>
-            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+            <Loader2 className="mr-2 size-3 animate-spin" />
             Uploading...
           </>
         ) : (
           <>
-            <UploadIcon className="mr-2 h-3 w-3" />
+            <UploadIcon className="mr-2 size-3" />
             Upload
           </>
         )}
       </Button>
-      <span className="text-xs text-muted-foreground">PDF, DOC, DOCX, TXT</span>
+      <span className="text-muted-foreground text-xs">PDF, DOC, DOCX, TXT</span>
     </div>
   )
 }

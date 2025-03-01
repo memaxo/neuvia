@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { createBrowserClient } from '@/lib/supabase'
+import { createBrowserClient } from '@/lib/supabase-adapters'
 import { cn } from '@/lib/utils'
 
 import Avatar from './avatar'
@@ -77,7 +77,7 @@ export default function AccountForm({ user }: { user: User | null }) {
 
   useEffect(() => {
     getProfile()
-  }, [user, getProfile])
+  }, [getProfile])
 
   async function updateProfile({
     username,
@@ -123,7 +123,7 @@ export default function AccountForm({ user }: { user: User | null }) {
         url={avatar_url}
       />
       {error && (
-        <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+        <div className="bg-destructive/15 text-destructive rounded-md p-3 text-sm">
           {error.message}
         </div>
       )}
@@ -136,7 +136,7 @@ export default function AccountForm({ user }: { user: User | null }) {
         </label>
         <input
           className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+            'border-input placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50'
           )}
           disabled
           id="email"
@@ -153,7 +153,7 @@ export default function AccountForm({ user }: { user: User | null }) {
         </label>
         <input
           className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+            'border-input placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="fullName"
           onChange={(e) => setFullname(e.target.value)}
@@ -170,7 +170,7 @@ export default function AccountForm({ user }: { user: User | null }) {
         </label>
         <input
           className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+            'border-input placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="username"
           onChange={(e) => setUsername(e.target.value)}
@@ -187,7 +187,7 @@ export default function AccountForm({ user }: { user: User | null }) {
         </label>
         <input
           className={cn(
-            'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
+            'border-input placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50'
           )}
           id="website"
           onChange={(e) => setWebsite(e.target.value)}

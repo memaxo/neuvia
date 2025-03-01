@@ -44,7 +44,7 @@ export function DocsSidebarNavItems({
         item.href && !item.disabled ? (
           <Link
             className={cn(
-              'group flex w-full items-center rounded-md border border-transparent px-2 py-1 transition-colors duration-normal',
+              'duration-normal group flex w-full items-center rounded-md border border-transparent px-2 py-1 transition-colors',
               'hover:bg-[rgb(var(--primary)/0.1)] hover:text-[rgb(var(--primary))]',
               item.disabled && 'cursor-not-allowed opacity-60',
               pathname === item.href

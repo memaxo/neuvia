@@ -45,39 +45,39 @@ function PurePreviewAttachment({
       <div className="flex items-center gap-1">
         {isUploading ? <Loader2 className="size-4 animate-spin" /> : getIcon()}
 
-        <span className="text-sm truncate max-w-[120px]">
+        <span className="max-w-[120px] truncate text-sm">
           {attachment.name}
         </span>
       </div>
 
       {onRemove && !isUploading && (
         <Button
-          className="ml-1 h-5 w-5 p-0 hover:bg-muted"
+          className="hover:bg-muted ml-1 size-5 p-0"
           onClick={onRemove}
           size="sm"
           variant="ghost"
         >
           <span className="sr-only">Remove</span>
           <svg
-            width="12"
+            fill="none"
             height="12"
             viewBox="0 0 12 12"
-            fill="none"
+            width="12"
             xmlns="http://www.w3.org/2000/svg"
           >
             <path
               d="M9 3L3 9M3 3L9 9"
               stroke="currentColor"
-              strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="1.5"
             />
           </svg>
         </Button>
       )}
 
       {isUploading && (
-        <span className="text-xs text-muted-foreground ml-1">Uploading...</span>
+        <span className="text-muted-foreground ml-1 text-xs">Uploading...</span>
       )}
     </div>
   )

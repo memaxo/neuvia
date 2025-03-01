@@ -61,7 +61,7 @@ export function AuthForm() {
     },
   })
 
-  const handleAuthResponse = ({ error }: AuthResponse) => {
+  const handleAuthResponse = useCallback(({ error }: AuthResponse) => {
     if (error) {
       toast({
         title: 'Authentication failed',
@@ -76,22 +76,25 @@ export function AuthForm() {
       description: 'Welcome back!',
     })
     return true
-  }
-
-  const onSubmit = useCallback(async (formData: LoginFormData) => {
-    startTransition(async () => {
-      try {
-        const response = await loginWithEmailAndPassword(formData)
-        handleAuthResponse(response)
-      } catch (_error) {
-        toast({
-          title: 'An error occurred',
-          description: 'Please try again later',
-          variant: 'destructive',
-        })
-      }
-    })
   }, [])
+
+  const onSubmit = useCallback(
+    async (formData: LoginFormData) => {
+      startTransition(async () => {
+        try {
+          const response = await loginWithEmailAndPassword(formData)
+          handleAuthResponse(response)
+        } catch (_error) {
+          toast({
+            title: 'An error occurred',
+            description: 'Please try again later',
+            variant: 'destructive',
+          })
+        }
+      })
+    },
+    [handleAuthResponse]
+  )
 
   const handleGoogleSignIn = useCallback(async () => {
     startTransition(async () => {
@@ -110,14 +113,24 @@ export function AuthForm() {
         })
       }
     })
-  }, [])
+  }, [handleAuthResponse])
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((prev) => !prev)
   }, [])
 
   const renderEmailField = useCallback(
-    ({ field }: { field: any }) => (
+    ({
+      field,
+    }: {
+      field: {
+        value: string
+        onChange: (value: string) => void
+        onBlur: () => void
+        name: string
+        ref: React.RefObject<HTMLInputElement>
+      }
+    }) => (
       <FormItem>
         <FormLabel>Email</FormLabel>
         <FormControl>
@@ -137,7 +150,17 @@ export function AuthForm() {
   )
 
   const renderPasswordField = useCallback(
-    ({ field }: { field: any }) => (
+    ({
+      field,
+    }: {
+      field: {
+        value: string
+        onChange: (value: string) => void
+        onBlur: () => void
+        name: string
+        ref: React.RefObject<HTMLInputElement>
+      }
+    }) => (
       <FormItem>
         <FormLabel>Password</FormLabel>
         <FormControl>
@@ -175,7 +198,17 @@ export function AuthForm() {
   )
 
   const renderRememberMeField = useCallback(
-    ({ field }: { field: any }) => (
+    ({
+      field,
+    }: {
+      field: {
+        value: boolean
+        onChange: (value: boolean) => void
+        onBlur: () => void
+        name: string
+        ref: React.RefObject<HTMLInputElement>
+      }
+    }) => (
       <FormItem className="flex flex-row items-start space-x-3 space-y-0">
         <FormControl>
           <Checkbox checked={field.value} onCheckedChange={field.onChange} />

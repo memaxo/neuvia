@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
-  "files": { "ignoreUnknown": false, "ignore": [] },
+  "files": {
+    "maxSize": 2000000,
+    "ignoreUnknown": false,
+    "ignore": [
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/out/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.contentlayer/**"
+    ]
+  },
   "formatter": {
     "enabled": true,
     "useEditorconfig": true,
@@ -63,6 +74,7 @@
       },
       "complexity": {
         "noUselessFragments": "warn",
+        "noUselessThisAlias": "error",
         "noUselessTypeConstraint": "error"
       },
       "correctness": {
@@ -80,6 +92,7 @@
         "useAsConstAssertion": "error",
         "useBlockStatements": "off",
         "useConst": "error",
+        "useImportType": "warn",
         "useTemplate": "error"
       },
       "suspicious": {
@@ -88,8 +101,12 @@
         "noDebugger": "error",
         "noDoubleEquals": "error",
         "noExplicitAny": "warn",
+        "noExportsInTest": "error",
         "noExtraNonNullAssertion": "error",
+        "noFocusedTests": "error",
         "noMisleadingInstantiator": "error",
+        "noMisplacedAssertion": "error",
+        "noSkippedTests": "warn",
         "noUnsafeDeclarationMerging": "error",
         "useNamespaceKeyword": "error"
       }
@@ -124,6 +141,47 @@
     }
   },
   "overrides": [
+    { "include": ["*.ts", "*.tsx"], "linter": { "rules": {} } },
+    {
+      "include": [
+        "**/__tests__/**/*.[jt]s?(x)",
+        "**/?(*.)+(spec|test).[jt]s?(x)"
+      ]
+    },
+    {
+      "include": ["*.ts", "*.tsx", "*.mts", "*.cts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noConstAssign": "off",
+            "noGlobalObjectCalls": "off",
+            "noInvalidBuiltinInstantiation": "off",
+            "noInvalidConstructorSuper": "off",
+            "noNewSymbol": "off",
+            "noSetterReturn": "off",
+            "noUndeclaredVariables": "off",
+            "noUnreachable": "off",
+            "noUnreachableSuper": "off"
+          },
+          "style": {
+            "noArguments": "error",
+            "noVar": "error",
+            "useConst": "error"
+          },
+          "suspicious": {
+            "noClassAssign": "off",
+            "noDuplicateClassMembers": "off",
+            "noDuplicateObjectKeys": "off",
+            "noDuplicateParameters": "off",
+            "noFunctionAssign": "off",
+            "noImportAssign": "off",
+            "noRedeclare": "off",
+            "noUnsafeNegation": "off",
+            "useGetterReturn": "off"
+          }
+        }
+      }
+    },
     { "include": ["*.ts", "*.tsx"], "linter": { "rules": {} } },
     {
       "include": [

@@ -23,12 +23,12 @@ export default function Avatar({
     return (
       <div className="flex flex-col items-center gap-4">
         <div
-          className="flex items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+          className="bg-secondary text-secondary-foreground flex items-center justify-center rounded-full"
           style={{ height: size, width: size }}
         >
           {email?.charAt(0).toUpperCase() ?? '?'}
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-muted-foreground text-sm">
           Log in to update profile picture
         </p>
       </div>
@@ -37,11 +37,11 @@ export default function Avatar({
 
   return (
     <AvatarUploader
-      userId={uid}
       initialUrl={url}
-      size={size}
-      onUpload={onUpload}
       onError={(error) => console.error('Avatar upload error:', error)}
+      onUpload={onUpload}
+      size={size}
+      userId={uid}
     />
   )
 }

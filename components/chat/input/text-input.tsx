@@ -49,28 +49,28 @@ export function MessageInput({
 
   return (
     <form
+      className="bg-background flex items-end border-t p-4"
       onSubmit={handleSubmit}
-      className="flex items-end p-4 bg-background border-t"
     >
-      <div className="relative flex-1 mr-2">
+      <div className="relative mr-2 flex-1">
         <Textarea
-          ref={textareaRef}
-          value={message}
+          className="max-h-[200px] min-h-[50px] resize-none py-3 pr-10"
+          disabled={isDisabled}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={isDisabled}
-          className="min-h-[50px] max-h-[200px] py-3 pr-10 resize-none"
+          ref={textareaRef}
           style={{ height: 'auto' }}
+          value={message}
         />
       </div>
       <Button
-        type="submit"
-        size="icon"
+        className="size-10"
         disabled={isDisabled || !message.trim()}
-        className="h-10 w-10"
+        size="icon"
+        type="submit"
       >
-        <SendIcon className="h-5 w-5" />
+        <SendIcon className="size-5" />
       </Button>
     </form>
   )

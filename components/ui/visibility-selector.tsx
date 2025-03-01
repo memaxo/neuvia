@@ -8,7 +8,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { ReactNode, useMemo, useState } from 'react'
+import type { ReactNode} from 'react';
+import { useMemo, useState } from 'react'
 
 import { useChatVisibility } from '@/hooks/use-chat-visibility'
 import {
@@ -61,17 +62,17 @@ export function VisibilitySelector({
   )
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger
         asChild
         className={cn(
-          'w-fit data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
+          'data-[state=open]:bg-accent data-[state=open]:text-accent-foreground w-fit',
           className
         )}
       >
         <Button
+          className="hidden md:flex md:h-[34px] md:px-2"
           variant="outline"
-          className="hidden md:flex md:px-2 md:h-[34px]"
         >
           {selectedVisibility?.icon}
           {selectedVisibility?.label}
@@ -82,18 +83,18 @@ export function VisibilitySelector({
       <DropdownMenuContent align="start" className="min-w-[300px]">
         {visibilities.map((visibility) => (
           <DropdownMenuItem
+            className="group/item flex flex-row items-center justify-between gap-4"
+            data-active={visibility.id === visibilityType}
             key={visibility.id}
             onSelect={() => {
               setVisibilityType(visibility.id)
               setOpen(false)
             }}
-            className="gap-4 group/item flex flex-row justify-between items-center"
-            data-active={visibility.id === visibilityType}
           >
-            <div className="flex flex-col gap-1 items-start">
+            <div className="flex flex-col items-start gap-1">
               {visibility.label}
               {visibility.description && (
-                <div className="text-xs text-muted-foreground">
+                <div className="text-muted-foreground text-xs">
                   {visibility.description}
                 </div>
               )}

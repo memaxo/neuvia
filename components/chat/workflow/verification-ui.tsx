@@ -63,16 +63,16 @@ export const VerificationStatus = ({
 
   return (
     <Badge
-      variant="outline"
       className={cn(
-        'px-2 py-1 flex items-center gap-1.5',
+        'flex items-center gap-1.5 px-2 py-1',
         statusColor,
         className
       )}
+      variant="outline"
     >
       <Icon
         className={cn(
-          'h-3.5 w-3.5',
+          'size-3.5',
           status === 'in_progress' && 'animate-spin'
         )}
       />
@@ -100,12 +100,12 @@ export const VerificationActions = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="outline"
-            size="sm"
-            className="bg-green-100 hover:bg-green-200 text-green-800 border-green-200 dark:bg-green-900/30 dark:hover:bg-green-800/50 dark:text-green-300 dark:border-green-800"
+            className="border-green-200 bg-green-100 text-green-800 hover:bg-green-200 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
             onClick={onConfirm}
+            size="sm"
+            variant="outline"
           >
-            <CheckCircle className="mr-1 h-4 w-4" />
+            <CheckCircle className="mr-1 size-4" />
             Confirm
           </Button>
         </TooltipTrigger>
@@ -115,12 +115,12 @@ export const VerificationActions = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="outline"
-            size="sm"
-            className="bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-800/50 dark:text-amber-300 dark:border-amber-800"
+            className="border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-800/50"
             onClick={onEdit}
+            size="sm"
+            variant="outline"
           >
-            <Edit className="mr-1 h-4 w-4" />
+            <Edit className="mr-1 size-4" />
             Edit
           </Button>
         </TooltipTrigger>
@@ -130,8 +130,8 @@ export const VerificationActions = ({
       {onHistory && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" onClick={onHistory}>
-              <History className="mr-1 h-4 w-4" />
+            <Button onClick={onHistory} size="sm" variant="outline">
+              <History className="mr-1 size-4" />
               History
             </Button>
           </TooltipTrigger>
@@ -157,19 +157,19 @@ export const SectionCorrectionButtons = ({
   return (
     <div
       className={cn(
-        'flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity',
+        'flex gap-1 opacity-0 transition-opacity group-hover:opacity-100',
         className
       )}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
-            size="xs"
             className="h-6 px-2 text-xs"
             onClick={() => onCorrect(sectionTitle)}
+            size="xs"
+            variant="ghost"
           >
-            <Edit className="mr-1 h-3 w-3" />
+            <Edit className="mr-1 size-3" />
             Edit Section
           </Button>
         </TooltipTrigger>
@@ -193,11 +193,11 @@ export const ProgressIndicator = ({
 }) => {
   return (
     <div className={cn('w-full space-y-1', className)}>
-      <div className="flex justify-between text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex justify-between text-xs">
         <span>{phase}</span>
         <span>{Math.round(value)}%</span>
       </div>
-      <Progress value={value} className="h-2" />
+      <Progress className="h-2" value={value} />
     </div>
   )
 }
@@ -215,7 +215,7 @@ export const VersionIndicator = ({
   className?: string
 }) => {
   return (
-    <Badge variant="outline" className={cn('text-xs', className)}>
+    <Badge className={cn('text-xs', className)} variant="outline">
       Version {version}/{total}
     </Badge>
   )
@@ -238,12 +238,12 @@ export const SectionVoting = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
-            size="xs"
-            className="h-6 w-6 p-0 rounded-full text-green-600"
+            className="size-6 rounded-full p-0 text-green-600"
             onClick={onApprove}
+            size="xs"
+            variant="ghost"
           >
-            <ThumbsUp className="h-3.5 w-3.5" />
+            <ThumbsUp className="size-3.5" />
             <span className="sr-only">Approve</span>
           </Button>
         </TooltipTrigger>
@@ -253,12 +253,12 @@ export const SectionVoting = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost"
-            size="xs"
-            className="h-6 w-6 p-0 rounded-full text-red-600"
+            className="size-6 rounded-full p-0 text-red-600"
             onClick={onReject}
+            size="xs"
+            variant="ghost"
           >
-            <ThumbsDown className="h-3.5 w-3.5" />
+            <ThumbsDown className="size-3.5" />
             <span className="sr-only">Reject</span>
           </Button>
         </TooltipTrigger>

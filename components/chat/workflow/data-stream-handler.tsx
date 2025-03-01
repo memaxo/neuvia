@@ -2,12 +2,12 @@
 
 import { initialBlockData, useBlock } from '@/hooks/use-block'
 import { useUserMessageId } from '@/hooks/use-user-message-id'
-import { Suggestion } from '@/lib/db/schema'
+import type { Suggestion } from '@/lib/db/schema'
 import { useDeepResearch } from '@/lib/deep-research-context'
 import { useChat } from 'ai/react'
 import { cx } from 'class-variance-authority'
 import { useEffect, useRef } from 'react'
-import { BlockKind } from './block'
+import type { BlockKind } from './block'
 
 type DataStreamDelta = {
   type:

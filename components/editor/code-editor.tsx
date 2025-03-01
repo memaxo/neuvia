@@ -1,6 +1,6 @@
 'use client'
 
-import { Suggestion } from '@/lib/db/schema'
+import type { Suggestion } from '@/lib/db/schema'
 import { python } from '@codemirror/lang-python'
 import { EditorState, Transaction } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -92,7 +92,7 @@ function PureCodeEditor({ content, saveContent, status }: EditorProps) {
 
   return (
     <div
-      className="relative not-prose w-full pb-[calc(80dvh)] text-sm"
+      className="not-prose relative w-full pb-[calc(80dvh)] text-sm"
       ref={containerRef}
     />
   )

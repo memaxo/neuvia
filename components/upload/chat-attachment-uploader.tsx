@@ -169,7 +169,7 @@ export function ChatAttachmentUploader({
               </span>
             </span>
             <Button
-              className="ml-2 h-5 w-5 p-0"
+              className="ml-2 size-5 p-0"
               onClick={() => removeAttachment(index)}
               size="sm"
               variant="ghost"

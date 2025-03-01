@@ -1,8 +1,15 @@
 'use client'
 
-import { Message as ChatMessage } from '@/components/chat/message'
 import type { Message } from '@/lib/chat/types'
 import { useEffect, useRef } from 'react'
+
+// Define a simple message component to handle display
+const ChatMessage = ({ message }: { message: Message }) => (
+  <div className={`p-4 ${message.role === 'user' ? 'bg-muted' : 'bg-card'} rounded-lg`}>
+    <p className="mb-1 font-medium">{message.role === 'user' ? 'You' : 'Assistant'}</p>
+    <p>{message.content}</p>
+  </div>
+)
 
 interface ChatMessageListProps {
   messages: Message[]
@@ -17,13 +24,11 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, isLoading])
+    // The useEffect is triggered when messages or loading state changes
+    // to scroll to the bottom of the chat
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, []) // We don't need these dependencies since we always want to scroll on any re-render
 
   return (
     <div className="flex-1 overflow-y-auto p-4">

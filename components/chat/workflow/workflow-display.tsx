@@ -74,7 +74,7 @@ export function WorkflowStatusDisplay({
             You can finalize the process by generating a comprehensive report,
             or skip.
           </p>
-          <div className="mt-4 flex gap-2 justify-end">
+          <div className="mt-4 flex justify-end gap-2">
             <Button onClick={onGenerateReport} variant="default">
               Generate Report
             </Button>

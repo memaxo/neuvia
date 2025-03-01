@@ -105,7 +105,7 @@ export function AvatarUploader({
           />
         ) : (
           <div
-            className="flex items-center justify-center rounded-full bg-secondary text-secondary-foreground"
+            className="bg-secondary text-secondary-foreground flex items-center justify-center rounded-full"
             style={{ height: size, width: size }}
           >
             <User size={size * 0.5} />
@@ -126,7 +126,7 @@ export function AvatarUploader({
 
       <div className="flex items-center gap-2">
         <label
-          className="cursor-pointer rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80"
+          className="bg-secondary text-secondary-foreground hover:bg-secondary/80 cursor-pointer rounded-md px-4 py-2 text-sm font-medium"
           htmlFor="avatar-upload"
         >
           {uploading ? 'Uploading...' : 'Change Image'}

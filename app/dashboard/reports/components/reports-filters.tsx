@@ -118,8 +118,6 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-4">
             {filters.type.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ type: filter.value })}
                 className={cn(
                   // Base styles
                   'group relative w-full',
@@ -136,6 +134,8 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                   'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
                   'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ type: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div
@@ -161,7 +161,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
+                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent" />
                 </div>
               </button>
             ))}
@@ -190,8 +190,6 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-4">
             {filters.timeframe.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ timeframe: filter.value })}
                 className={cn(
                   // Base styles
                   'group relative w-full',
@@ -208,6 +206,8 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                   'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
                   'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ timeframe: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -223,7 +223,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
+                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent" />
                 </div>
               </button>
             ))}
@@ -252,8 +252,6 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
           <div className="space-y-4">
             {filters.status.map((filter) => (
               <button
-                key={filter.value}
-                onClick={() => onFilterChange?.({ status: filter.value })}
                 className={cn(
                   // Base styles
                   'group relative w-full',
@@ -270,6 +268,8 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                   'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
                   'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
+                key={filter.value}
+                onClick={() => onFilterChange?.({ status: filter.value })}
               >
                 {/* Gradient overlay */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
@@ -285,7 +285,7 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
 
                 {/* Scanning line effect */}
                 <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                  <div className="absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent group-hover:animate-scan" />
+                  <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--primary))/0.3] to-transparent" />
                 </div>
               </button>
             ))}

@@ -18,8 +18,8 @@ export default function ExtractionLoadingPage() {
         router.push(`/dashboard/chat?mode=verification&patientId=${params.id}`);
       </p>
       <div className="mt-4 flex items-center space-x-2">
-        <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-primary" />
-        <span className="text-sm text-muted-foreground">Please wait...</span>
+        <div className="border-primary size-4 animate-spin rounded-full border-b-2" />
+        <span className="text-muted-foreground text-sm">Please wait...</span>
       </div>
     </div>
   )

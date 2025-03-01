@@ -19,7 +19,7 @@ export function PatientStats({ data }: PatientStatsProps) {
       <CardContent>
         <div className="grid gap-6">
           {data.map((stat, index) => (
-            <div key={stat.label} className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2" key={stat.label}>
               {index > 0 && <Separator className="-mt-4" />}
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-70))]">

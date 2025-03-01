@@ -25,7 +25,7 @@ export default async function ContactPage() {
             <span className="inline-block font-bold">{siteConfig.name}</span>
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">Contact Us</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Rather talk? Call us at +1-555-867-5309.
           </p>
         </div>

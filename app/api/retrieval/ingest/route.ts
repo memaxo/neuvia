@@ -57,9 +57,10 @@ export async function POST(req: NextRequest) {
     )
 
     return NextResponse.json({ ok: true }, { status: 200 })
-  } catch (e: any) {
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e)
     return NextResponse.json(
-      { success: false, error: e.message },
+      { success: false, error: errorMessage },
       { status: 500 }
     )
   }

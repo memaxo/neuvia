@@ -69,7 +69,7 @@ export default function SettingsPage() {
       {/* Content stack */}
       <div className="relative space-y-6 p-6">
         {/* Header Section */}
-        <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm p-6">
+        <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] p-6 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="bg-gradient-to-r from-[rgb(var(--primary-light))] via-[rgb(var(--primary))] to-[rgb(var(--primary-dark))] bg-clip-text text-3xl font-extrabold text-transparent">

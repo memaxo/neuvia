@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Model } from '@/lib/ai/models'
+import type { Model } from '@/lib/ai/models'
 import { cn } from '@/lib/utils'
 
 import { CheckCircleFillIcon, ChevronDownIcon } from './icons'
@@ -37,25 +37,27 @@ export function ModelSelector({
   return (
     <div className="flex flex-row gap-1">
       {/* <label className="text-sm text-muted-foreground">{label}</label> */}
-      <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenu onOpenChange={setOpen} open={open}>
         <DropdownMenuTrigger
           asChild
           className={cn(
-            'w-fit data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
+            'data-[state=open]:bg-accent data-[state=open]:text-accent-foreground w-fit',
             className
           )}
         >
-          <Button variant="outline" className="md:px-2 md:h-[34px]">
+          <Button className="md:h-[34px] md:px-2" variant="outline">
             {selectedModel?.label}
             <ChevronDownIcon />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="min-w-[300px]">
-          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+          <div className="text-muted-foreground px-2 py-1.5 text-sm">
             {label}
           </div>
           {models.map((model) => (
             <DropdownMenuItem
+              className="group/item flex flex-row items-center justify-between gap-4"
+              data-active={model.id === optimisticModelId}
               key={model.id}
               onSelect={() => {
                 setOpen(false)
@@ -65,13 +67,11 @@ export function ModelSelector({
                   saveModelId(model.id)
                 })
               }}
-              className="gap-4 group/item flex flex-row justify-between items-center"
-              data-active={model.id === optimisticModelId}
             >
-              <div className="flex flex-col gap-1 items-start">
+              <div className="flex flex-col items-start gap-1">
                 {model.label}
                 {model.description && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-muted-foreground text-xs">
                     {model.description}
                   </div>
                 )}
