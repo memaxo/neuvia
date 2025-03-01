@@ -6,24 +6,24 @@ export interface ExtractedData {
   /**
    * Raw extracted text from the document
    */
-  rawText: string;
+  rawText: string
 
   /**
    * Additional metadata about the document
    */
   metadata: {
-    pageCount?: number;
-    docType?: string;
+    pageCount?: number
+    docType?: string
     // Extend with other relevant fields as needed
-    [key: string]: any;
-  };
+    [key: string]: any
+  }
 
   /**
    * Optional chunked data
    */
   chunks?: Array<{
-    content: string;
-    pageNumber?: number;
+    content: string
+    pageNumber?: number
     // Additional fields as necessary
-  }>;
+  }>
 }

@@ -51,7 +51,7 @@ export default function SplineWrapper({
   return (
     <div className="relative size-full">
       <Spline
-        className={cn("absolute inset-0 size-full object-cover", className)}
+        className={cn('absolute inset-0 size-full object-cover', className)}
         nonce={nonce}
         onError={handleError}
         onLoad={handleLoad}

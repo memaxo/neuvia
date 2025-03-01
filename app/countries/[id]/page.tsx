@@ -12,12 +12,7 @@ export default function CountryPage({ params }: { params: { id: string } }) {
     notFound()
   }
 
-  const {
-    data: country,
-    isLoading,
-    isError,
-    error
-  } = useCountry(countryId)
+  const { data: country, isLoading, isError, error } = useCountry(countryId)
 
   if (isLoading) {
     return (
@@ -38,7 +33,8 @@ export default function CountryPage({ params }: { params: { id: string } }) {
     return (
       <div className="p-4">
         <div className="text-red-500">
-          Error: {error instanceof Error ? error.message : 'Failed to load country'}
+          Error:{' '}
+          {error instanceof Error ? error.message : 'Failed to load country'}
         </div>
       </div>
     )

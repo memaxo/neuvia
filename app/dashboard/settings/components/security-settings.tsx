@@ -43,7 +43,7 @@ export function SecuritySettings() {
           <div className="space-y-2">
             <Label className="text-white/70">Current Password</Label>
             <div className="group relative">
-bg-gradient-to-r from-[#004FFF]/20 via-transparent to-[#004FFF]/20
+              bg-gradient-to-r from-[#004FFF]/20 via-transparent to-[#004FFF]/20
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/40 transition-colors duration-300 group-focus-within:text-cyan-400" />
                 <Input
@@ -88,7 +88,7 @@ bg-gradient-to-r from-[#004FFF]/20 via-transparent to-[#004FFF]/20
           </div>
 
           {/* Update Password Button */}
-            <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+          <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
             Update Password
             <div className="absolute inset-0 overflow-hidden">
               <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
@@ -114,8 +114,8 @@ bg-gradient-to-r from-[#004FFF]/20 via-transparent to-[#004FFF]/20
               key={feature.id}
             >
               {/* Enhanced gradient overlay */}
-bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
-
+              bg-gradient-to-br from-[#004FFF]/10 via-transparent
+              to-[#004FFF]/10
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
@@ -135,7 +135,6 @@ bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
                   defaultChecked={feature.enabled}
                 />
               </div>
-
               {/* Enhanced scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />

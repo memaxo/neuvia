@@ -1,20 +1,24 @@
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { memo } from 'react';
-import { useWindowSize } from 'usehooks-ts';
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { memo } from 'react'
+import { useWindowSize } from 'usehooks-ts'
 
-import { Button } from '@/components/ui/button';
-import { PlusIcon } from '@/components/ui/icons';
-import { ModelSelector } from '@/components/ui/model-selector';
-import { useSidebar } from '@/components/ui/sidebar';
-import { SidebarToggle } from '@/components/ui/sidebar-toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { VisibilityType} from '@/components/ui/visibility-selector';
-import { VisibilitySelector } from '@/components/ui/visibility-selector';
-import { models, reasoningModels } from '@/lib/ai/models';
-import { useDeepResearch } from '@/contexts/deep-research-context';
+import { Button } from '@/components/ui/button'
+import { PlusIcon } from '@/components/ui/icons'
+import { ModelSelector } from '@/components/ui/model-selector'
+import { useSidebar } from '@/components/ui/sidebar'
+import { SidebarToggle } from '@/components/ui/sidebar-toggle'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import type { VisibilityType } from '@/components/ui/visibility-selector'
+import { VisibilitySelector } from '@/components/ui/visibility-selector'
+import { useDeepResearch } from '@/contexts/deep-research-context'
+import { models, reasoningModels } from '@/lib/ai/models'
 
 function PureChatHeader({
   chatId,
@@ -23,18 +27,18 @@ function PureChatHeader({
   selectedVisibilityType,
   isReadonly,
 }: {
-  chatId: string;
-  selectedModelId: string;
-  selectedReasoningModelId: string;
-  selectedVisibilityType: VisibilityType;
-  isReadonly: boolean;
+  chatId: string
+  selectedModelId: string
+  selectedReasoningModelId: string
+  selectedVisibilityType: VisibilityType
+  isReadonly: boolean
 }) {
-  const router = useRouter();
-  const { open } = useSidebar();
+  const router = useRouter()
+  const { open } = useSidebar()
 
-  const { width: windowWidth } = useWindowSize();
+  const { width: windowWidth } = useWindowSize()
 
-  const { clearState } = useDeepResearch();
+  const { clearState } = useDeepResearch()
 
   return (
     <header className="bg-background sticky top-0 flex items-center gap-2 px-2 py-1.5 md:px-2">
@@ -46,10 +50,10 @@ function PureChatHeader({
             <Button
               className="order-2 ml-auto px-2 md:order-1 md:ml-0 md:h-fit md:px-2"
               onClick={() => {
-                router.push('/');
-                clearState();
+                router.push('/')
+                clearState()
 
-                router.refresh();
+                router.refresh()
               }}
               variant="outline"
             >
@@ -152,9 +156,12 @@ function PureChatHeader({
         </Link>
       </Button>
     </header>
-  );
+  )
 }
 
 export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
-  return prevProps.selectedModelId === nextProps.selectedModelId && prevProps.selectedReasoningModelId === nextProps.selectedReasoningModelId;
-});
+  return (
+    prevProps.selectedModelId === nextProps.selectedModelId &&
+    prevProps.selectedReasoningModelId === nextProps.selectedReasoningModelId
+  )
+})

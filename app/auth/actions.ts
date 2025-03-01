@@ -9,7 +9,9 @@ import { createServerClient } from '@/lib/supabase'
 
 // Validation schemas
 const emailSchema = z.string().email('Please enter a valid email address')
-const passwordSchema = z.string().min(8, 'Password must be at least 8 characters')
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
 
 export type AuthResponse<T = { user: User | null }> = {
   data: T | null
@@ -28,14 +30,14 @@ export async function signUpWithEmailAndPassword(data: {
     // Validate input
     const email = emailSchema.parse(data.email)
     const password = passwordSchema.parse(data.password)
-    
+
     if (data.password !== data.confirm) {
-      return { 
-        data: null, 
-        error: { 
+      return {
+        data: null,
+        error: {
           message: 'Passwords do not match',
-          status: 400
-        } as AuthError 
+          status: 400,
+        } as AuthError,
       }
     }
 
@@ -57,16 +59,16 @@ export async function signUpWithEmailAndPassword(data: {
         data: null,
         error: {
           message: error.errors[0].message,
-          status: 400
-        } as AuthError
+          status: 400,
+        } as AuthError,
       }
     }
     return {
       data: null,
       error: {
         message: 'An unexpected error occurred',
-        status: 500
-      } as AuthError
+        status: 500,
+      } as AuthError,
     }
   }
 }
@@ -101,16 +103,16 @@ export async function loginWithEmailAndPassword(data: {
         data: null,
         error: {
           message: error.errors[0].message,
-          status: 400
-        } as AuthError
+          status: 400,
+        } as AuthError,
       }
     }
     return {
       data: null,
       error: {
         message: 'An unexpected error occurred',
-        status: 500
-      } as AuthError
+        status: 500,
+      } as AuthError,
     }
   }
 }
@@ -118,7 +120,9 @@ export async function loginWithEmailAndPassword(data: {
 /**
  * Signs in a user with Google OAuth
  */
-export async function signInWithGoogle(): Promise<AuthResponse<{ url: string }>> {
+export async function signInWithGoogle(): Promise<
+  AuthResponse<{ url: string }>
+> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
@@ -141,7 +145,9 @@ export async function signInWithGoogle(): Promise<AuthResponse<{ url: string }>>
 /**
  * Signs in a user with GitHub OAuth
  */
-export async function signInWithGithub(): Promise<AuthResponse<{ url: string }>> {
+export async function signInWithGithub(): Promise<
+  AuthResponse<{ url: string }>
+> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'github',
@@ -160,7 +166,9 @@ export async function signInWithGithub(): Promise<AuthResponse<{ url: string }>>
 /**
  * Signs in a user with Twitter OAuth
  */
-export async function signInWithTwitter(): Promise<AuthResponse<{ url: string }>> {
+export async function signInWithTwitter(): Promise<
+  AuthResponse<{ url: string }>
+> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'twitter',
@@ -204,4 +212,4 @@ export async function getUser(): Promise<AuthResponse> {
   const supabase = await createServerClient()
   const { data, error } = await supabase.auth.getUser()
   return { data, error }
-} 
+}

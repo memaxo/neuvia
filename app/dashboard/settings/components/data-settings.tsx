@@ -16,10 +16,10 @@ export function DataSettings() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-<Label className="text-[#6B818C]" htmlFor="analytics">
+              <Label className="text-[#6B818C]" htmlFor="analytics">
                 Usage Analytics
               </Label>
-<p className="text-xs text-[#6B818C]">
+              <p className="text-xs text-[#6B818C]">
                 Help improve our service by sharing anonymous usage data
               </p>
             </div>
@@ -31,7 +31,8 @@ export function DataSettings() {
                 Personalized Experience
               </Label>
               <p className="text-xs text-white/50">
-                Allow AI to learn from your interactions to improve recommendations
+                Allow AI to learn from your interactions to improve
+                recommendations
               </p>
             </div>
             <Switch defaultChecked id="personalization" />
@@ -39,7 +40,7 @@ export function DataSettings() {
         </div>
       </div>
 
-        <Separator className="bg-[#6B818C]/5" />
+      <Separator className="bg-[#6B818C]/5" />
 
       {/* Data Management */}
       <div className="space-y-4">
@@ -53,7 +54,8 @@ export function DataSettings() {
               <Download className="size-4" />
               <span>Export All Data</span>
               <div className="absolute inset-0 overflow-hidden">
-                bg-gradient-to-r from-transparent via-[#004FFF]/40 to-transparent
+                bg-gradient-to-r from-transparent via-[#004FFF]/40
+                to-transparent
               </div>
             </Button>
             <p className="text-xs text-white/50">
@@ -100,15 +102,16 @@ export function DataSettings() {
       {/* Data Encryption */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-            <Lock className="size-4 text-[#004FFF]" />
-          <h4 className="text-sm font-medium text-white/90">End-to-End Encryption</h4>
+          <Lock className="size-4 text-[#004FFF]" />
+          <h4 className="text-sm font-medium text-white/90">
+            End-to-End Encryption
+          </h4>
         </div>
         <p className="text-sm text-white/70">
-          Your data is encrypted using industry-standard protocols. Only you can access your sensitive information.
+          Your data is encrypted using industry-standard protocols. Only you can
+          access your sensitive information.
         </p>
-        <Button
-          className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]"
-        >
+        <Button className="group relative w-full overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
           Manage Encryption Settings
           <div className="absolute inset-0 overflow-hidden">
             <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
@@ -117,4 +120,4 @@ export function DataSettings() {
       </div>
     </div>
   )
-} 
+}

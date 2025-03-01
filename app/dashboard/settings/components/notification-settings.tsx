@@ -73,8 +73,8 @@ export function NotificationSettings() {
               key={type.id}
             >
               {/* Enhanced gradient overlay */}
-bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
-
+              bg-gradient-to-br from-[#004FFF]/10 via-transparent
+              to-[#004FFF]/10
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg border border-white/10 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 p-2">
@@ -91,10 +91,10 @@ bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
                 </div>
                 data-[state=checked]:bg-[#004FFF]
               </div>
-
               {/* Enhanced scanning line effect */}
               <div className="absolute inset-0 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent
+                bg-gradient-to-r from-transparent via-[#004FFF]/60
+                to-transparent
               </div>
             </div>
           ))}
@@ -142,12 +142,12 @@ bg-gradient-to-br from-[#004FFF]/10 via-transparent to-[#004FFF]/10
       </div>
 
       {/* Warning Note */}
-        <div className="relative rounded-xl border border-[#902D41]/20 bg-[#902D41]/10 p-4">
+      <div className="relative rounded-xl border border-[#902D41]/20 bg-[#902D41]/10 p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-yellow-500/20 p-1.5">
             <AlertCircle className="size-4 text-[#902D41]" />
           </div>
-            <div className="text-sm text-[#902D41]/70">
+          <div className="text-sm text-[#902D41]/70">
             Critical notifications related to patient safety and system security
             cannot be disabled.
           </div>

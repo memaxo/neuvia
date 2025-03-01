@@ -2,7 +2,7 @@ import { Filter, PlusCircle, Search, SlidersHorizontal } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
 
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Tooltip,
@@ -10,7 +10,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { PatientFilters } from './components/patient-filters'
@@ -163,7 +162,7 @@ export default function PatientsPage() {
             'bg-[rgb(var(--primary))] text-white shadow-lg',
             'transition-all duration-normal',
             'hover:bg-[rgb(var(--primary-dark))] hover:shadow-xl'
-          )
+          ),
         })}
         href={'/dashboard/patients/new' as Route}
       >

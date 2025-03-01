@@ -8,7 +8,7 @@ import AccountForm from './supa-account-form'
 
 export default async function SettingsAccountPage() {
   const { data, error } = await getUser()
-  
+
   if (!data?.user) {
     redirect('/auth')
   }

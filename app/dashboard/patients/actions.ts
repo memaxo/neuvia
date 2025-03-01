@@ -1,27 +1,29 @@
-'use server';
+'use server'
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath } from 'next/cache'
 
-import type { Database } from '@/lib/supabase';
-import { createServerClient } from '@/lib/supabase/clients';
+import type { Database } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/clients'
 
-type PatientInsert = Database['public']['Tables']['patients']['Insert'];
+type PatientInsert = Database['public']['Tables']['patients']['Insert']
 
 export async function createPatient(formData: FormData) {
-  const supabase = await createServerClient();
-  
+  const supabase = await createServerClient()
+
   // Get current user
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user === null || user === undefined) throw new Error('Not authenticated');
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user === null || user === undefined) throw new Error('Not authenticated')
 
   // Extract form data
-  const fullName = formData.get('fullName')?.toString() ?? '';
-  const [firstName, ...lastNameParts] = fullName.split(' ');
-  const lastName = lastNameParts.join(' ');
-  const dateOfBirth = formData.get('dateOfBirth')?.toString();
-  
+  const fullName = formData.get('fullName')?.toString() ?? ''
+  const [firstName, ...lastNameParts] = fullName.split(' ')
+  const lastName = lastNameParts.join(' ')
+  const dateOfBirth = formData.get('dateOfBirth')?.toString()
+
   if (!dateOfBirth) {
-    throw new Error('Date of birth is required');
+    throw new Error('Date of birth is required')
   }
 
   // Basic information
@@ -36,66 +38,86 @@ export async function createPatient(formData: FormData) {
     created_by: user.id,
     last_modified_by: user.id,
     status: 'active',
-    mrn: formData.get('mrn')?.toString() || 'TBD' // Use provided MRN or placeholder
-  };
+    mrn: formData.get('mrn')?.toString() || 'TBD', // Use provided MRN or placeholder
+  }
 
   // Add contact information
-  data.address_line1 = formData.get('addressLine1')?.toString() || null;
-  data.address_line2 = formData.get('addressLine2')?.toString() || null;
-  data.city = formData.get('city')?.toString() || null;
-  data.state = formData.get('state')?.toString() || null;
-  data.postal_code = formData.get('postalCode')?.toString() || null;
-  data.country = formData.get('country')?.toString() || null;
-  
+  data.address_line1 = formData.get('addressLine1')?.toString() || null
+  data.address_line2 = formData.get('addressLine2')?.toString() || null
+  data.city = formData.get('city')?.toString() || null
+  data.state = formData.get('state')?.toString() || null
+  data.postal_code = formData.get('postalCode')?.toString() || null
+  data.country = formData.get('country')?.toString() || null
+
   // Add emergency contact
-  data.emergency_contact_name = formData.get('emergencyContactName')?.toString() || null;
-  data.emergency_contact_phone = formData.get('emergencyContactPhone')?.toString() || null;
-  data.emergency_contact_relationship = formData.get('emergencyContactRelationship')?.toString() || null;
-  
+  data.emergency_contact_name =
+    formData.get('emergencyContactName')?.toString() || null
+  data.emergency_contact_phone =
+    formData.get('emergencyContactPhone')?.toString() || null
+  data.emergency_contact_relationship =
+    formData.get('emergencyContactRelationship')?.toString() || null
+
   // Add medical information
-  data.blood_type = formData.get('bloodType')?.toString() || null;
-  
+  data.blood_type = formData.get('bloodType')?.toString() || null
+
   // Convert string fields to JSON arrays/objects
-  const allergies = formData.get('allergies')?.toString();
+  const allergies = formData.get('allergies')?.toString()
   if (allergies) {
-    data.allergies = JSON.stringify(allergies.split('\n').filter(Boolean).map(item => ({ name: item.trim() })));
+    data.allergies = JSON.stringify(
+      allergies
+        .split('\n')
+        .filter(Boolean)
+        .map((item) => ({ name: item.trim() }))
+    )
   }
-  
-  const medications = formData.get('currentMedications')?.toString();
+
+  const medications = formData.get('currentMedications')?.toString()
   if (medications) {
-    data.current_medications = JSON.stringify(medications.split('\n').filter(Boolean).map(item => ({ name: item.trim() })));
+    data.current_medications = JSON.stringify(
+      medications
+        .split('\n')
+        .filter(Boolean)
+        .map((item) => ({ name: item.trim() }))
+    )
   }
-  
-  const conditions = formData.get('conditions')?.toString();
+
+  const conditions = formData.get('conditions')?.toString()
   if (conditions) {
-    data.conditions = JSON.stringify(conditions.split('\n').filter(Boolean).map(item => ({ name: item.trim() })));
+    data.conditions = JSON.stringify(
+      conditions
+        .split('\n')
+        .filter(Boolean)
+        .map((item) => ({ name: item.trim() }))
+    )
   }
-  
+
   // Add administrative information
-  data.primary_care_physician = formData.get('primaryCarePhysician')?.toString() || null;
-  data.insurance_provider = formData.get('insuranceProvider')?.toString() || null;
-  data.insurance_id = formData.get('insuranceId')?.toString() || null;
+  data.primary_care_physician =
+    formData.get('primaryCarePhysician')?.toString() || null
+  data.insurance_provider =
+    formData.get('insuranceProvider')?.toString() || null
+  data.insurance_id = formData.get('insuranceId')?.toString() || null
 
   // Insert into patients table
   const { data: patient, error } = await supabase
     .from('patients')
     .insert(data)
     .select()
-    .single();
+    .single()
 
   if (error !== null) {
-    throw error;
+    throw error
   }
 
   // Revalidate the patients list page
-  revalidatePath('/dashboard/patients');
+  revalidatePath('/dashboard/patients')
 
-  return patient.id;
+  return patient.id
 }
 
 export async function getPatient(id: string) {
-  const supabase = await createServerClient();
-  
+  const supabase = await createServerClient()
+
   const { data: patient, error } = await supabase
     .from('patients')
     .select(`
@@ -114,40 +136,42 @@ export async function getPatient(id: string) {
       )
     `)
     .eq('id', id)
-    .single();
+    .single()
 
   if (error !== null) {
-    throw error;
+    throw error
   }
 
-  return patient;
+  return patient
 }
 
 export async function getPatientDocumentStats(patientId: string) {
-  const supabase = await createServerClient();
-  
+  const supabase = await createServerClient()
+
   // Get document counts by category
   const { data: categoryStats, error: categoryError } = await supabase
     .from('patient_documents')
     .select('category, count(*)')
     .eq('patient_id', patientId)
-    .group('category');
-    
+    .group('category')
+
   // Get document counts by processing status
   const { data: statusStats, error: statusError } = await supabase
     .from('patient_documents')
     .select('processing_status, count(*)')
     .eq('patient_id', patientId)
-    .group('processing_status');
-  
+    .group('processing_status')
+
   if (categoryError || statusError) {
-    throw categoryError || statusError;
+    throw categoryError || statusError
   }
-  
+
   return {
     byCategory: categoryStats || [],
     byStatus: statusStats || [],
-    total: categoryStats ? categoryStats.reduce((sum, item) => sum + parseInt(item.count, 10), 0) : 0,
-    patientId
-  };
-} 
+    total: categoryStats
+      ? categoryStats.reduce((sum, item) => sum + parseInt(item.count, 10), 0)
+      : 0,
+    patientId,
+  }
+}

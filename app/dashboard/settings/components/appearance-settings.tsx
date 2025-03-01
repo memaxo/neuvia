@@ -18,39 +18,37 @@ export function AppearanceSettings() {
     <div className="space-y-6">
       {/* Theme Selection */}
       <div className="space-y-3">
-        <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">Theme</Label>
+        <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">
+          Theme
+        </Label>
         <RadioGroup
           className="grid grid-cols-3 gap-4"
           defaultValue={theme}
           onValueChange={(value: Theme) => setTheme(value)}
         >
           <div>
-            <RadioGroupItem
-              className="peer sr-only"
-              id="light"
-              value="light"
-            />
+            <RadioGroupItem className="peer sr-only" id="light" value="light" />
             <Label
               className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] p-4 hover:bg-[rgb(var(--background))/var(--opacity-60)] peer-data-[state=checked]:border-[rgb(var(--primary))/var(--opacity-50)] peer-data-[state=checked]:bg-[rgb(var(--primary))/var(--opacity-10)] [&:has([data-state=checked])]:border-[rgb(var(--primary))/var(--opacity-50)]"
               htmlFor="light"
             >
               <Sun className="mb-3 size-6 text-[rgb(var(--foreground))]" />
-              <span className="text-sm font-medium text-[rgb(var(--foreground))]">Light</span>
+              <span className="text-sm font-medium text-[rgb(var(--foreground))]">
+                Light
+              </span>
             </Label>
           </div>
 
           <div>
-            <RadioGroupItem
-              className="peer sr-only"
-              id="dark"
-              value="dark"
-            />
+            <RadioGroupItem className="peer sr-only" id="dark" value="dark" />
             <Label
               className="flex cursor-pointer flex-col items-center justify-between rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] p-4 hover:bg-[rgb(var(--background))/var(--opacity-60)] peer-data-[state=checked]:border-[rgb(var(--primary))/var(--opacity-50)] peer-data-[state=checked]:bg-[rgb(var(--primary))/var(--opacity-10)] [&:has([data-state=checked])]:border-[rgb(var(--primary))/var(--opacity-50)]"
               htmlFor="dark"
             >
               <Moon className="mb-3 size-6 text-[rgb(var(--foreground))]" />
-              <span className="text-sm font-medium text-[rgb(var(--foreground))]">Dark</span>
+              <span className="text-sm font-medium text-[rgb(var(--foreground))]">
+                Dark
+              </span>
             </Label>
           </div>
 
@@ -68,7 +66,9 @@ export function AppearanceSettings() {
                 <Sun className="absolute size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                 <Moon className="size-6 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               </div>
-              <span className="text-sm font-medium text-[rgb(var(--foreground))]">System</span>
+              <span className="text-sm font-medium text-[rgb(var(--foreground))]">
+                System
+              </span>
             </Label>
           </div>
         </RadioGroup>
@@ -78,22 +78,33 @@ export function AppearanceSettings() {
 
       {/* UI Preferences */}
       <div className="space-y-4">
-        <h4 className="text-sm font-medium text-[rgb(var(--foreground))]">Interface Preferences</h4>
+        <h4 className="text-sm font-medium text-[rgb(var(--foreground))]">
+          Interface Preferences
+        </h4>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]" htmlFor="animations">
+            <Label
+              className="text-[rgb(var(--foreground))/var(--opacity-70)]"
+              htmlFor="animations"
+            >
               Enable animations
             </Label>
             <Switch id="animations" />
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]" htmlFor="sounds">
+            <Label
+              className="text-[rgb(var(--foreground))/var(--opacity-70)]"
+              htmlFor="sounds"
+            >
               Interface sounds
             </Label>
             <Switch id="sounds" />
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]" htmlFor="tooltips">
+            <Label
+              className="text-[rgb(var(--foreground))/var(--opacity-70)]"
+              htmlFor="tooltips"
+            >
               Show tooltips
             </Label>
             <Switch defaultChecked id="tooltips" />
@@ -112,4 +123,4 @@ export function AppearanceSettings() {
       </Button>
     </div>
   )
-} 
+}

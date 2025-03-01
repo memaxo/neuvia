@@ -1,8 +1,8 @@
 'use client'
 
+import { type VariantProps, cva } from 'class-variance-authority'
 import { AlertCircle, CheckCircle2, Info, XCircle } from 'lucide-react'
 import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
 
@@ -14,9 +14,12 @@ const alertVariants = cva(
         default:
           'bg-[rgb(var(--background)/var(--opacity-40))] text-[rgb(var(--foreground)/var(--opacity-90))] backdrop-blur-sm [&>svg]:text-[rgb(var(--foreground)/var(--opacity-70))]',
         info: 'border-[rgb(var(--primary)/var(--opacity-20))] bg-[rgb(var(--primary)/var(--opacity-10))] text-[rgb(var(--primary))] backdrop-blur-sm [&>svg]:text-[rgb(var(--primary))]',
-        success: 'border-[rgb(var(--success)/var(--opacity-20))] bg-[rgb(var(--success)/var(--opacity-10))] text-[rgb(var(--success))] backdrop-blur-sm [&>svg]:text-[rgb(var(--success))]',
-        warning: 'border-[rgb(var(--warning)/var(--opacity-20))] bg-[rgb(var(--warning)/var(--opacity-10))] text-[rgb(var(--warning))] backdrop-blur-sm [&>svg]:text-[rgb(var(--warning))]',
-        error: 'border-[rgb(var(--error)/var(--opacity-20))] bg-[rgb(var(--error)/var(--opacity-10))] text-[rgb(var(--error))] backdrop-blur-sm [&>svg]:text-[rgb(var(--error))]',
+        success:
+          'border-[rgb(var(--success)/var(--opacity-20))] bg-[rgb(var(--success)/var(--opacity-10))] text-[rgb(var(--success))] backdrop-blur-sm [&>svg]:text-[rgb(var(--success))]',
+        warning:
+          'border-[rgb(var(--warning)/var(--opacity-20))] bg-[rgb(var(--warning)/var(--opacity-10))] text-[rgb(var(--warning))] backdrop-blur-sm [&>svg]:text-[rgb(var(--warning))]',
+        error:
+          'border-[rgb(var(--error)/var(--opacity-20))] bg-[rgb(var(--error)/var(--opacity-10))] text-[rgb(var(--error))] backdrop-blur-sm [&>svg]:text-[rgb(var(--error))]',
       },
     },
     defaultVariants: {
@@ -27,17 +30,20 @@ const alertVariants = cva(
 
 const Alert = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof alertVariants> & {
-    icon?: React.ReactNode
-  }
+  React.HTMLAttributes<HTMLDivElement> &
+    VariantProps<typeof alertVariants> & {
+      icon?: React.ReactNode
+    }
 >(({ className, variant, icon, children, ...props }, ref) => {
-  const Icon = icon || {
-    default: Info,
-    info: Info,
-    success: CheckCircle2,
-    warning: AlertCircle,
-    error: XCircle,
-  }[variant || 'default']
+  const Icon =
+    icon ||
+    {
+      default: Info,
+      info: Info,
+      success: CheckCircle2,
+      warning: AlertCircle,
+      error: XCircle,
+    }[variant || 'default']
 
   return (
     <div
@@ -79,4 +85,4 @@ const AlertDescription = React.forwardRef<
 ))
 AlertDescription.displayName = 'AlertDescription'
 
-export { Alert, AlertTitle, AlertDescription } 
+export { Alert, AlertTitle, AlertDescription }

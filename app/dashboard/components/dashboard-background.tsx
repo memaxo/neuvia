@@ -13,7 +13,9 @@ const SplineWrapper = dynamic(
       console.error('Error loading Spline:', err)
       return () => (
         <div className="flex size-full items-center justify-center bg-[rgb(var(--error))/var(--opacity-10)]">
-          <p className="text-[rgb(var(--error))]">Failed to load 3D scene: {err.message}</p>
+          <p className="text-[rgb(var(--error))]">
+            Failed to load 3D scene: {err.message}
+          </p>
         </div>
       )
     }),
@@ -41,7 +43,9 @@ interface DashboardBackgroundProps {
   nonce?: string
 }
 
-export default function DashboardBackground({ nonce }: DashboardBackgroundProps) {
+export default function DashboardBackground({
+  nonce,
+}: DashboardBackgroundProps) {
   const [isMounted, setIsMounted] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const splineRef = useRef<ExtendedApplication | null>(null)
@@ -55,9 +59,9 @@ export default function DashboardBackground({ nonce }: DashboardBackgroundProps)
           setIsVisible(entry.isIntersecting)
         })
       },
-      { 
+      {
         threshold: 0.1,
-        rootMargin: '50px' // Preload slightly before visible
+        rootMargin: '50px', // Preload slightly before visible
       }
     )
 
@@ -79,7 +83,7 @@ export default function DashboardBackground({ nonce }: DashboardBackgroundProps)
   const handleSplineLoad = (splineApp: ExtendedApplication) => {
     try {
       splineRef.current = splineApp
-      
+
       if (splineApp.scene) {
         // Optimize performance based on device capabilities
         if (splineApp.setRenderRate) {
@@ -108,19 +112,21 @@ export default function DashboardBackground({ nonce }: DashboardBackgroundProps)
   if (loadError) {
     return (
       <div className="flex size-full items-center justify-center bg-[rgb(var(--error))/var(--opacity-10)]">
-        <p className="text-[rgb(var(--error))]">Error loading scene: {loadError}</p>
+        <p className="text-[rgb(var(--error))]">
+          Error loading scene: {loadError}
+        </p>
       </div>
     )
   }
 
   return (
-    <div 
+    <div
       className={cn(
-        "duration-normal absolute inset-0 size-full overflow-hidden transition-all",
-        !isVisible && "opacity-0"
+        'duration-normal absolute inset-0 size-full overflow-hidden transition-all',
+        !isVisible && 'opacity-0'
       )}
       id="spline-container"
-      style={{ 
+      style={{
         pointerEvents: 'none',
         touchAction: 'none',
         userSelect: 'none',

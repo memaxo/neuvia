@@ -11,29 +11,29 @@ const filters = {
       value: 'high-risk',
       count: 12,
       icon: AlertCircle,
-      colorClass: 'status-badge-high-risk'
+      colorClass: 'status-badge-high-risk',
     },
     {
       label: 'At Risk',
       value: 'at-risk',
       count: 28,
       icon: AlertCircle,
-      colorClass: 'status-badge-at-risk'
+      colorClass: 'status-badge-at-risk',
     },
     {
       label: 'Stable',
       value: 'stable',
       count: 156,
       icon: User,
-      colorClass: 'status-badge-stable'
+      colorClass: 'status-badge-stable',
     },
     {
       label: 'New',
       value: 'new',
       count: 8,
       icon: User,
-      colorClass: 'status-badge-new'
-    }
+      colorClass: 'status-badge-new',
+    },
   ],
   appointments: [
     { label: 'Today', value: 'today', count: 5 },
@@ -60,23 +60,18 @@ export function PatientFilters() {
         <div className="p-4">
           <div className="space-y-2">
             {filters.status.map((filter) => (
-              <button
-                className="filter-button group"
-                key={filter.value}
-              >
+              <button className="filter-button group" key={filter.value}>
                 {/* Enhanced gradient overlay */}
                 <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
 
                 <div className="relative z-10 flex items-center gap-3">
-                  <div className={cn("rounded-lg p-2", filter.colorClass)}>
+                  <div className={cn('rounded-lg p-2', filter.colorClass)}>
                     <filter.icon className="size-4" />
                   </div>
                   <span className="duration-normal text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-70))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-100))]">
                     {filter.label}
                   </span>
-                  <span className="filter-count">
-                    {filter.count}
-                  </span>
+                  <span className="filter-count">{filter.count}</span>
                 </div>
 
                 {/* Scanning line effect */}
@@ -99,10 +94,7 @@ export function PatientFilters() {
         <div className="p-4">
           <div className="space-y-2">
             {filters.appointments.map((filter) => (
-              <button
-                className="filter-button group"
-                key={filter.value}
-              >
+              <button className="filter-button group" key={filter.value}>
                 {/* Enhanced gradient overlay */}
                 <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
 
@@ -113,9 +105,7 @@ export function PatientFilters() {
                   <span className="duration-normal text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-70))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-100))]">
                     {filter.label}
                   </span>
-                  <span className="filter-count">
-                    {filter.count}
-                  </span>
+                  <span className="filter-count">{filter.count}</span>
                 </div>
 
                 {/* Scanning line effect */}
@@ -138,10 +128,7 @@ export function PatientFilters() {
         <div className="p-4">
           <div className="space-y-2">
             {filters.activity.map((filter) => (
-              <button
-                className="filter-button group"
-                key={filter.value}
-              >
+              <button className="filter-button group" key={filter.value}>
                 {/* Enhanced gradient overlay */}
                 <div className="gradient-overlay-primary duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100" />
 
@@ -152,9 +139,7 @@ export function PatientFilters() {
                   <span className="duration-normal text-sm font-medium text-[rgb(var(--foreground)/var(--opacity-70))] transition-colors group-hover:text-[rgb(var(--foreground)/var(--opacity-100))]">
                     {filter.label}
                   </span>
-                  <span className="filter-count">
-                    {filter.count}
-                  </span>
+                  <span className="filter-count">{filter.count}</span>
                 </div>
 
                 {/* Scanning line effect */}

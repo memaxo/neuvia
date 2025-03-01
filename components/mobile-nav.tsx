@@ -2,7 +2,7 @@
 
 import { ViewVerticalIcon } from '@radix-ui/react-icons'
 import Image from 'next/image'
-import type { LinkProps } from 'next/link';
+import type { LinkProps } from 'next/link'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'

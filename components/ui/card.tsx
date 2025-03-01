@@ -15,7 +15,7 @@ const Card = React.forwardRef<
       premium && [
         'relative overflow-hidden bg-gradient-to-br from-[rgb(var(--background)/var(--opacity-30))] to-[rgb(var(--background)/var(--opacity-40))]',
         'hover:translate-y-[-2px] hover:border-[rgb(var(--border)/var(--opacity-20))]',
-        'hover:shadow-[0_12px_24px_-4px_rgb(0_0_0_/_0.2),inset_0_1px_1px_0_rgb(255_255_255_/_0.1)]'
+        'hover:shadow-[0_12px_24px_-4px_rgb(0_0_0_/_0.2),inset_0_1px_1px_0_rgb(255_255_255_/_0.1)]',
       ],
       className
     )}
@@ -37,9 +37,9 @@ const CardHeader = React.forwardRef<
 CardHeader.displayName = 'CardHeader'
 
 const CardTitle = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
+  HTMLHeadingElement,
+  React.HTMLAttributes<HTMLHeadingElement> & { children: React.ReactNode }
+>(({ className, children, ...props }, ref) => (
   <h3
     ref={ref}
     className={cn(
@@ -47,7 +47,9 @@ const CardTitle = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >
+    {children}
+  </h3>
 ))
 CardTitle.displayName = 'CardTitle'
 

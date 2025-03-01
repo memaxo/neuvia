@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 
 import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
 
 import Avatar from './avatar'
 
@@ -100,7 +100,7 @@ export default function AccountForm({ user }: { user: User | null }) {
       })
 
       if (error) throw error
-      
+
       toast.success('Account updated successfully')
     } catch (error) {
       setError({ message: 'Error updating profile' })

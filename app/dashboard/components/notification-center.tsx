@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-import type { Notification, NotificationType } from './types';
+import type { Notification, NotificationType } from './types'
 import { mockNotifications } from './types'
 
 const notificationIcons: Record<NotificationType, any> = {
@@ -43,7 +43,8 @@ const notificationIcons: Record<NotificationType, any> = {
 }
 
 const notificationColors: Record<NotificationType, string> = {
-  alert: 'text-[#902D41] bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent',
+  alert:
+    'text-[#902D41] bg-gradient-to-r from-transparent via-[#004FFF]/60 to-transparent',
   update: 'text-[#004FFF] bg-[#004FFF]/10',
   reminder: 'text-[#31AFD4] bg-[#31AFD4]/10',
   message: 'text-[#004FFF] bg-[#004FFF]/10',
@@ -107,7 +108,7 @@ export function NotificationCenter() {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div>
-<p className="text-sm font-medium text-[#050505]">
+              <p className="text-sm font-medium text-[#050505]">
                 {notification.title}
               </p>
               <p className="mt-1 text-xs text-white/60">
@@ -145,7 +146,7 @@ export function NotificationCenter() {
         </div>
 
         {notification.actionUrl && (
-            <ChevronRight className="size-4 text-[#6B818C]/20 transition-colors group-hover:text-[#6B818C]/40" />
+          <ChevronRight className="size-4 text-[#6B818C]/20 transition-colors group-hover:text-[#6B818C]/40" />
         )}
       </div>
     )
@@ -176,9 +177,9 @@ export function NotificationCenter() {
         </Tooltip>
 
         {isOpen && (
-            <div className="absolute right-0 top-full mt-2 w-96 rounded-lg border border-[#6B818C]/5 bg-[#D8E4FF]/90 shadow-lg backdrop-blur-lg">
+          <div className="absolute right-0 top-full mt-2 w-96 rounded-lg border border-[#6B818C]/5 bg-[#D8E4FF]/90 shadow-lg backdrop-blur-lg">
             <div className="flex items-center justify-between border-b border-white/5 p-4">
-<h3 className="text-sm font-medium text-[#050505]">
+              <h3 className="text-sm font-medium text-[#050505]">
                 Notifications
               </h3>
               <div className="flex items-center gap-2">

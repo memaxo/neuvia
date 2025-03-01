@@ -18,6 +18,9 @@ export async function GET(request: Request) {
     // URL to redirect to after sign in process completes
     return NextResponse.redirect(requestUrl.origin)
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    )
   }
 }

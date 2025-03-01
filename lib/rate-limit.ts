@@ -1,5 +1,5 @@
-import { Redis } from '@upstash/redis';
-import { Ratelimit } from '@upstash/ratelimit';
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
 
 // Create a new Redis instance
 export const redis = new Redis({
@@ -7,12 +7,15 @@ export const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN || '',
   // Disable HTTPS check in development
   automaticDeserialization: true,
-  agent: process.env.NODE_ENV === 'development' ? {
-    https: {
-      rejectUnauthorized: false
-    }
-  } : undefined,
-});
+  agent:
+    process.env.NODE_ENV === 'development'
+      ? {
+          https: {
+            rejectUnauthorized: false,
+          },
+        }
+      : undefined,
+})
 
 // Create a new rate limiter that allows 5 requests per 60 seconds
 export const rateLimiter = new Ratelimit({
@@ -20,4 +23,4 @@ export const rateLimiter = new Ratelimit({
   limiter: Ratelimit.slidingWindow(5, '60 s'),
   analytics: true,
   prefix: '@upstash/ratelimit',
-});
+})

@@ -20,11 +20,11 @@ export async function updateInqueries(data: FormData): Promise<FormResponse> {
   try {
     const { data: inqueries, error } = await supabase
       .from('inqueries')
-      .insert({ 
-        name: data.name, 
-        email: data.email, 
+      .insert({
+        name: data.name,
+        email: data.email,
         message: data.message,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
       .select()
 
@@ -34,13 +34,13 @@ export async function updateInqueries(data: FormData): Promise<FormResponse> {
 
     return {
       success: true,
-      data: inqueries
+      data: inqueries,
     }
   } catch (error) {
     console.error('Error updating inqueries:', error)
     return {
       success: false,
-      error: 'Failed to send message. Please try again later.'
+      error: 'Failed to send message. Please try again later.',
     }
   }
 }

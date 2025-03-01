@@ -4,9 +4,9 @@ import {
   AlertCircle,
   ArrowDownIcon,
   ArrowUpIcon,
+  type LucideIcon,
   PlusCircle,
   Upload,
-  type LucideIcon,
 } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -59,9 +59,10 @@ const stats: StatItem[] = [
       bg: 'bg-[#004FFF]',
       text: 'text-[#004FFF]',
       hover: 'hover:bg-[#004FFF]/90',
-      gradient: 'bg-gradient-to-r from-[#004FFF]/10 via-transparent to-[#004FFF]/10',
+      gradient:
+        'bg-gradient-to-r from-[#004FFF]/10 via-transparent to-[#004FFF]/10',
       scan: 'scan-line-[#004FFF]',
-      spline: '#004FFF'
+      spline: '#004FFF',
     },
     priority: 'high',
     action: {
@@ -84,7 +85,7 @@ const stats: StatItem[] = [
       hover: 'hover-filter-processing',
       gradient: 'gradient-overlay-processing',
       scan: 'scan-line-processing',
-      spline: 'rgb(var(--processing))'
+      spline: 'rgb(var(--processing))',
     },
     priority: 'medium',
     action: {
@@ -107,7 +108,7 @@ const stats: StatItem[] = [
       hover: 'hover-filter-error',
       gradient: 'gradient-overlay-error',
       scan: 'scan-line-error',
-      spline: 'rgb(var(--error))'
+      spline: 'rgb(var(--error))',
     },
     priority: 'high',
     action: {
@@ -136,18 +137,22 @@ export function QuickStats() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {stats.map((stat, index) => (
             <TooltipProvider key={index}>
-              <div className={cn(
-                "group relative rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
-                "bg-[rgb(var(--background))/var(--opacity-40)] p-6",
-                "duration-normal transition-all hover:-translate-y-1",
-                "hover:bg-[rgb(var(--background))/var(--opacity-60)]",
-                stat.colorClass.hover
-              )}>
+              <div
+                className={cn(
+                  'group relative rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]',
+                  'bg-[rgb(var(--background))/var(--opacity-40)] p-6',
+                  'duration-normal transition-all hover:-translate-y-1',
+                  'hover:bg-[rgb(var(--background))/var(--opacity-60)]',
+                  stat.colorClass.hover
+                )}
+              >
                 {/* Gradient overlay */}
-                <div className={cn(
-                  "duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100",
-                  stat.colorClass.gradient
-                )} />
+                <div
+                  className={cn(
+                    'duration-normal absolute inset-0 rounded-xl opacity-0 transition-opacity group-hover:opacity-100',
+                    stat.colorClass.gradient
+                  )}
+                />
 
                 {/* Content */}
                 <div className="relative z-10 space-y-4">
@@ -160,12 +165,17 @@ export function QuickStats() {
                         {stat.label}
                       </span>
                     </div>
-                    <div className={cn(
-                      "flex items-center gap-1 rounded-full px-2 py-1 text-xs",
-                      stat.priority === 'high' && "bg-[rgb(var(--error))/var(--opacity-10)] text-[rgb(var(--error))]",
-                      stat.priority === 'medium' && "bg-[rgb(var(--warning))/var(--opacity-10)] text-[rgb(var(--warning))]",
-                      stat.priority === 'low' && "bg-[rgb(var(--success))/var(--opacity-10)] text-[rgb(var(--success))]"
-                    )}>
+                    <div
+                      className={cn(
+                        'flex items-center gap-1 rounded-full px-2 py-1 text-xs',
+                        stat.priority === 'high' &&
+                          'bg-[rgb(var(--error))/var(--opacity-10)] text-[rgb(var(--error))]',
+                        stat.priority === 'medium' &&
+                          'bg-[rgb(var(--warning))/var(--opacity-10)] text-[rgb(var(--warning))]',
+                        stat.priority === 'low' &&
+                          'bg-[rgb(var(--success))/var(--opacity-10)] text-[rgb(var(--success))]'
+                      )}
+                    >
                       {stat.priority}
                     </div>
                   </div>
@@ -174,10 +184,14 @@ export function QuickStats() {
                     <span className="text-2xl font-bold text-[rgb(var(--foreground))]">
                       {stat.value}
                     </span>
-                    <span className={cn(
-                      "text-sm",
-                      stat.trend.isPositive ? "text-[rgb(var(--success))]" : "text-[rgb(var(--error))]"
-                    )}>
+                    <span
+                      className={cn(
+                        'text-sm',
+                        stat.trend.isPositive
+                          ? 'text-[rgb(var(--success))]'
+                          : 'text-[rgb(var(--error))]'
+                      )}
+                    >
                       {stat.trend.value}%
                     </span>
                   </div>
@@ -185,9 +199,9 @@ export function QuickStats() {
                   {stat.action && (
                     <Button
                       className={cn(
-                        "mt-4 w-full justify-between",
-                        "bg-[rgb(var(--background))/var(--opacity-60)]",
-                        "hover:bg-[rgb(var(--background))/var(--opacity-80)]"
+                        'mt-4 w-full justify-between',
+                        'bg-[rgb(var(--background))/var(--opacity-60)]',
+                        'hover:bg-[rgb(var(--background))/var(--opacity-80)]'
                       )}
                       variant="ghost"
                     >

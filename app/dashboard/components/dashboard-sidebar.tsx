@@ -52,12 +52,12 @@ const Header = ({ children }: { children: React.ReactNode }) => {
     </div>
   )
 }
-Header.displayName = "SidebarHeader"
+Header.displayName = 'SidebarHeader'
 
 const Content = ({ children }: { children: React.ReactNode }) => {
   return <div className="flex-1 overflow-auto py-2">{children}</div>
 }
-Content.displayName = "SidebarContent"
+Content.displayName = 'SidebarContent'
 
 const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
   ({
@@ -67,12 +67,12 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
     className,
   }: SidebarProps) => {
     const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
-    
+
     return (
-      <aside 
+      <aside
         className={cn(
-          "group/sidebar relative flex h-screen flex-col overflow-hidden bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl transition-all duration-normal",
-          "after:absolute after:right-0 after:h-full after:w-[1px] after:bg-gradient-to-b after:from-transparent after:via-[rgb(var(--border))/var(--opacity-5)] after:to-transparent",
+          'group/sidebar relative flex h-screen flex-col overflow-hidden bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl transition-all duration-normal',
+          'after:absolute after:right-0 after:h-full after:w-[1px] after:bg-gradient-to-b after:from-transparent after:via-[rgb(var(--border))/var(--opacity-5)] after:to-transparent',
           className
         )}
         data-collapsed={isCollapsed}
@@ -93,7 +93,7 @@ const Sidebar: React.FC<SidebarProps> & SidebarComposition = Object.assign(
       </aside>
     )
   },
-  { Header, Content, displayName: "Sidebar" }
+  { Header, Content, displayName: 'Sidebar' }
 )
 
 interface SidebarLink {
@@ -157,8 +157,8 @@ export function DashboardSidebar() {
           <span className="sr-only">Toggle sidebar</span>
         </Button>
       </SheetTrigger>
-      <SheetContent 
-        className="w-[300px] bg-[rgb(var(--background))/var(--opacity-95)] p-0 backdrop-blur-xl" 
+      <SheetContent
+        className="w-[300px] bg-[rgb(var(--background))/var(--opacity-95)] p-0 backdrop-blur-xl"
         side="left"
       >
         <SheetHeader className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-4">
@@ -179,11 +179,12 @@ export function DashboardSidebar() {
                 href={link.href}
                 key={link.href}
               >
-                <link.icon 
+                <link.icon
                   className={cn('size-5 shrink-0', {
                     'text-[rgb(var(--primary))]': isActive,
-                    'text-[rgb(var(--foreground))/var(--opacity-60)]': !isActive
-                  })} 
+                    'text-[rgb(var(--foreground))/var(--opacity-60)]':
+                      !isActive,
+                  })}
                 />
                 <div className="flex flex-col">
                   <span className="font-medium leading-none">{link.title}</span>
@@ -197,14 +198,16 @@ export function DashboardSidebar() {
         </nav>
       </SheetContent>
       <div className="hidden md:block">
-        <aside className={cn(
-          "group/sidebar relative flex flex-col",
-          "h-[calc(100vh-3.5rem)] min-h-0",
-          "border-r border-[rgb(var(--border))/var(--opacity-10)]",
-          "bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl",
-          "overflow-hidden transition-[width] duration-normal ease-in-out",
-          isCollapsed ? "w-[80px]" : "w-[280px]"
-        )}>
+        <aside
+          className={cn(
+            'group/sidebar relative flex flex-col',
+            'h-[calc(100vh-3.5rem)] min-h-0',
+            'border-r border-[rgb(var(--border))/var(--opacity-10)]',
+            'bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl',
+            'overflow-hidden transition-[width] duration-normal ease-in-out',
+            isCollapsed ? 'w-[80px]' : 'w-[280px]'
+          )}
+        >
           <div className="flex h-14 shrink-0 items-center justify-between border-b border-[rgb(var(--border))/var(--opacity-10)] px-4">
             <Button
               className="size-8"
@@ -222,10 +225,14 @@ export function DashboardSidebar() {
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="h-[72px] shrink-0 border-b border-[rgb(var(--border))/var(--opacity-10)]">
-              <div className={cn(
-                "h-full transition-[opacity,transform] duration-normal",
-                isCollapsed ? "opacity-0 translate-x-[-100%]" : "opacity-100 translate-x-0"
-              )}>
+              <div
+                className={cn(
+                  'h-full transition-[opacity,transform] duration-normal',
+                  isCollapsed
+                    ? 'opacity-0 translate-x-[-100%]'
+                    : 'opacity-100 translate-x-0'
+                )}
+              >
                 <div className="p-4">
                   <SearchBar />
                 </div>
@@ -245,23 +252,30 @@ export function DashboardSidebar() {
                             isActive
                               ? 'bg-[rgb(var(--primary))/var(--opacity-10)] text-[rgb(var(--primary))]'
                               : 'text-[rgb(var(--foreground))/var(--opacity-70)] hover:text-[rgb(var(--foreground))]',
-                            isCollapsed ? "px-2 py-3 grid-cols-1 justify-items-center" : "p-3 grid-cols-[24px,1fr] gap-3"
+                            isCollapsed
+                              ? 'px-2 py-3 grid-cols-1 justify-items-center'
+                              : 'p-3 grid-cols-[24px,1fr] gap-3'
                           )}
                           href={link.href}
                         >
                           <link.icon
                             className={cn('size-5 mt-0.5', {
                               'text-[rgb(var(--primary))]': isActive,
-                              'text-[rgb(var(--foreground))/var(--opacity-60)]': !isActive
+                              'text-[rgb(var(--foreground))/var(--opacity-60)]':
+                                !isActive,
                             })}
                           />
-                          <div 
+                          <div
                             className={cn(
-                              "transition-[width,opacity,transform] duration-normal overflow-hidden",
-                              isCollapsed ? "w-0 opacity-0 hidden" : "w-auto opacity-100"
+                              'transition-[width,opacity,transform] duration-normal overflow-hidden',
+                              isCollapsed
+                                ? 'w-0 opacity-0 hidden'
+                                : 'w-auto opacity-100'
                             )}
                           >
-                            <span className="block font-medium leading-none whitespace-nowrap">{link.title}</span>
+                            <span className="block font-medium leading-none whitespace-nowrap">
+                              {link.title}
+                            </span>
                             <span className="mt-1 block text-sm leading-none text-[rgb(var(--foreground))/var(--opacity-60)] whitespace-nowrap">
                               {link.description}
                             </span>

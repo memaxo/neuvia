@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 import { SiteFooter } from '@/components/site-footer'
 import { SiteHeader } from '@/components/site-header'
@@ -7,7 +7,6 @@ import DashboardBackground from './components/dashboard-background'
 import { DashboardSidebar } from './components/dashboard-sidebar'
 
 import { ChatProvider } from '@/contexts/chat-context'
-
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -27,9 +26,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <SiteHeader />
           <div className="flex flex-1">
             <DashboardSidebar />
-            <main className="flex-1">
-              {children}
-            </main>
+            <main className="flex-1">{children}</main>
           </div>
           <SiteFooter />
         </div>

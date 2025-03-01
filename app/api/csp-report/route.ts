@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(request: NextRequest) {
   try {
     const report = await request.json()
-    
+
     // Log CSP violations in development
     if (process.env.NODE_ENV === 'development') {
       console.warn('CSP Violation:', {
@@ -19,6 +19,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error processing CSP report:', error)
-    return NextResponse.json({ success: false, error: 'Failed to process CSP report' }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: 'Failed to process CSP report' },
+      { status: 500 }
+    )
   }
-} 
+}

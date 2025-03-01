@@ -3,13 +3,13 @@
 // This enables autocomplete, go to definition, etc.
 
 // Setup type definitions for built-in Supabase Runtime APIs
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 
-import { createClient } from "jsr:@supabase/supabase-js"
+import { createClient } from 'jsr:@supabase/supabase-js'
 
 import { corsHeaders } from '../_shared/cors.ts'
 
-console.log("Hello from Functions!")
+console.log('Hello from Functions!')
 
 interface DownloadRequest {
   filePath: string
@@ -30,7 +30,11 @@ const supabaseAdmin = createClient(
 )
 
 // Verify user has access to the requested file
-async function verifyAccess(userId: string, filePath: string, patientId?: string): Promise<boolean> {
+async function verifyAccess(
+  userId: string,
+  filePath: string,
+  patientId?: string
+): Promise<boolean> {
   try {
     // Check if file exists in upload_logs
     const { data: logEntry, error: logError } = await supabaseAdmin
@@ -98,8 +102,7 @@ Deno.serve(async (req) => {
     }
 
     // Generate short-lived signed URL (5 minutes)
-    const { data, error } = await supabaseAdmin
-      .storage
+    const { data, error } = await supabaseAdmin.storage
       .from('scans')
       .createSignedUrl(filePath, 300)
 
@@ -113,34 +116,30 @@ Deno.serve(async (req) => {
       file_path: filePath,
       patient_id: patientId,
       access_type: 'download',
-      accessed_at: new Date().toISOString()
+      accessed_at: new Date().toISOString(),
     })
 
     return new Response(
       JSON.stringify({
         downloadUrl: data.signedUrl,
-        expiresAt: new Date(Date.now() + 300000).toISOString() // 5 minutes from now
+        expiresAt: new Date(Date.now() + 300000).toISOString(), // 5 minutes from now
       }),
       {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       }
     )
-
   } catch (err) {
     const error = err as Error
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 400,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    })
   }
 })
 

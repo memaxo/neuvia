@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react'
 
 export function GuideInfoBox(props: { children: ReactNode }) {
   return (
@@ -11,5 +11,5 @@ export function GuideInfoBox(props: { children: ReactNode }) {
         {props.children}
       </div>
     </div>
-  );
+  )
 }

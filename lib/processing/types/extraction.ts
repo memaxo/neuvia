@@ -1,4 +1,4 @@
-import type { DocumentBase } from './base';
+import type { DocumentBase } from './base'
 
 /**
  * Represents a chunk of extracted text from a document
@@ -7,25 +7,25 @@ export interface DocumentChunk {
   /**
    * The content of the chunk
    */
-  content: string;
-  
+  content: string
+
   /**
    * Optional page number where the chunk was found
    */
-  pageNumber?: number;
-  
+  pageNumber?: number
+
   /**
    * Optional position within the document
    */
   position?: {
-    startOffset: number;
-    endOffset: number;
-  };
-  
+    startOffset: number
+    endOffset: number
+  }
+
   /**
    * Optional metadata for the chunk
    */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -35,42 +35,42 @@ export interface DocumentMetadata {
   /**
    * Number of pages in the document
    */
-  pageCount?: number;
-  
+  pageCount?: number
+
   /**
    * Type of document detected
    */
-  docType?: string;
-  
+  docType?: string
+
   /**
    * Original filename
    */
-  filename?: string;
-  
+  filename?: string
+
   /**
    * File format (PDF, DOCX, etc.)
    */
-  fileFormat?: string;
-  
+  fileFormat?: string
+
   /**
    * File size in bytes
    */
-  fileSize?: number;
-  
+  fileSize?: number
+
   /**
    * Extraction timestamp
    */
-  extractedAt: Date;
-  
+  extractedAt: Date
+
   /**
    * Confidence score of the extraction (0-1)
    */
-  confidence?: number;
-  
+  confidence?: number
+
   /**
    * Any other metadata fields
    */
-  [key: string]: any;
+  [key: string]: any
 }
 
 /**
@@ -80,17 +80,17 @@ export interface ExtractedData {
   /**
    * Raw extracted text from the document
    */
-  rawText: string;
-  
+  rawText: string
+
   /**
    * Additional metadata about the document
    */
-  metadata: DocumentMetadata;
-  
+  metadata: DocumentMetadata
+
   /**
    * Optional chunked data
    */
-  chunks?: DocumentChunk[];
+  chunks?: DocumentChunk[]
 }
 
 /**
@@ -100,15 +100,15 @@ export interface ExtractedDocument extends DocumentBase {
   /**
    * The extracted data from the document
    */
-  extractedData: ExtractedData;
-  
+  extractedData: ExtractedData
+
   /**
    * Whether the extraction was successful
    */
-  isSuccessful: boolean;
-  
+  isSuccessful: boolean
+
   /**
    * Error message if the extraction failed
    */
-  errorMessage?: string;
-} 
+  errorMessage?: string
+}

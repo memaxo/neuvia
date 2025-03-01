@@ -1,5 +1,5 @@
-import type { DocumentBase } from './base';
-import type { VerifiedDocument } from './verification';
+import type { DocumentBase } from './base'
+import type { VerifiedDocument } from './verification'
 
 /**
  * Represents a source used in research
@@ -8,57 +8,57 @@ export interface ResearchSource {
   /**
    * Title of the source
    */
-  title?: string;
-  
+  title?: string
+
   /**
    * URL of the source
    */
-  url: string;
-  
+  url: string
+
   /**
    * Brief description of the source
    */
-  description?: string;
-  
+  description?: string
+
   /**
    * Optional content excerpt from the source
    */
-  content?: string;
-  
+  content?: string
+
   /**
    * Relevance score (0-1) indicating how relevant this source is to the query
    */
-  relevance?: number;
-  
+  relevance?: number
+
   /**
    * Optional citation index for referencing
    */
-  citationIndex?: number;
-  
+  citationIndex?: number
+
   /**
    * Type of source (e.g., 'journal', 'book', 'website')
    */
-  sourceType?: string;
-  
+  sourceType?: string
+
   /**
    * Publication date of the source (if applicable)
    */
-  publishedDate?: Date;
-  
+  publishedDate?: Date
+
   /**
    * Authors of the source (if applicable)
    */
-  authors?: string[];
-  
+  authors?: string[]
+
   /**
    * Source snippet from API
    */
-  snippet?: string;
-  
+  snippet?: string
+
   /**
    * Source index in numbered references
    */
-  index?: number;
+  index?: number
 }
 
 /**
@@ -68,42 +68,42 @@ export interface ResearchResult {
   /**
    * Generated research text
    */
-  text: string;
-  
+  text: string
+
   /**
    * Research summary (processed text)
    */
-  summary?: string;
-  
+  summary?: string
+
   /**
    * Sources used in the research
    */
-  sources: ResearchSource[];
-  
+  sources: ResearchSource[]
+
   /**
    * Extracted key findings
    */
-  keyFindings?: string[];
-  
+  keyFindings?: string[]
+
   /**
    * Timestamp of the research
    */
-  timestamp?: Date;
-  
+  timestamp?: Date
+
   /**
    * Confidence score
    */
-  confidence?: number;
-  
+  confidence?: number
+
   /**
    * Patient data that was analyzed (for medical research)
    */
-  patientData?: string;
-  
+  patientData?: string
+
   /**
    * Name of the model used for research
    */
-  modelName?: string;
+  modelName?: string
 }
 
 /**
@@ -113,62 +113,62 @@ export interface ResearchOptions {
   /**
    * Research depth
    */
-  depth?: 'basic' | 'standard' | 'comprehensive';
-  
+  depth?: 'basic' | 'standard' | 'comprehensive'
+
   /**
    * Maximum number of sources to include
    */
-  sourcesLimit?: number;
-  
+  sourcesLimit?: number
+
   /**
    * Whether to include source content
    */
-  includeSourceContent?: boolean;
-  
+  includeSourceContent?: boolean
+
   /**
    * Research type (standard or medical diagnosis)
    */
-  researchType?: 'standard' | 'medical-diagnosis';
-  
+  researchType?: 'standard' | 'medical-diagnosis'
+
   /**
    * Context data for specialized research
    */
-  contextData?: Record<string, any>;
-  
+  contextData?: Record<string, any>
+
   /**
    * Progress callback
    */
-  onProgress?: (progress: number) => void;
-  
+  onProgress?: (progress: number) => void
+
   /**
    * Whether this is a medical diagnosis query
    */
-  isMedicalDiagnosis?: boolean;
-  
+  isMedicalDiagnosis?: boolean
+
   /**
    * Patient data for medical diagnosis
    */
-  patientData?: string;
-  
+  patientData?: string
+
   /**
    * Temperature for generation
    */
-  temperature?: number;
-  
+  temperature?: number
+
   /**
    * Maximum number of tokens in the response
    */
-  maxTokens?: number;
-  
+  maxTokens?: number
+
   /**
    * Whether to include images in the response
    */
-  includeImages?: boolean;
-  
+  includeImages?: boolean
+
   /**
    * Specific model to use for the research
    */
-  model?: string;
+  model?: string
 }
 
 /**
@@ -178,15 +178,15 @@ export interface ResearchDocument extends DocumentBase {
   /**
    * The verified document that research is based on
    */
-  verifiedDocument: VerifiedDocument;
-  
+  verifiedDocument: VerifiedDocument
+
   /**
    * Research results
    */
-  researchResults: ResearchResult[];
-  
+  researchResults: ResearchResult[]
+
   /**
    * Research queries performed
    */
-  queries: string[];
-} 
+  queries: string[]
+}

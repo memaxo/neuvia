@@ -35,7 +35,7 @@ export default function DashboardPage() {
 
             {/* Patient overview card */}
             <div className="relative overflow-hidden rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] backdrop-blur-sm">
-              <PatientOverview 
+              <PatientOverview
                 activePatients={856}
                 criticalCases={12}
                 patientCount={1234}
@@ -51,7 +51,6 @@ export default function DashboardPage() {
             </div>
 
             {/* Note: ResearchGraph has been removed from dashboard as it should only be shown when deep research is active */}
-
           </div>
         </div>
 
@@ -71,7 +70,7 @@ export default function DashboardPage() {
             'bg-[rgb(var(--primary))] text-white shadow-lg',
             'duration-normal transition-all',
             'hover:bg-[rgb(var(--primary-dark))] hover:shadow-xl'
-          )
+          ),
         })}
         href="/dashboard/patients/new"
       >

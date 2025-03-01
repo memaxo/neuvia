@@ -25,10 +25,13 @@ const NavContainer = ({ children, isScrolled }: NavContainerProps) => (
   <div
     className={cn(
       'fixed inset-x-0 top-0 z-50 px-4 py-3 transition-all duration-normal',
-      isScrolled && 'border-b border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-95)] shadow-lg backdrop-blur-xl'
+      isScrolled &&
+        'border-b border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-95)] shadow-lg backdrop-blur-xl'
     )}
   >
-    <div className="mx-auto flex w-full max-w-7xl items-center justify-between">{children}</div>
+    <div className="mx-auto flex w-full max-w-7xl items-center justify-between">
+      {children}
+    </div>
   </div>
 )
 
@@ -80,7 +83,12 @@ interface RightSectionProps {
   onLogout: () => void
 }
 
-const RightSection = ({ isScrolled, isLoaded, isAuthenticated, onLogout }: RightSectionProps) => (
+const RightSection = ({
+  isScrolled,
+  isLoaded,
+  isAuthenticated,
+  onLogout,
+}: RightSectionProps) => (
   <div
     className={cn(
       'flex items-center gap-4 rounded-xl border border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-40)] px-4 py-2 backdrop-blur-sm transition-all duration-normal',

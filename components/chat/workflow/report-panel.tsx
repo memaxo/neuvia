@@ -1,32 +1,32 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { LoaderCircle, MessageSquareText } from "lucide-react";
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { LoaderCircle, MessageSquareText } from 'lucide-react'
+import { useState } from 'react'
 
 interface ReportGenerationPanelProps {
-  visible: boolean;
-  isGenerating: boolean;
-  onGenerateReport: (notes: string) => void;
-  onCancel: () => void;
+  visible: boolean
+  isGenerating: boolean
+  onGenerateReport: (notes: string) => void
+  onCancel: () => void
 }
 
 export function ReportGenerationPanel({
   visible,
   isGenerating,
   onGenerateReport,
-  onCancel
+  onCancel,
 }: ReportGenerationPanelProps) {
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState('')
 
-  if (!visible) return null;
+  if (!visible) return null
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onGenerateReport(notes);
-  };
+    e.preventDefault()
+    onGenerateReport(notes)
+  }
 
   return (
     <div className="bg-secondary/10 mb-6 rounded border p-4">
@@ -35,7 +35,7 @@ export function ReportGenerationPanel({
           <MessageSquareText className="size-5" />
           <h2 className="font-semibold">Report Generation</h2>
         </div>
-        
+
         <div className="space-y-2">
           <Label htmlFor="report-notes">Additional Notes (Optional)</Label>
           <Textarea
@@ -57,16 +57,12 @@ export function ReportGenerationPanel({
           >
             Cancel
           </Button>
-          <Button
-            className="gap-2"
-            disabled={isGenerating}
-            type="submit"
-          >
+          <Button className="gap-2" disabled={isGenerating} type="submit">
             {isGenerating && <LoaderCircle className="size-4 animate-spin" />}
-            {isGenerating ? "Generating..." : "Generate Report"}
+            {isGenerating ? 'Generating...' : 'Generate Report'}
           </Button>
         </div>
       </form>
     </div>
-  );
-} 
+  )
+}

@@ -5,5 +5,5 @@ export {
   createReadOnlyClient,
   createBrowserClient,
   createAdminClient,
-  adminAuthClient
+  adminAuthClient,
 } from './clients'

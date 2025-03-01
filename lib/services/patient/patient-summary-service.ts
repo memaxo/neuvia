@@ -1,31 +1,37 @@
+import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
+import type { Json } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase/clients'
+import { google } from '@ai-sdk/google'
+import { openai } from '@ai-sdk/openai'
 /**
  * Patient Summary Service
- * 
+ *
  * Service for generating comprehensive patient summaries from multiple documents.
  * Uses a two-stage approach:
  * 1. Extract essential information from each document using Gemini
  * 2. Compile and prioritize information into a summary using OpenAI
  */
-import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
-import { openai } from '@ai-sdk/openai';
-import { createServerClient } from '@/lib/supabase/clients';
-import type { Json } from '@/lib/supabase';
-import { perplexityService } from '@/lib/services/perplexity/perplexity-service';
+import { generateText } from 'ai'
 
 // Import types
-import type { DocumentType } from '@/lib/processing/types/base';
-import type { PatientDocument } from '@/lib/processing/types/document';
-import type { ExtractedData } from '@/lib/processing/types/extraction';
-import type { 
-  PatientSummary, 
-  PatientSummarySection,
+import type { DocumentType } from '@/lib/processing/types/base'
+import type { PatientDocument } from '@/lib/processing/types/document'
+import type { ExtractedData } from '@/lib/processing/types/extraction'
+import type {
+  ResearchOptions,
+  ResearchResult,
+} from '@/lib/processing/types/research'
+import type {
   DocumentExtraction,
   ExtractedSection,
-  VerifiedPatientSummary
-} from '@/lib/processing/types/summary';
-import type { VerificationItem, VerificationStatus } from '@/lib/processing/types/verification';
-import type { ResearchOptions, ResearchResult } from '@/lib/processing/types/research';
+  PatientSummary,
+  PatientSummarySection,
+  VerifiedPatientSummary,
+} from '@/lib/processing/types/summary'
+import type {
+  VerificationItem,
+  VerificationStatus,
+} from '@/lib/processing/types/verification'
 
 /**
  * Essential extraction prompt template for individual documents
@@ -80,7 +86,7 @@ Return a JSON object with the following structure:
 }
 
 ONLY include sections that contain extracted information. Omit empty sections.
-`;
+`
 
 /**
  * Summary compilation prompt template for aggregating document extractions
@@ -127,36 +133,36 @@ Focus on these key sections:
 9. Recommendations
 
 Each section should be clear, concise, and clinically relevant.
-`;
+`
 
 /**
  * Patient Summary Service
  * Handles the generation of comprehensive patient summaries
  */
 export class PatientSummaryService {
-  private static instance: PatientSummaryService;
-  private supabase: ReturnType<typeof createServerClient>;
-  
+  private static instance: PatientSummaryService
+  private supabase: ReturnType<typeof createServerClient>
+
   /**
    * Private constructor to enforce singleton pattern
    */
   private constructor() {
-    this.supabase = createServerClient();
+    this.supabase = createServerClient()
   }
-  
+
   /**
    * Get the singleton instance
    */
   public static getInstance(): PatientSummaryService {
     if (!PatientSummaryService.instance) {
-      PatientSummaryService.instance = new PatientSummaryService();
+      PatientSummaryService.instance = new PatientSummaryService()
     }
-    return PatientSummaryService.instance;
+    return PatientSummaryService.instance
   }
-  
+
   /**
    * Extract essential information from a single document using Gemini
-   * 
+   *
    * @param documentId Document ID
    * @param documentContent Document text content
    * @param documentType Document type information
@@ -171,32 +177,34 @@ export class PatientSummaryService {
   ): Promise<DocumentExtraction> {
     try {
       // Use Gemini model from the AI SDK
-      const model = google('gemini-2.0-flash-exp');
-      
+      const model = google('gemini-2.0-flash-exp')
+
       // Format the extraction prompt
-      const prompt = DOCUMENT_EXTRACTION_PROMPT
-        .replace('{documentType}', documentType.type)
+      const prompt = DOCUMENT_EXTRACTION_PROMPT.replace(
+        '{documentType}',
+        documentType.type
+      )
         .replace('{documentCategory}', documentType.category)
         .replace('{documentDate}', documentDate)
-        .replace('{documentContent}', documentContent);
-      
+        .replace('{documentContent}', documentContent)
+
       // Call the Gemini model
       const response = await generateText({
         model,
         prompt,
         maxTokens: 2048,
-        temperature: 0.3
-      });
-      
+        temperature: 0.3,
+      })
+
       // Parse the response JSON
-      let extraction: any;
+      let extraction: any
       try {
-        extraction = JSON.parse(response.text);
+        extraction = JSON.parse(response.text)
       } catch (parseError) {
-        console.error("Error parsing Gemini response:", parseError);
-        throw new Error("Failed to parse extraction response");
+        console.error('Error parsing Gemini response:', parseError)
+        throw new Error('Failed to parse extraction response')
       }
-      
+
       // Format the extraction with proper typing
       const result: DocumentExtraction = {
         documentId,
@@ -204,21 +212,27 @@ export class PatientSummaryService {
         documentDate,
         sections: extraction.sections || {},
         metadata: {
-          extractionConfidence: extraction.metadata?.extractionConfidence || 0.7,
-          extractionDate: new Date().toISOString()
-        }
-      };
-      
-      return result;
+          extractionConfidence:
+            extraction.metadata?.extractionConfidence || 0.7,
+          extractionDate: new Date().toISOString(),
+        },
+      }
+
+      return result
     } catch (error) {
-      console.error(`Error extracting essentials from document ${documentId}:`, error);
-      throw new Error(`Failed to extract essentials from document: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(
+        `Error extracting essentials from document ${documentId}:`,
+        error
+      )
+      throw new Error(
+        `Failed to extract essentials from document: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
-  
+
   /**
    * Compile a patient summary from multiple document extractions using OpenAI
-   * 
+   *
    * @param patientId Patient ID
    * @param extractions Array of document extractions
    * @returns Compiled patient summary
@@ -229,126 +243,146 @@ export class PatientSummaryService {
   ): Promise<PatientSummary> {
     try {
       // Use OpenAI model from the AI SDK
-      const model = openai('o3-mini');
-      
+      const model = openai('o3-mini')
+
       // Format the compilation prompt
-      const prompt = SUMMARY_COMPILATION_PROMPT
-        .replace('{patientId}', patientId)
+      const prompt = SUMMARY_COMPILATION_PROMPT.replace(
+        '{patientId}',
+        patientId
+      )
         .replace('{documentCount}', extractions.length.toString())
-        .replace('{documentExtractions}', JSON.stringify(extractions, null, 2));
-      
+        .replace('{documentExtractions}', JSON.stringify(extractions, null, 2))
+
       // Call the OpenAI model
       const response = await generateText({
         model,
         prompt,
         maxTokens: 4000,
-        temperature: 0.2
-      });
-      
+        temperature: 0.2,
+      })
+
       // Parse the responses into sections
-      const sections = this.parseSummaryResponse(response.text);
-      
+      const sections = this.parseSummaryResponse(response.text)
+
       // Create the patient summary
       const summary: PatientSummary = {
-        patientInfo: sections.patientInfo || this.createEmptySection('Patient Information'),
-        medicalHistory: sections.medicalHistory || this.createEmptySection('Medical History'),
-        currentConditions: sections.currentConditions || this.createEmptySection('Current Conditions'),
-        medications: sections.medications || this.createEmptySection('Medications'),
-        recentFindings: sections.recentFindings || this.createEmptySection('Recent Findings'),
-        treatmentPlans: sections.treatmentPlans || this.createEmptySection('Treatment Plans'),
-        labResults: sections.labResults || this.createEmptySection('Laboratory Results'),
-        imagingResults: sections.imagingResults || this.createEmptySection('Imaging Results'),
-        recommendations: sections.recommendations || this.createEmptySection('Recommendations'),
+        patientInfo:
+          sections.patientInfo ||
+          this.createEmptySection('Patient Information'),
+        medicalHistory:
+          sections.medicalHistory || this.createEmptySection('Medical History'),
+        currentConditions:
+          sections.currentConditions ||
+          this.createEmptySection('Current Conditions'),
+        medications:
+          sections.medications || this.createEmptySection('Medications'),
+        recentFindings:
+          sections.recentFindings || this.createEmptySection('Recent Findings'),
+        treatmentPlans:
+          sections.treatmentPlans || this.createEmptySection('Treatment Plans'),
+        labResults:
+          sections.labResults || this.createEmptySection('Laboratory Results'),
+        imagingResults:
+          sections.imagingResults || this.createEmptySection('Imaging Results'),
+        recommendations:
+          sections.recommendations ||
+          this.createEmptySection('Recommendations'),
         metadata: {
           generatedAt: new Date().toISOString(),
           documentCount: extractions.length,
-          documents: extractions.map(extraction => ({
+          documents: extractions.map((extraction) => ({
             id: extraction.documentId,
             type: extraction.documentType,
             title: `Document ${extraction.documentId}`,
-            date: extraction.documentDate
-          }))
-        }
-      };
-      
+            date: extraction.documentDate,
+          })),
+        },
+      }
+
       // Store the summary in Supabase
-      await this.storeSummary(patientId, summary);
-      
-      return summary;
+      await this.storeSummary(patientId, summary)
+
+      return summary
     } catch (error) {
-      console.error(`Error compiling patient summary for ${patientId}:`, error);
-      throw new Error(`Failed to compile patient summary: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`Error compiling patient summary for ${patientId}:`, error)
+      throw new Error(
+        `Failed to compile patient summary: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
-  
+
   /**
    * Parse the summary response from OpenAI into structured sections
-   * 
+   *
    * @param responseText The response text from OpenAI
    * @returns Structured sections for the patient summary
    */
-  private parseSummaryResponse(responseText: string): Record<string, PatientSummarySection> {
-    const sections: Record<string, PatientSummarySection> = {};
+  private parseSummaryResponse(
+    responseText: string
+  ): Record<string, PatientSummarySection> {
+    const sections: Record<string, PatientSummarySection> = {}
     const sectionMapping: Record<string, string> = {
       'Patient Information': 'patientInfo',
       'Medical History': 'medicalHistory',
       'Current Conditions': 'currentConditions',
-      'Medications': 'medications',
+      Medications: 'medications',
       'Recent Findings': 'recentFindings',
       'Treatment Plans': 'treatmentPlans',
       'Laboratory Results': 'labResults',
       'Imaging Results': 'imagingResults',
-      'Recommendations': 'recommendations'
-    };
-    
-    // Split response by markdown headers
-    const sectionMatches = responseText.match(/## (.+?)\n([\s\S]+?)(?=\n## |$)/g);
-    
-    if (!sectionMatches) {
-      console.warn("No valid sections found in summary response");
-      return sections;
+      Recommendations: 'recommendations',
     }
-    
+
+    // Split response by markdown headers
+    const sectionMatches = responseText.match(
+      /## (.+?)\n([\s\S]+?)(?=\n## |$)/g
+    )
+
+    if (!sectionMatches) {
+      console.warn('No valid sections found in summary response')
+      return sections
+    }
+
     // Process each section
-    sectionMatches.forEach(sectionText => {
-      const titleMatch = sectionText.match(/## (.+?)\n/);
-      if (!titleMatch) return;
-      
-      const title = titleMatch[1].trim();
-      const content = sectionText.replace(titleMatch[0], '').trim();
-      
+    sectionMatches.forEach((sectionText) => {
+      const titleMatch = sectionText.match(/## (.+?)\n/)
+      if (!titleMatch) return
+
+      const title = titleMatch[1].trim()
+      const content = sectionText.replace(titleMatch[0], '').trim()
+
       // Map to the correct section name
-      const sectionKey = sectionMapping[title];
+      const sectionKey = sectionMapping[title]
       if (sectionKey) {
         sections[sectionKey] = {
           title,
           content,
-          sources: [] // We don't have direct sources in the compilation phase
-        };
+          sources: [], // We don't have direct sources in the compilation phase
+        }
       }
-    });
-    
-    return sections;
+    })
+
+    return sections
   }
-  
+
   /**
    * Create an empty section when a section is missing in the response
-   * 
+   *
    * @param title Section title
    * @returns Empty section
    */
   private createEmptySection(title: string): PatientSummarySection {
     return {
       title,
-      content: "No information available.",
-      sources: []
-    };
+      content: 'No information available.',
+      sources: [],
+    }
   }
-  
+
   /**
    * Main method to generate a patient summary from multiple documents
    * Uses the two-stage approach: document extraction followed by compilation
-   * 
+   *
    * @param patientId Patient ID
    * @param documents Array of patient documents
    * @returns Complete patient summary
@@ -358,66 +392,74 @@ export class PatientSummaryService {
     documents: PatientDocument[]
   ): Promise<PatientSummary> {
     try {
-      console.log(`Generating summary for patient ${patientId} with ${documents.length} documents`);
-      
+      console.log(
+        `Generating summary for patient ${patientId} with ${documents.length} documents`
+      )
+
       // Stage 1: Extract essential information from each document in parallel
       const extractions = await Promise.all(
-        documents.map(async document => {
+        documents.map(async (document) => {
           return this.extractDocumentEssentials(
             document.id,
             document.content_text || '',
-            typeof document.document_type === 'object' 
-              ? document.document_type as unknown as DocumentType 
+            typeof document.document_type === 'object'
+              ? (document.document_type as unknown as DocumentType)
               : { category: 'unknown', type: 'unknown' },
             document.document_date || new Date().toISOString()
-          );
+          )
         })
-      );
-      
+      )
+
       // Stage 2: Compile the extractions into a comprehensive summary
-      return this.compilePatientSummary(patientId, extractions);
+      return this.compilePatientSummary(patientId, extractions)
     } catch (error) {
-      console.error(`Error generating patient summary for ${patientId}:`, error);
-      throw new Error(`Failed to generate patient summary: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`Error generating patient summary for ${patientId}:`, error)
+      throw new Error(
+        `Failed to generate patient summary: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
   /**
    * Store the summary in Supabase
-   * 
+   *
    * @param patientId Patient ID
    * @param summary Patient summary
    */
-  private async storeSummary(patientId: string, summary: PatientSummary): Promise<void> {
+  private async storeSummary(
+    patientId: string,
+    summary: PatientSummary
+  ): Promise<void> {
     try {
       // Create Supabase client and then use it
-      const supabase = await createServerClient();
-      
+      const supabase = await createServerClient()
+
       // Get the current user ID or default to 'system'
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || 'system';
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      const userId = user?.id || 'system'
 
       // Check if a verified summary already exists for this patient
       const { data: existingSummary } = await supabase
         .from('patient_summaries')
         .select('summary, verified_at, verified_by')
         .eq('patient_id', patientId)
-        .maybeSingle();
-      
+        .maybeSingle()
+
       // Preserve verification data if it exists
-      const summaryData = summary as unknown as Json;
-      let verifiedAt = null;
-      let verifiedBy = null;
-      
+      const summaryData = summary as unknown as Json
+      let verifiedAt = null
+      let verifiedBy = null
+
       if (existingSummary) {
         // Careful not to overwrite verification data
-        verifiedAt = existingSummary.verified_at;
-        verifiedBy = existingSummary.verified_by;
+        verifiedAt = existingSummary.verified_at
+        verifiedBy = existingSummary.verified_by
       }
-      
-      const { error } = await supabase
-        .from('patient_summaries')
-        .upsert({
+
+      const { error } = await supabase.from('patient_summaries').upsert(
+        {
           patient_id: patientId,
           summary: summaryData,
           document_count: summary.metadata.documentCount,
@@ -426,24 +468,28 @@ export class PatientSummaryService {
           last_modified_by: userId,
           // Preserve verification status if it exists
           ...(verifiedAt ? { verified_at: verifiedAt } : {}),
-          ...(verifiedBy ? { verified_by: verifiedBy } : {})
-        }, {
-          onConflict: 'patient_id' // Use patient_id as conflict resolution strategy
-        });
+          ...(verifiedBy ? { verified_by: verifiedBy } : {}),
+        },
+        {
+          onConflict: 'patient_id', // Use patient_id as conflict resolution strategy
+        }
+      )
 
-      if (error) throw error;
-      
-      console.log(`Successfully stored summary for patient ${patientId}`);
+      if (error) throw error
+
+      console.log(`Successfully stored summary for patient ${patientId}`)
     } catch (error) {
-      console.error('Error storing patient summary:', error);
-      throw new Error(`Failed to store patient summary: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('Error storing patient summary:', error)
+      throw new Error(
+        `Failed to store patient summary: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
   /**
    * Merge verification data with an existing patient summary
-   * 
-   * @param patientId Patient ID 
+   *
+   * @param patientId Patient ID
    * @param verificationItems Verification items for the summary
    * @param status Verification status
    * @returns The verified patient summary
@@ -455,23 +501,23 @@ export class PatientSummaryService {
   ): Promise<VerifiedPatientSummary | null> {
     try {
       // Get the Supabase client
-      const supabase = await createServerClient();
-      
+      const supabase = await createServerClient()
+
       // Fetch the existing summary
       const { data: existingSummary, error } = await supabase
         .from('patient_summaries')
         .select('summary, id')
         .eq('patient_id', patientId)
-        .single();
-      
+        .single()
+
       if (error || !existingSummary) {
-        console.warn(`No existing summary found for patient ${patientId}`);
-        return null;
+        console.warn(`No existing summary found for patient ${patientId}`)
+        return null
       }
-      
+
       // Parse the existing summary
-      const summary = existingSummary.summary as unknown as PatientSummary;
-      
+      const summary = existingSummary.summary as unknown as PatientSummary
+
       // Create verified summary by extending the existing summary
       const verifiedSummary: VerifiedPatientSummary = {
         ...summary,
@@ -479,10 +525,10 @@ export class PatientSummaryService {
         verificationStatus: status,
         verificationMetadata: {
           verifiedAt: status.verifiedAt || new Date().toISOString(),
-          verifiedBy: status.verifiedBy || 'system'
-        }
-      };
-      
+          verifiedBy: status.verifiedBy || 'system',
+        },
+      }
+
       // Update the record with verification data
       const { error: updateError } = await supabase
         .from('patient_summaries')
@@ -490,22 +536,25 @@ export class PatientSummaryService {
           verified_at: status.verifiedAt || new Date().toISOString(),
           verified_by: status.verifiedBy || 'system',
           summary: verifiedSummary as unknown as Json,
-          last_modified_by: status.verifiedBy || 'system'
+          last_modified_by: status.verifiedBy || 'system',
         })
-        .eq('id', existingSummary.id);
-      
-      if (updateError) throw updateError;
-      
-      return verifiedSummary;
+        .eq('id', existingSummary.id)
+
+      if (updateError) throw updateError
+
+      return verifiedSummary
     } catch (error) {
-      console.error(`Error merging verification data for patient ${patientId}:`, error);
-      return null;
+      console.error(
+        `Error merging verification data for patient ${patientId}:`,
+        error
+      )
+      return null
     }
   }
-  
+
   /**
    * Verify a patient summary
-   * 
+   *
    * @param patientId Patient ID
    * @param verifiedBy User ID of the person verifying the summary
    * @param status Status to set (verified/rejected/etc)
@@ -520,34 +569,34 @@ export class PatientSummaryService {
   ): Promise<PatientSummary | null> {
     try {
       // Get the Supabase client
-      const supabase = await createServerClient();
-      
+      const supabase = await createServerClient()
+
       // Get the current date/time
-      const verifiedAt = new Date().toISOString();
-      
+      const verifiedAt = new Date().toISOString()
+
       // Create verification status based on VerificationStatus interface requirements
       const verificationStatus: VerificationStatus = {
         isVerified: status === 'verified',
         verifiedAt,
         verifiedBy,
-        corrections: comments ? { comments } : undefined
-      };
-      
+        corrections: comments ? { comments } : undefined,
+      }
+
       // Fetch the existing summary
       const { data: existingSummary, error } = await supabase
         .from('patient_summaries')
         .select('summary, id')
         .eq('patient_id', patientId)
-        .single();
-      
+        .single()
+
       if (error || !existingSummary) {
-        console.warn(`No existing summary found for patient ${patientId}`);
-        return null;
+        console.warn(`No existing summary found for patient ${patientId}`)
+        return null
       }
-      
+
       // Parse the existing summary and add verification metadata
-      const summary = existingSummary.summary as unknown as PatientSummary;
-      
+      const summary = existingSummary.summary as unknown as PatientSummary
+
       // Create updated summary with verification info
       // We'll add our own verification field since it doesn't exist in the base type
       const updatedSummary = {
@@ -558,11 +607,11 @@ export class PatientSummaryService {
           verificationInfo: {
             verifiedAt,
             verifiedBy,
-            status
-          }
-        }
-      };
-      
+            status,
+          },
+        },
+      }
+
       // Update the record with verification data
       const { error: updateError } = await supabase
         .from('patient_summaries')
@@ -570,152 +619,168 @@ export class PatientSummaryService {
           verified_at: verifiedAt,
           verified_by: verifiedBy,
           summary: updatedSummary as unknown as Json,
-          last_modified_by: verifiedBy
+          last_modified_by: verifiedBy,
         })
-        .eq('id', existingSummary.id);
-      
-      if (updateError) throw updateError;
-      
-      return updatedSummary;
+        .eq('id', existingSummary.id)
+
+      if (updateError) throw updateError
+
+      return updatedSummary
     } catch (error) {
-      console.error(`Error verifying patient summary for ${patientId}:`, error);
-      return null;
+      console.error(`Error verifying patient summary for ${patientId}:`, error)
+      return null
     }
   }
-  
+
   /**
    * Check if a patient summary has been verified
-   * 
+   *
    * @param patientId Patient ID
    * @returns Verification status or null if summary doesn't exist or isn't verified
    */
-  async getSummaryVerificationStatus(
-    patientId: string
-  ): Promise<{ verifiedAt: string; verifiedBy: string; status: string } | null> {
+  async getSummaryVerificationStatus(patientId: string): Promise<{
+    verifiedAt: string
+    verifiedBy: string
+    status: string
+  } | null> {
     try {
       // Get the Supabase client
-      const supabase = await createServerClient();
-      
+      const supabase = await createServerClient()
+
       // Fetch verification status
       const { data, error } = await supabase
         .from('patient_summaries')
         .select('verified_at, verified_by, summary')
         .eq('patient_id', patientId)
-        .single();
-      
+        .single()
+
       if (error || !data || !data.verified_at) {
-        return null;
+        return null
       }
-      
+
       // Get the verification status from the summary metadata if available
-      const summary = data.summary as unknown as PatientSummary & { 
+      const summary = data.summary as unknown as PatientSummary & {
         metadata: { verificationInfo?: { status: string } }
-      };
-      
+      }
+
       // Default to 'verified' if no specific status is saved
-      const status = summary?.metadata?.verificationInfo?.status || 'verified';
-      
+      const status = summary?.metadata?.verificationInfo?.status || 'verified'
+
       return {
         verifiedAt: data.verified_at,
         verifiedBy: data.verified_by || 'unknown',
-        status
-      };
+        status,
+      }
     } catch (error) {
-      console.error(`Error getting verification status for patient ${patientId}:`, error);
-      return null;
+      console.error(
+        `Error getting verification status for patient ${patientId}:`,
+        error
+      )
+      return null
     }
   }
 
   /**
    * Retrieve a patient summary by patient ID
-   * 
+   *
    * @param patientId Patient ID
    * @returns Patient summary or null if not found
    */
   async getPatientSummary(patientId: string): Promise<PatientSummary | null> {
     try {
       // Get the Supabase client
-      const supabase = await createServerClient();
-      
+      const supabase = await createServerClient()
+
       // Fetch the summary from the database
       const { data, error } = await supabase
         .from('patient_summaries')
         .select('summary')
         .eq('patient_id', patientId)
-        .single();
-      
+        .single()
+
       if (error || !data) {
-        return null;
+        return null
       }
-      
+
       // Parse the summary
-      return data.summary as unknown as PatientSummary;
+      return data.summary as unknown as PatientSummary
     } catch (error) {
-      console.error(`Error retrieving patient summary for ${patientId}:`, error);
-      return null;
+      console.error(`Error retrieving patient summary for ${patientId}:`, error)
+      return null
     }
   }
 
   /**
    * Generate a markdown version of the patient summary
-   * 
+   *
    * @param summary Patient summary
    * @returns Markdown formatted summary
    */
   generateMarkdown(summary: PatientSummary): string {
     const sections = [
-      { title: '🧑‍⚕️ Patient Information', content: summary.patientInfo.content },
+      {
+        title: '🧑‍⚕️ Patient Information',
+        content: summary.patientInfo.content,
+      },
       { title: '📋 Medical History', content: summary.medicalHistory.content },
-      { title: '🏥 Current Conditions', content: summary.currentConditions.content },
+      {
+        title: '🏥 Current Conditions',
+        content: summary.currentConditions.content,
+      },
       { title: '💊 Medications', content: summary.medications.content },
       { title: '🔍 Recent Findings', content: summary.recentFindings.content },
       { title: '📝 Treatment Plans', content: summary.treatmentPlans.content },
       { title: '🧪 Laboratory Results', content: summary.labResults.content },
       { title: '🔬 Imaging Results', content: summary.imagingResults.content },
-      { title: '📋 Recommendations', content: summary.recommendations.content }
-    ];
+      { title: '📋 Recommendations', content: summary.recommendations.content },
+    ]
 
     const metadata = `
 ---
 Generated: ${new Date(summary.metadata.generatedAt).toLocaleString()}
 Documents Analyzed: ${summary.metadata.documentCount}
 ---
-`;
+`
 
-    const sourcesList = summary.metadata.documents.map((doc: any) => 
-      `- ${doc.type.category} - ${doc.type.type} (${new Date(doc.date).toLocaleDateString()})`
-    ).join('\n');
+    const sourcesList = summary.metadata.documents
+      .map(
+        (doc: any) =>
+          `- ${doc.type.category} - ${doc.type.type} (${new Date(doc.date).toLocaleDateString()})`
+      )
+      .join('\n')
 
     const markdownContent = sections
-      .map(section => `## ${section.title}\n\n${section.content}\n`)
-      .join('\n');
+      .map((section) => `## ${section.title}\n\n${section.content}\n`)
+      .join('\n')
 
-    return `# Patient Summary\n\n${metadata}\n## Sources\n\n${sourcesList}\n\n${markdownContent}`;
+    return `# Patient Summary\n\n${metadata}\n## Sources\n\n${sourcesList}\n\n${markdownContent}`
   }
 
   /**
    * Generate a deep research report based on a verified patient summary
-   * 
+   *
    * @param patientId Patient ID
-   * @param userId User ID 
+   * @param userId User ID
    * @param additionalInstructions Optional additional instructions for research
    * @returns Research result or null if verification not found
    */
   async generateDeepResearchReport(
-    patientId: string, 
+    patientId: string,
     userId: string,
     additionalInstructions?: string
   ): Promise<ResearchResult | null> {
-    const summary = await this.getVerifiedSummary(patientId);
-    
+    const summary = await this.getVerifiedSummary(patientId)
+
     if (!summary || !summary.metadata?.verificationInfo?.verifiedAt) {
-      console.warn(`Cannot generate deep research report - patient summary ${patientId} is not verified`);
-      return null;
+      console.warn(
+        `Cannot generate deep research report - patient summary ${patientId} is not verified`
+      )
+      return null
     }
-    
+
     // Format the patient data for research
-    const formattedPatientData = this.formatPatientDataForResearch(summary);
-    
+    const formattedPatientData = this.formatPatientDataForResearch(summary)
+
     // Create a research query that helps generate a comprehensive medical report
     const medicalResearchQuery = `
       Based on the patient summary, generate a comprehensive medical report that includes:
@@ -724,8 +789,8 @@ Documents Analyzed: ${summary.metadata.documentCount}
       3. Recommended treatments and follow-up actions
       4. Evidence-based support for your analysis
       ${additionalInstructions ? `\nAdditional instructions: ${additionalInstructions}` : ''}
-    `.trim();
-    
+    `.trim()
+
     // Set research options
     const researchOptions: ResearchOptions = {
       isMedicalDiagnosis: true,
@@ -734,23 +799,23 @@ Documents Analyzed: ${summary.metadata.documentCount}
       contextData: {
         patientId,
         userId,
-        additionalInstructions
-      }
-    };
-    
+        additionalInstructions,
+      },
+    }
+
     // Use the perplexity service to perform the medical diagnosis
     const researchResult = await perplexityService.performMedicalDiagnosis(
       medicalResearchQuery,
       formattedPatientData,
       researchOptions
-    );
-    
-    return researchResult;
+    )
+
+    return researchResult
   }
-  
+
   /**
    * Format patient data for research
-   * 
+   *
    * @param summary Patient summary
    * @returns Formatted patient data as text
    */
@@ -758,81 +823,92 @@ Documents Analyzed: ${summary.metadata.documentCount}
     const sections = [
       this.formatSectionForResearch('Patient Information', summary.patientInfo),
       this.formatSectionForResearch('Medical History', summary.medicalHistory),
-      this.formatSectionForResearch('Current Conditions', summary.currentConditions),
+      this.formatSectionForResearch(
+        'Current Conditions',
+        summary.currentConditions
+      ),
       this.formatSectionForResearch('Medications', summary.medications),
       this.formatSectionForResearch('Recent Findings', summary.recentFindings),
       this.formatSectionForResearch('Treatment Plans', summary.treatmentPlans),
       this.formatSectionForResearch('Lab Results', summary.labResults),
       this.formatSectionForResearch('Imaging Results', summary.imagingResults),
-      this.formatSectionForResearch('Recommendations', summary.recommendations)
-    ];
-    
+      this.formatSectionForResearch('Recommendations', summary.recommendations),
+    ]
+
     // Add verification information
     if (summary.metadata?.verificationInfo) {
-      const verifiedBy = summary.metadata.verificationInfo.verifiedBy || 'Unknown';
-      const verifiedAt = summary.metadata.verificationInfo.verifiedAt || 'Unknown date';
-      const status = summary.metadata.verificationInfo.status || 'Unknown status';
-      
-      sections.push(`## Verification Status\nThis summary was ${status} by ${verifiedBy} on ${verifiedAt}`);
+      const verifiedBy =
+        summary.metadata.verificationInfo.verifiedBy || 'Unknown'
+      const verifiedAt =
+        summary.metadata.verificationInfo.verifiedAt || 'Unknown date'
+      const status =
+        summary.metadata.verificationInfo.status || 'Unknown status'
+
+      sections.push(
+        `## Verification Status\nThis summary was ${status} by ${verifiedBy} on ${verifiedAt}`
+      )
     }
-    
-    return sections.join('\n\n');
+
+    return sections.join('\n\n')
   }
-  
+
   /**
    * Format a section for research
-   * 
+   *
    * @param title Section title
    * @param section Section data
    * @returns Formatted section as text
    */
-  private formatSectionForResearch(title: string, section: PatientSummarySection | any): string {
-    if (!section) return '';
-    
+  private formatSectionForResearch(
+    title: string,
+    section: PatientSummarySection | any
+  ): string {
+    if (!section) return ''
+
     // Handle the PatientSummarySection format
     if (section.title && section.content) {
-      return `## ${title}\n${section.content}`;
+      return `## ${title}\n${section.content}`
     }
-    
+
     // Handle array format
     if (Array.isArray(section)) {
-      const items = section.map(item => `- ${item}`).join('\n');
-      return `## ${title}\n${items}`;
+      const items = section.map((item) => `- ${item}`).join('\n')
+      return `## ${title}\n${items}`
     }
-    
+
     // Handle object format
     if (typeof section === 'object') {
-      return `## ${title}\n${JSON.stringify(section, null, 2)}`;
+      return `## ${title}\n${JSON.stringify(section, null, 2)}`
     }
-    
+
     // Handle string format
-    return `## ${title}\n${section}`;
+    return `## ${title}\n${section}`
   }
 
   /**
    * Get a verified patient summary
-   * 
+   *
    * @param patientId Patient ID
    * @returns Verified patient summary or null if not found or not verified
    */
   async getVerifiedSummary(patientId: string): Promise<PatientSummary | null> {
     // First get the summary
-    const summary = await this.getPatientSummary(patientId);
-    
+    const summary = await this.getPatientSummary(patientId)
+
     if (!summary) {
-      console.warn(`No summary found for patient ${patientId}`);
-      return null;
+      console.warn(`No summary found for patient ${patientId}`)
+      return null
     }
-    
+
     // Check if it's verified
     if (!summary.metadata?.verificationInfo?.verifiedAt) {
-      console.warn(`Summary for patient ${patientId} is not verified`);
-      return null;
+      console.warn(`Summary for patient ${patientId} is not verified`)
+      return null
     }
-    
-    return summary;
+
+    return summary
   }
 }
 
 // Export singleton instance
-export const patientSummaryService = PatientSummaryService.getInstance(); 
+export const patientSummaryService = PatientSummaryService.getInstance()

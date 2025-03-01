@@ -1,14 +1,14 @@
 import { createBrowserClient } from '@/lib/supabase'
 
-export type DocumentType = 
-  | 'medical-image'  // DICOM, NIfTI, JPEG, PNG
-  | 'document'       // PDF, DOCX, TXT, MD
-  | 'report'         // Lab reports, clinical notes
-  | 'other'          // Other medical documents
+export type DocumentType =
+  | 'medical-image' // DICOM, NIfTI, JPEG, PNG
+  | 'document' // PDF, DOCX, TXT, MD
+  | 'report' // Lab reports, clinical notes
+  | 'other' // Other medical documents
 
 // Enhanced error types
 export type UploadError = {
-  code: 
+  code:
     | 'FILE_TOO_LARGE'
     | 'INVALID_FILE_TYPE'
     | 'NETWORK_ERROR'
@@ -27,15 +27,15 @@ export interface FileUpload {
   name: string
   size: number
   progress: number
-  status: 
-    | 'preparing'    // Initial state
-    | 'validating'   // Validating file type and size
-    | 'uploading'    // Actively uploading
-    | 'paused'       // Upload paused
-    | 'processing'   // Processing/scanning the uploaded file
-    | 'complete'     // Upload and processing complete
-    | 'error'        // Error occurred
-    | 'cancelled'    // Upload cancelled by user
+  status:
+    | 'preparing' // Initial state
+    | 'validating' // Validating file type and size
+    | 'uploading' // Actively uploading
+    | 'paused' // Upload paused
+    | 'processing' // Processing/scanning the uploaded file
+    | 'complete' // Upload and processing complete
+    | 'error' // Error occurred
+    | 'cancelled' // Upload cancelled by user
   url?: string
   path?: string
   error?: UploadError
@@ -43,10 +43,10 @@ export interface FileUpload {
   mimeType?: string
   abortController?: AbortController
   statusMessage?: string // Detailed status message
-  speed?: number        // Upload speed in bytes/second
+  speed?: number // Upload speed in bytes/second
   timeRemaining?: number // Estimated time remaining in seconds
-  startTime?: number    // Upload start timestamp
-  lastUpdate?: number   // Last progress update timestamp
+  startTime?: number // Upload start timestamp
+  lastUpdate?: number // Last progress update timestamp
   bytesUploaded?: number // Bytes uploaded so far
   retryCount?: number
   lastError?: Error
@@ -73,24 +73,24 @@ const ALLOWED_MIME_TYPES = {
     'application/dicom',
     '.nii',
     'application/nii',
-    'application/nifti'
+    'application/nifti',
   ],
-  'document': [
+  document: [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
     'application/msword', // doc
     'text/plain',
     'text/markdown',
-    'text/x-markdown'
+    'text/x-markdown',
   ],
-  'report': [
+  report: [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword',
     'text/plain',
-    'text/markdown'
+    'text/markdown',
   ],
-  'other': [
+  other: [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword',
@@ -98,22 +98,29 @@ const ALLOWED_MIME_TYPES = {
     'text/markdown',
     'application/xml',
     'text/xml',
-    'application/json'
-  ]
+    'application/json',
+  ],
 }
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 export class StorageService {
   private supabase = createBrowserClient()
-  private edgeFunctionUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL  }/functions/v1`
+  private edgeFunctionUrl =
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
   private activeUploads = new Map<string, XMLHttpRequest>()
-  private pausedUploads = new Map<string, { file: File; metadata?: UploadMetadata; progress: number }>()
+  private pausedUploads = new Map<
+    string,
+    { file: File; metadata?: UploadMetadata; progress: number }
+  >()
   private maxRetries = 3
   private retryDelays = [1000, 3000, 5000] // Delays in ms between retries
 
   // Enhanced validation with detailed error messages
-  private validateFile(file: File, documentType?: DocumentType): { valid: boolean; error?: UploadError } {
+  private validateFile(
+    file: File,
+    documentType?: DocumentType
+  ): { valid: boolean; error?: UploadError } {
     // Size validation
     if (file.size > MAX_FILE_SIZE) {
       return {
@@ -121,8 +128,8 @@ export class StorageService {
         error: {
           code: 'FILE_TOO_LARGE',
           message: `File too large. Maximum size: ${formatBytes(MAX_FILE_SIZE)}`,
-          retryable: false
-        }
+          retryable: false,
+        },
       }
     }
 
@@ -136,8 +143,8 @@ export class StorageService {
             code: 'INVALID_FILE_TYPE',
             message: 'Unsupported file type',
             details: { allowedTypes: allAllowedTypes },
-            retryable: false
-          }
+            retryable: false,
+          },
         }
       }
       return { valid: true }
@@ -152,8 +159,8 @@ export class StorageService {
           code: 'INVALID_FILE_TYPE',
           message: `Invalid file type for ${documentType}`,
           details: { allowedTypes, documentType },
-          retryable: false
-        }
+          retryable: false,
+        },
       }
     }
 
@@ -173,8 +180,10 @@ export class StorageService {
         throw error
       }
 
-      const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1]
-      await new Promise(resolve => setTimeout(resolve, delay))
+      const delay =
+        this.retryDelays[retryCount] ||
+        this.retryDelays[this.retryDelays.length - 1]
+      await new Promise((resolve) => setTimeout(resolve, delay))
 
       return this.retryWithBackoff(operation, retryCount + 1, uploadId)
     }
@@ -185,7 +194,7 @@ export class StorageService {
     if (error.name === 'NetworkError' || error.name === 'TimeoutError') {
       return true
     }
-    
+
     const status = error.status || error.statusCode
     return status >= 500 || status === 429 // Server errors and rate limiting
   }
@@ -198,16 +207,16 @@ export class StorageService {
           code: 'NETWORK_ERROR',
           message: 'Network connection error',
           details: error,
-          retryable: true
+          retryable: true,
         }
       }
-      
+
       if (error.message.includes('unauthorized')) {
         return {
           code: 'UNAUTHORIZED',
           message: 'Not authorized to perform this action',
           details: error,
-          retryable: false
+          retryable: false,
         }
       }
     }
@@ -218,7 +227,7 @@ export class StorageService {
         code: 'SERVER_ERROR',
         message: 'Server error occurred',
         details: error,
-        retryable: true
+        retryable: true,
       }
     }
 
@@ -226,14 +235,19 @@ export class StorageService {
       code: 'UNKNOWN',
       message: error.message || 'An unknown error occurred',
       details: error,
-      retryable: this.isRetryableError(error)
+      retryable: this.isRetryableError(error),
     }
   }
 
   async uploadFile(
     file: File,
     metadata?: UploadMetadata,
-    onProgress?: (progress: number, status: string, speed?: number, timeRemaining?: number) => void,
+    onProgress?: (
+      progress: number,
+      status: string,
+      speed?: number,
+      timeRemaining?: number
+    ) => void,
     uploadId?: string,
     startByte: number = 0,
     retryCount: number = 0
@@ -256,24 +270,27 @@ export class StorageService {
       onProgress?.(0, 'Getting upload URL...')
       const { uploadUrl, path } = await this.retryWithBackoff(
         async () => {
-          const response = await fetch(`${this.edgeFunctionUrl}/process-upload`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              fileName: file.name,
-              fileSize: file.size,
-              fileType: file.type,
-              userId: (await this.supabase.auth.getUser()).data.user?.id,
-              metadata: {
-                ...metadata,
-                mimeType: file.type,
-                resumePosition: startByte
-              }
-            })
-          })
+          const response = await fetch(
+            `${this.edgeFunctionUrl}/process-upload`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                userId: (await this.supabase.auth.getUser()).data.user?.id,
+                metadata: {
+                  ...metadata,
+                  mimeType: file.type,
+                  resumePosition: startByte,
+                },
+              }),
+            }
+          )
 
           if (!response.ok) {
             const error = await response.json()
@@ -291,30 +308,30 @@ export class StorageService {
         const xhr = new XMLHttpRequest()
         let lastProgress = startByte
         let lastTime = Date.now()
-        
+
         this.activeUploads.set(currentUploadId, xhr)
-        
+
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const currentTime = Date.now()
             const bytesUploaded = event.loaded
             const totalBytes = event.total
             const progress = Math.round((bytesUploaded * 100) / totalBytes)
-            
+
             const timeDiff = (currentTime - lastTime) / 1000
             const bytesDiff = bytesUploaded - lastProgress
             const speed = bytesDiff / timeDiff
-            
+
             const remainingBytes = totalBytes - bytesUploaded
             const timeRemaining = speed > 0 ? remainingBytes / speed : 0
-            
+
             onProgress?.(
               progress,
               `Uploading... ${progress}%`,
               speed,
               timeRemaining
             )
-            
+
             lastProgress = bytesUploaded
             lastTime = currentTime
           }
@@ -325,7 +342,10 @@ export class StorageService {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve()
           } else {
-            const error = this.createError({ status: xhr.status, message: xhr.statusText })
+            const error = this.createError({
+              status: xhr.status,
+              message: xhr.statusText,
+            })
             reject(error)
           }
         })
@@ -342,7 +362,10 @@ export class StorageService {
 
         xhr.open('PUT', uploadUrl)
         if (startByte > 0) {
-          xhr.setRequestHeader('Content-Range', `bytes ${startByte}-${file.size - 1}/${file.size}`)
+          xhr.setRequestHeader(
+            'Content-Range',
+            `bytes ${startByte}-${file.size - 1}/${file.size}`
+          )
         }
         xhr.send(file)
       })
@@ -351,30 +374,33 @@ export class StorageService {
       onProgress?.(95, 'Processing file...')
       const { analysisData } = await this.retryWithBackoff(
         async () => {
-          const response = await fetch(`${this.edgeFunctionUrl}/analyze-document`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              filePath: path,
-              userId: (await this.supabase.auth.getUser()).data.user?.id,
-              metadata: {
-                ...metadata,
-                analysis: true
-              }
-            })
-          });
+          const response = await fetch(
+            `${this.edgeFunctionUrl}/analyze-document`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                filePath: path,
+                userId: (await this.supabase.auth.getUser()).data.user?.id,
+                metadata: {
+                  ...metadata,
+                  analysis: true,
+                },
+              }),
+            }
+          )
           if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Document analysis failed');
+            const error = await response.json()
+            throw new Error(error.error || 'Document analysis failed')
           }
-          return response.json();
+          return response.json()
         },
         retryCount,
         currentUploadId
-      );
+      )
 
       onProgress?.(100, 'Complete')
       return {
@@ -395,19 +421,20 @@ export class StorageService {
         retryCount,
         recoveryOptions: {
           canRetry: false,
-          canResume: false
-        }
+          canResume: false,
+        },
       }
     } catch (error) {
       this.activeUploads.delete(currentUploadId)
-      
+
       console.error('Upload error:', error)
       const uploadError = error.code ? error : this.createError(error)
-      const status = error.message === 'Upload cancelled' ? 'cancelled' : 'error'
-      
+      const status =
+        error.message === 'Upload cancelled' ? 'cancelled' : 'error'
+
       const canRetry = uploadError.retryable && retryCount < this.maxRetries
       const canResume = status !== 'cancelled' && startByte > 0
-      
+
       return {
         id: currentUploadId,
         name: file.name,
@@ -424,18 +451,23 @@ export class StorageService {
         recoveryOptions: {
           canRetry,
           canResume,
-          suggestedAction: canRetry 
+          suggestedAction: canRetry
             ? 'Retry upload'
-            : canResume 
+            : canResume
               ? 'Resume from last position'
-              : 'Contact support if the issue persists'
-        }
+              : 'Contact support if the issue persists',
+        },
       }
     }
   }
 
   // Add method to pause upload
-  pauseUpload(uploadId: string, file: File, metadata?: UploadMetadata, progress: number): void {
+  pauseUpload(
+    uploadId: string,
+    file: File,
+    metadata?: UploadMetadata,
+    progress: number
+  ): void {
     const xhr = this.activeUploads.get(uploadId)
     if (xhr) {
       xhr.abort()
@@ -447,7 +479,12 @@ export class StorageService {
   // Add method to resume upload
   async resumeUpload(
     uploadId: string,
-    onProgress?: (progress: number, status: string, speed?: number, timeRemaining?: number) => void
+    onProgress?: (
+      progress: number,
+      status: string,
+      speed?: number,
+      timeRemaining?: number
+    ) => void
   ): Promise<FileUpload> {
     const pausedUpload = this.pausedUploads.get(uploadId)
     if (!pausedUpload) {
@@ -481,18 +518,21 @@ export class StorageService {
 
   async getDownloadUrl(filePath: string, patientId?: string): Promise<string> {
     try {
-      const response = await fetch(`${this.edgeFunctionUrl}/generate-download`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filePath,
-          userId: (await this.supabase.auth.getUser()).data.user?.id,
-          patientId
-        })
-      })
+      const response = await fetch(
+        `${this.edgeFunctionUrl}/generate-download`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${(await this.supabase.auth.getSession()).data.session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filePath,
+            userId: (await this.supabase.auth.getUser()).data.user?.id,
+            patientId,
+          }),
+        }
+      )
 
       if (!response.ok) {
         const error = await response.json()
@@ -524,7 +564,7 @@ export class StorageService {
           progress: 100,
           status: 'complete',
           url,
-          path: `uploads/${file.name}`
+          path: `uploads/${file.name}`,
         }
       })
     )
@@ -539,4 +579,4 @@ function formatBytes(bytes: number, decimals = 2): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-} 
+}

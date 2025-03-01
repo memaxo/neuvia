@@ -3,34 +3,38 @@
  * All verification-related types and interfaces are defined or re-exported here
  */
 
-import type { DocumentBase, DocumentType } from '../base';
-import type { ExtractedDocument as OriginalExtractedDocument, DocumentMetadata } from '../extraction';
-import type { Json } from '@/lib/supabase';
-import type { 
-  VerificationMetadata, 
+import type { Json } from '@/lib/supabase'
+import type {
+  MessageMetadata,
+  VerificationMetadata,
   VerificationStatusType,
-  MessageMetadata
-} from '@/lib/workflow/types';
+} from '@/lib/workflow/types'
+import type { DocumentBase, DocumentType } from '../base'
+import type {
+  DocumentMetadata,
+  ExtractedDocument as OriginalExtractedDocument,
+} from '../extraction'
 
 /**
  * Flexible date type for UI and database compatibility
  */
-export type FlexibleDate = Date | string;
+export type FlexibleDate = Date | string
 
 /**
  * Modified ExtractedDocument that accepts both Date and string formats
  * for compatibility with UI components and database storage
  */
-export interface VerificationExtractedDocument extends Omit<OriginalExtractedDocument, 'createdAt'> {
+export interface VerificationExtractedDocument
+  extends Omit<OriginalExtractedDocument, 'createdAt'> {
   /**
    * Creation timestamp as Date or ISO string
    */
-  createdAt: FlexibleDate;
+  createdAt: FlexibleDate
 }
 
 // For backwards compatibility, also export as ExtractedDocument
 // Eventually this should be removed and all code updated to use VerificationExtractedDocument
-export type ExtractedDocument = VerificationExtractedDocument;
+export type ExtractedDocument = VerificationExtractedDocument
 
 /**
  * Status of a verification process
@@ -39,22 +43,22 @@ export interface VerificationStatus {
   /**
    * Whether the item is verified
    */
-  isVerified: boolean;
-  
+  isVerified: boolean
+
   /**
    * When the verification occurred (ISO string format for database compatibility)
    */
-  verifiedAt: string;
-  
+  verifiedAt: string
+
   /**
    * Optional corrections to the original data
    */
-  corrections?: Record<string, string>;
-  
+  corrections?: Record<string, string>
+
   /**
    * User who performed the verification (if applicable)
    */
-  verifiedBy?: string;
+  verifiedBy?: string
 }
 
 /**
@@ -64,42 +68,42 @@ export interface BaseVerificationItem {
   /**
    * Unique identifier for the verification item
    */
-  id: string;
-  
+  id: string
+
   /**
    * Section of the document this item belongs to
    */
-  section: string;
-  
+  section: string
+
   /**
    * Key for the item within its section
    */
-  key: string;
-  
+  key: string
+
   /**
    * Original extracted value
    */
-  value: any;
-  
+  value: any
+
   /**
    * Confidence score for the extraction (0-1)
    */
-  confidence: number;
-  
+  confidence: number
+
   /**
    * Whether the item has been verified
    */
-  isVerified: boolean;
-  
+  isVerified: boolean
+
   /**
    * Corrections made by the user (if any)
    */
-  corrections?: Record<string, any>;
-  
+  corrections?: Record<string, any>
+
   /**
    * Optional explanatory note for the verification
    */
-  note?: string;
+  note?: string
 }
 
 /**
@@ -110,38 +114,38 @@ export interface VerificationItem {
   /**
    * Unique identifier for this verification item
    */
-  id: string;
-  
+  id: string
+
   /**
    * Title/label for this verification item
    */
-  title: string;
-  
+  title: string
+
   /**
    * Description of what needs to be verified
    */
-  description?: string;
-  
+  description?: string
+
   /**
    * The original content extracted from the document
    */
-  originalContent: string;
-  
+  originalContent: string
+
   /**
    * The current content after any corrections
    */
-  currentContent: string;
-  
+  currentContent: string
+
   /**
    * Whether this item has been verified by a user
    */
-  isVerified: boolean;
-  
+  isVerified: boolean
+
   /**
    * Whether this item has been modified during verification
    */
-  isModified: boolean;
-  
+  isModified: boolean
+
   /**
    * History of content changes
    */
@@ -149,28 +153,28 @@ export interface VerificationItem {
     /**
      * Version ID
      */
-    id: string;
-    
+    id: string
+
     /**
      * Content at this version
      */
-    content: string;
-    
+    content: string
+
     /**
      * Timestamp of the change
      */
-    timestamp: string;
-    
+    timestamp: string
+
     /**
      * User who made the change (if applicable)
      */
-    userId?: string;
-  }>;
-  
+    userId?: string
+  }>
+
   /**
    * Metadata for this verification item
    */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any>
 }
 
 /**
@@ -180,27 +184,27 @@ export interface VerificationOptions {
   /**
    * Whether verification is required
    */
-  isRequired: boolean;
-  
+  isRequired: boolean
+
   /**
    * Timeout for verification (in milliseconds)
    */
-  timeoutMs?: number;
-  
+  timeoutMs?: number
+
   /**
    * Whether to auto-approve after timeout
    */
-  autoApproveOnTimeout?: boolean;
-  
+  autoApproveOnTimeout?: boolean
+
   /**
    * User ID performing verification
    */
-  userId?: string;
-  
+  userId?: string
+
   /**
    * Additional metadata
    */
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any>
 }
 
 /**
@@ -210,37 +214,37 @@ export interface VerificationResult {
   /**
    * Whether verification was completed
    */
-  isCompleted: boolean;
-  
+  isCompleted: boolean
+
   /**
    * Whether the content was approved
    */
-  isApproved: boolean;
-  
+  isApproved: boolean
+
   /**
    * List of verification items with their verification status
    */
-  items: VerificationItem[];
-  
+  items: VerificationItem[]
+
   /**
    * Timestamp of verification completion
    */
-  completedAt?: string;
-  
+  completedAt?: string
+
   /**
    * User who completed verification
    */
-  completedBy?: string;
-  
+  completedBy?: string
+
   /**
    * Time taken for verification (in milliseconds)
    */
-  verificationTime?: number;
-  
+  verificationTime?: number
+
   /**
    * Detailed metadata about the verification process
    */
-  verificationMetadata: VerificationMetadata;
+  verificationMetadata: VerificationMetadata
 }
 
 /**
@@ -250,42 +254,42 @@ export interface VerificationMessage {
   /**
    * Message ID
    */
-  id: string;
-  
+  id: string
+
   /**
    * Message content
    */
-  content: string;
-  
+  content: string
+
   /**
    * Message role (system, user, assistant)
    */
-  role: 'system' | 'user' | 'assistant';
-  
+  role: 'system' | 'user' | 'assistant'
+
   /**
    * Whether this message is a verification request
    */
-  isVerificationRequest?: boolean;
-  
+  isVerificationRequest?: boolean
+
   /**
    * Whether this message contains summary content
    */
-  isSummary?: boolean;
-  
+  isSummary?: boolean
+
   /**
    * Whether this message is a correction
    */
-  isCorrection?: boolean;
-  
+  isCorrection?: boolean
+
   /**
    * Metadata for this message
    */
-  metadata: MessageMetadata;
-  
+  metadata: MessageMetadata
+
   /**
    * Creation timestamp
    */
-  createdAt: Date | string;
+  createdAt: Date | string
 }
 
 /**
@@ -295,42 +299,42 @@ export interface BaseVerifiedDocument {
   /**
    * The original extracted document ID
    */
-  extractedDocumentId: string;
-  
+  extractedDocumentId: string
+
   /**
    * Creation timestamp (ISO string format for database compatibility)
    */
-  createdAt: string;
-  
+  createdAt: string
+
   /**
    * Patient ID
    */
-  patientId?: string;
-  
+  patientId?: string
+
   /**
    * Document type information
    */
-  documentType: DocumentType;
-  
+  documentType: DocumentType
+
   /**
    * Verification items
    */
-  verificationItems: VerificationItem[];
-  
+  verificationItems: VerificationItem[]
+
   /**
    * The verified data (after corrections)
    */
-  verifiedData: Record<string, any>;
-  
+  verifiedData: Record<string, any>
+
   /**
    * Original extraction data
    */
-  originalData: any;
-  
+  originalData: any
+
   /**
    * Overall verification status
    */
-  verificationStatus: VerificationStatus;
+  verificationStatus: VerificationStatus
 }
 
 /**
@@ -340,8 +344,8 @@ export interface VerifiedDocument extends BaseVerifiedDocument {
   /**
    * Unique identifier
    */
-  id: string;
-  
+  id: string
+
   /**
    * Optional UI state for verification tracking
    */
@@ -349,13 +353,13 @@ export interface VerifiedDocument extends BaseVerifiedDocument {
     /**
      * Whether all verification steps are completed in the UI
      */
-    isUIVerificationComplete?: boolean;
-    
+    isUIVerificationComplete?: boolean
+
     /**
      * Timestamp when the verification was completed in the UI
      */
-    uiVerifiedAt?: string;
-  };
+    uiVerifiedAt?: string
+  }
 }
 
 /**
@@ -365,9 +369,9 @@ export interface VerifiedDocument extends BaseVerifiedDocument {
  */
 export function dateToISOString(date: Date | string): string {
   if (date instanceof Date) {
-    return date.toISOString();
+    return date.toISOString()
   }
-  return date;
+  return date
 }
 
 /**
@@ -376,7 +380,7 @@ export function dateToISOString(date: Date | string): string {
  * @returns Date object
  */
 export function isoStringToDate(isoString: string): Date {
-  return new Date(isoString);
+  return new Date(isoString)
 }
 
 /**
@@ -386,9 +390,9 @@ export function isoStringToDate(isoString: string): Date {
  */
 export function ensureDate(value: Date | string): Date {
   if (value instanceof Date) {
-    return value;
+    return value
   }
-  return new Date(value);
+  return new Date(value)
 }
 
 /**
@@ -398,9 +402,9 @@ export function ensureDate(value: Date | string): Date {
  */
 export function ensureISOString(value: Date | string): string {
   if (typeof value === 'string') {
-    return value;
+    return value
   }
-  return value.toISOString();
+  return value.toISOString()
 }
 
 /**
@@ -410,14 +414,16 @@ export function ensureISOString(value: Date | string): string {
  */
 export function getDbCompatibleMetadata(metadata: Record<string, any>): Json {
   // Replace Date objects with ISO strings
-  const jsonCompatible = JSON.parse(JSON.stringify(metadata, (key, value) => {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-    return value;
-  }));
-  
-  return jsonCompatible as Json;
+  const jsonCompatible = JSON.parse(
+    JSON.stringify(metadata, (key, value) => {
+      if (value instanceof Date) {
+        return value.toISOString()
+      }
+      return value
+    })
+  )
+
+  return jsonCompatible as Json
 }
 
 /**
@@ -428,31 +434,32 @@ export function getDbCompatibleMetadata(metadata: Record<string, any>): Json {
 export function toCompatibleExtractedDocument(
   doc: OriginalExtractedDocument | null | undefined
 ): ExtractedDocument | undefined {
-  if (!doc) return undefined;
-  
+  if (!doc) return undefined
+
   return {
     ...doc,
-    createdAt: doc.createdAt instanceof Date 
-      ? doc.createdAt.toISOString() 
-      : String(doc.createdAt),
+    createdAt:
+      doc.createdAt instanceof Date
+        ? doc.createdAt.toISOString()
+        : String(doc.createdAt),
     extractedData: {
       ...doc.extractedData,
       metadata: {
         ...doc.extractedData.metadata,
-        extractedAt: doc.extractedData.metadata?.extractedAt 
-          ? (doc.extractedData.metadata.extractedAt instanceof Date 
-            ? doc.extractedData.metadata.extractedAt.toISOString() 
-            : String(doc.extractedData.metadata.extractedAt))
-          : new Date().toISOString()
-      }
-    }
-  };
+        extractedAt: doc.extractedData.metadata?.extractedAt
+          ? doc.extractedData.metadata.extractedAt instanceof Date
+            ? doc.extractedData.metadata.extractedAt.toISOString()
+            : String(doc.extractedData.metadata.extractedAt)
+          : new Date().toISOString(),
+      },
+    },
+  }
 }
 
 /**
  * Workflow step enum aligned with Supabase schema
  */
-export type WorkflowStep = 
+export type WorkflowStep =
   | 'idle'
   | 'uploading'
   | 'extracting'
@@ -462,7 +469,7 @@ export type WorkflowStep =
   | 'chat_started'
   | 'chat_in_progress'
   | 'chat_completed'
-  | 'chat_error';
+  | 'chat_error'
 
 /**
  * Helper functions for verification process
@@ -474,7 +481,7 @@ export type WorkflowStep =
 export function isVerificationComplete(
   verificationMetadata?: VerificationMetadata
 ): boolean {
-  return verificationMetadata?.verificationStatus === 'completed';
+  return verificationMetadata?.verificationStatus === 'completed'
 }
 
 /**
@@ -489,8 +496,8 @@ export function createVerificationMetadata(
     originalSummaryId,
     currentVersionId,
     correctionCount: 0,
-    corrections: []
-  };
+    corrections: [],
+  }
 }
 
 /**
@@ -503,10 +510,12 @@ export function updateVerificationStatus(
   return {
     ...metadata,
     verificationStatus: status,
-    ...(status === 'completed' ? { 
-      verifiedAt: new Date().toISOString() 
-    } : {})
-  };
+    ...(status === 'completed'
+      ? {
+          verifiedAt: new Date().toISOString(),
+        }
+      : {}),
+  }
 }
 
 /**
@@ -519,15 +528,15 @@ export function addCorrection(
   const newCorrection = {
     id: `correction-${Date.now()}`,
     text: correctionText,
-    timestamp: new Date().toISOString()
-  };
-  
+    timestamp: new Date().toISOString(),
+  }
+
   return {
     ...metadata,
     verificationStatus: 'in_progress',
     correctionCount: metadata.correctionCount + 1,
-    corrections: [...metadata.corrections, newCorrection]
-  };
+    corrections: [...metadata.corrections, newCorrection],
+  }
 }
 
 /**
@@ -541,8 +550,8 @@ export function createVerificationMessageMetadata(
     isVerificationRequest: isRequest,
     isSummary: !isRequest,
     summaryVersionId: verificationMetadata.currentVersionId,
-    verificationMetadata
-  };
+    verificationMetadata,
+  }
 }
 
 /**
@@ -555,6 +564,6 @@ export function createCorrectionMessageMetadata(
   return {
     isCorrection: true,
     summaryVersionId,
-    verificationMetadata
-  };
-} 
+    verificationMetadata,
+  }
+}

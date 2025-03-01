@@ -25,7 +25,8 @@ const SelectTrigger = React.forwardRef<
       'focus:outline-none focus:ring-2 focus:ring-[rgb(var(--primary)/var(--opacity-20))] focus:border-[rgb(var(--primary)/var(--opacity-30))] focus:bg-[rgb(var(--background)/var(--opacity-60))]',
       'disabled:cursor-not-allowed disabled:opacity-50',
       'data-[placeholder]:text-[rgb(var(--foreground)/var(--opacity-50))]',
-      error && 'border-[rgb(var(--error)/var(--opacity-30))] focus:ring-[rgb(var(--error)/var(--opacity-20))]',
+      error &&
+        'border-[rgb(var(--error)/var(--opacity-30))] focus:ring-[rgb(var(--error)/var(--opacity-20))]',
       className
     )}
     {...props}
@@ -149,7 +150,10 @@ const SelectSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Separator
     ref={ref}
-    className={cn('-mx-1 my-1 h-px bg-[rgb(var(--border)/var(--opacity-10))]', className)}
+    className={cn(
+      '-mx-1 my-1 h-px bg-[rgb(var(--border)/var(--opacity-10))]',
+      className
+    )}
     {...props}
   />
 ))

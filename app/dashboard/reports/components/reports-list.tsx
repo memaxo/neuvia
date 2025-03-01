@@ -4,15 +4,15 @@ import { formatDistanceToNow } from 'date-fns'
 import {
   Calendar,
   Download,
+  Eye,
   FileText,
   MoreVertical,
+  RefreshCw,
   Share2,
   TrendingUp,
-  Eye,
-  RefreshCw,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import filterXSS from 'xss'
 
 import { Button } from '@/components/ui/button'
@@ -67,7 +67,7 @@ interface ReportsListProps {
 }
 
 export function ReportsList({ reports, onRetry }: ReportsListProps) {
-  const router = useRouter();
+  const router = useRouter()
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -95,7 +95,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
           i: [],
         },
         stripIgnoreTag: true,
-        stripIgnoreTagBody: ['script', 'style', 'xml']
+        stripIgnoreTagBody: ['script', 'style', 'xml'],
       })
       contentRef.current.innerHTML = sanitizedHTML
     }
@@ -107,7 +107,10 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
         <div className="p-6">
           <div className="space-y-4">
             {reports.map((report) => {
-              const TypeIcon = typeIcons[report.type as 'diagnostic' | 'progress' | 'analytics']
+              const TypeIcon =
+                typeIcons[
+                  report.type as 'diagnostic' | 'progress' | 'analytics'
+                ]
               return (
                 <div
                   className={cn(
@@ -137,7 +140,9 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                         <div className="space-y-1">
                           <div className="flex items-center gap-3">
                             <span className="font-medium text-white/90 transition-colors duration-300 group-hover:text-white">
-                              {report.type.charAt(0).toUpperCase() + report.type.slice(1)} Report
+                              {report.type.charAt(0).toUpperCase() +
+                                report.type.slice(1)}{' '}
+                              Report
                             </span>
                             <span className="text-sm text-white/50">
                               {report.id.slice(0, 8)}
@@ -145,22 +150,44 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                             <div
                               className={cn(
                                 'rounded-full px-2.5 py-1 text-sm font-medium',
-                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].bg),
-                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].color),
-                                (statusStyles[report.status as 'completed' | 'processing' | 'failed'].border)
+                                statusStyles[
+                                  report.status as
+                                    | 'completed'
+                                    | 'processing'
+                                    | 'failed'
+                                ].bg,
+                                statusStyles[
+                                  report.status as
+                                    | 'completed'
+                                    | 'processing'
+                                    | 'failed'
+                                ].color,
+                                statusStyles[
+                                  report.status as
+                                    | 'completed'
+                                    | 'processing'
+                                    | 'failed'
+                                ].border
                               )}
                             >
-                              {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                              {report.status.charAt(0).toUpperCase() +
+                                report.status.slice(1)}
                             </div>
                           </div>
 
                           <div className="flex items-center gap-4 text-sm text-white/70">
                             <span>Patient ID: {report.patient_id}</span>
-                            <span>Symptoms: {(report.metadata as any)?.patientInfo?.symptoms?.length || 0}</span>
+                            <span>
+                              Symptoms:{' '}
+                              {(report.metadata as any)?.patientInfo?.symptoms
+                                ?.length || 0}
+                            </span>
                           </div>
 
                           <div className="text-sm text-white/50">
-                            Created: {formatDistanceToNow(new Date(report.created_at))} ago
+                            Created:{' '}
+                            {formatDistanceToNow(new Date(report.created_at))}{' '}
+                            ago
                           </div>
                         </div>
                       </div>
@@ -192,7 +219,9 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                   <Button
                                     className="size-8 bg-black/40 text-white/60 transition-all hover:scale-110 hover:bg-black/60 hover:text-white"
                                     onClick={() => {
-                                      router.push(`/dashboard/chat?reportId=${report.id}`)
+                                      router.push(
+                                        `/dashboard/chat?reportId=${report.id}`
+                                      )
                                     }}
                                     size="icon"
                                     variant="ghost"
@@ -256,7 +285,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                             >
                               {report.status === 'completed' && (
                                 <>
-                                  <DropdownMenuItem 
+                                  <DropdownMenuItem
                                     className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white"
                                     onClick={() => setSelectedReport(report)}
                                   >
@@ -271,7 +300,7 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
                                 </>
                               )}
                               {report.status === 'failed' && onRetry && (
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   className="text-white/70 hover:bg-cyan-500/10 hover:text-white focus:bg-cyan-500/10 focus:text-white"
                                   onClick={() => onRetry(report.id)}
                                 >
@@ -298,23 +327,49 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
       </div>
 
       {/* Report View Dialog */}
-      <Dialog onOpenChange={() => setSelectedReport(null)} open={!!selectedReport}>
+      <Dialog
+        onOpenChange={() => setSelectedReport(null)}
+        open={!!selectedReport}
+      >
         <DialogContent className="max-h-[80vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedReport!.type.charAt(0).toUpperCase() + selectedReport!.type.slice(1)} Report
+              {selectedReport!.type.charAt(0).toUpperCase() +
+                selectedReport!.type.slice(1)}{' '}
+              Report
             </DialogTitle>
           </DialogHeader>
 
           {selectedReport && (
             <div className="space-y-4">
               <div className="rounded-lg bg-black/20 p-4">
-                <h3 className="mb-2 font-medium text-white/90">Patient Information</h3>
+                <h3 className="mb-2 font-medium text-white/90">
+                  Patient Information
+                </h3>
                 <div className="space-y-2 text-sm text-white/70">
-                  <p>Symptoms: {(selectedReport?.metadata as any)?.patientInfo?.symptoms?.join(", ") || "N/A"}</p>
-                  <p>Medical History: {(selectedReport?.metadata as any)?.patientInfo?.medicalHistory || "N/A"}</p>
-                  <p>Current Medications: {(selectedReport?.metadata as any)?.patientInfo?.currentMedications?.join(", ") || "N/A"}</p>
-                  <p>Allergies: {(selectedReport?.metadata as any)?.patientInfo?.allergies?.join(", ") || "N/A"}</p>
+                  <p>
+                    Symptoms:{' '}
+                    {(
+                      selectedReport?.metadata as any
+                    )?.patientInfo?.symptoms?.join(', ') || 'N/A'}
+                  </p>
+                  <p>
+                    Medical History:{' '}
+                    {(selectedReport?.metadata as any)?.patientInfo
+                      ?.medicalHistory || 'N/A'}
+                  </p>
+                  <p>
+                    Current Medications:{' '}
+                    {(
+                      selectedReport?.metadata as any
+                    )?.patientInfo?.currentMedications?.join(', ') || 'N/A'}
+                  </p>
+                  <p>
+                    Allergies:{' '}
+                    {(
+                      selectedReport?.metadata as any
+                    )?.patientInfo?.allergies?.join(', ') || 'N/A'}
+                  </p>
                 </div>
               </div>
 
@@ -325,4 +380,4 @@ export function ReportsList({ reports, onRetry }: ReportsListProps) {
       </Dialog>
     </>
   )
-} 
+}

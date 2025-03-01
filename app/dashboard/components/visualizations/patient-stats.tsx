@@ -56,4 +56,4 @@ export function PatientStats({ data }: PatientStatsProps) {
       </CardContent>
     </Card>
   )
-} 
+}

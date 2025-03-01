@@ -4,13 +4,19 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import type { User } from '@supabase/supabase-js'
 import { Eye, EyeOff } from 'lucide-react'
 import Image from 'next/image'
-import { useState, useTransition, useCallback } from 'react'
+import { useCallback, useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 import * as z from 'zod'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
@@ -37,10 +43,10 @@ type LoginFormData = z.infer<typeof LoginSchema>
 
 interface GoogleAuthResponse {
   data?: {
-    url?: string;
-    user?: User | null;
-  };
-  error?: Error;
+    url?: string
+    user?: User | null
+  }
+  error?: Error
 }
 
 export function AuthForm() {
@@ -64,7 +70,7 @@ export function AuthForm() {
       })
       return false
     }
-    
+
     toast({
       title: 'Success',
       description: 'Welcome back!',
@@ -90,7 +96,7 @@ export function AuthForm() {
   const handleGoogleSignIn = useCallback(async () => {
     startTransition(async () => {
       try {
-        const response = await signInWithGoogle() as GoogleAuthResponse
+        const response = (await signInWithGoogle()) as GoogleAuthResponse
         if (response.data?.url && response.data.url.length > 0) {
           window.location.href = response.data.url
         } else {
@@ -110,71 +116,77 @@ export function AuthForm() {
     setShowPassword((prev) => !prev)
   }, [])
 
-  const renderEmailField = useCallback(({ field }: { field: any }) => (
-    <FormItem>
-      <FormLabel>Email</FormLabel>
-      <FormControl>
-        <Input
-          autoCapitalize="none"
-          autoComplete="email"
-          autoCorrect="off"
-          placeholder="name@example.com"
-          type="email"
-          {...field}
-        />
-      </FormControl>
-      <FormMessage />
-    </FormItem>
-  ), [])
-
-  const renderPasswordField = useCallback(({ field }: { field: any }) => (
-    <FormItem>
-      <FormLabel>Password</FormLabel>
-      <FormControl>
-        <div className="relative">
+  const renderEmailField = useCallback(
+    ({ field }: { field: any }) => (
+      <FormItem>
+        <FormLabel>Email</FormLabel>
+        <FormControl>
           <Input
-            autoComplete="current-password"
-            disabled={isPending}
-            placeholder="Enter your password"
-            type={showPassword ? 'text' : 'password'}
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect="off"
+            placeholder="name@example.com"
+            type="email"
             {...field}
           />
-          <Button
-            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-            disabled={isPending}
-            onClick={() => void togglePasswordVisibility()}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            {showPassword ? (
-              <EyeOff aria-hidden="true" className="size-4" />
-            ) : (
-              <Eye aria-hidden="true" className="size-4" />
-            )}
-            <span className="sr-only">
-              {showPassword ? 'Hide password' : 'Show password'}
-            </span>
-          </Button>
-        </div>
-      </FormControl>
-      <FormMessage />
-    </FormItem>
-  ), [isPending, showPassword, togglePasswordVisibility])
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    []
+  )
 
-  const renderRememberMeField = useCallback(({ field }: { field: any }) => (
-    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-      <FormControl>
-        <Checkbox
-          checked={field.value}
-          onCheckedChange={field.onChange}
-        />
-      </FormControl>
-      <div className="space-y-1 leading-none">
-        <FormLabel>Remember me</FormLabel>
-      </div>
-    </FormItem>
-  ), [])
+  const renderPasswordField = useCallback(
+    ({ field }: { field: any }) => (
+      <FormItem>
+        <FormLabel>Password</FormLabel>
+        <FormControl>
+          <div className="relative">
+            <Input
+              autoComplete="current-password"
+              disabled={isPending}
+              placeholder="Enter your password"
+              type={showPassword ? 'text' : 'password'}
+              {...field}
+            />
+            <Button
+              className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+              disabled={isPending}
+              onClick={() => void togglePasswordVisibility()}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {showPassword ? (
+                <EyeOff aria-hidden="true" className="size-4" />
+              ) : (
+                <Eye aria-hidden="true" className="size-4" />
+              )}
+              <span className="sr-only">
+                {showPassword ? 'Hide password' : 'Show password'}
+              </span>
+            </Button>
+          </div>
+        </FormControl>
+        <FormMessage />
+      </FormItem>
+    ),
+    [isPending, showPassword, togglePasswordVisibility]
+  )
+
+  const renderRememberMeField = useCallback(
+    ({ field }: { field: any }) => (
+      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+        <FormControl>
+          <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+        </FormControl>
+        <div className="space-y-1 leading-none">
+          <FormLabel>Remember me</FormLabel>
+        </div>
+      </FormItem>
+    ),
+    []
+  )
 
   return (
     <Card className="w-full max-w-md">
@@ -185,7 +197,10 @@ export function AuthForm() {
       <CardContent>
         <div className="grid gap-6">
           <Form {...form}>
-            <form className="space-y-4" onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}>
+            <form
+              className="space-y-4"
+              onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}
+            >
               <FormField
                 control={form.control}
                 name="email"

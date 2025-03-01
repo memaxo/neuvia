@@ -1,22 +1,22 @@
 /**
  * Research configuration
- * 
+ *
  * Configuration for research providers and options.
  */
-import perplexityConfig, { 
+import perplexityConfig, {
   PERPLEXITY_DEBUG,
-  PERPLEXITY_MODEL 
-} from './perplexity';
+  PERPLEXITY_MODEL,
+} from './perplexity'
 
 /**
  * Available research providers
  */
-export type ResearchProvider = 'perplexity';
+export type ResearchProvider = 'perplexity'
 
 /**
  * Research depth levels
  */
-export type ResearchDepth = 'basic' | 'standard' | 'comprehensive'; 
+export type ResearchDepth = 'basic' | 'standard' | 'comprehensive'
 
 /**
  * Research depth configuration mapping
@@ -25,17 +25,17 @@ export interface ResearchDepthConfig {
   /**
    * Maximum tokens for each depth level
    */
-  maxTokens: Record<ResearchDepth, number>;
-  
+  maxTokens: Record<ResearchDepth, number>
+
   /**
    * Temperature for each depth level
    */
-  temperature: Record<ResearchDepth, number>;
-  
+  temperature: Record<ResearchDepth, number>
+
   /**
    * Sources limit for each depth level
    */
-  sourcesLimit: Record<ResearchDepth, number>;
+  sourcesLimit: Record<ResearchDepth, number>
 }
 
 /**
@@ -49,13 +49,13 @@ export interface ResearchProviderConfig {
     /**
      * Model to use
      */
-    model: string;
-    
+    model: string
+
     /**
      * Depth-specific configurations
      */
-    depthConfig: ResearchDepthConfig;
-  };
+    depthConfig: ResearchDepthConfig
+  }
 }
 
 /**
@@ -65,13 +65,13 @@ export interface ResearchConfig {
   /**
    * Default research provider to use
    */
-  defaultProvider: ResearchProvider;
-  
+  defaultProvider: ResearchProvider
+
   /**
    * Whether to enable debug mode
    */
-  debug: boolean;
-  
+  debug: boolean
+
   /**
    * Default research options
    */
@@ -79,23 +79,23 @@ export interface ResearchConfig {
     /**
      * Default depth of research
      */
-    depth: ResearchDepth;
-    
+    depth: ResearchDepth
+
     /**
      * Default sources limit
      */
-    sourcesLimit: number;
-    
+    sourcesLimit: number
+
     /**
      * Default setting for including source content
      */
-    includeSourceContent: boolean;
-  };
-  
+    includeSourceContent: boolean
+  }
+
   /**
    * Provider-specific configurations
    */
-  providers: ResearchProviderConfig;
+  providers: ResearchProviderConfig
 }
 
 /**
@@ -105,19 +105,19 @@ const depthConfig: ResearchDepthConfig = {
   maxTokens: {
     basic: 1500,
     standard: 3000,
-    comprehensive: 4500
+    comprehensive: 4500,
   },
   temperature: {
     basic: 0.8,
     standard: 0.7,
-    comprehensive: 0.5
+    comprehensive: 0.5,
   },
   sourcesLimit: {
     basic: 3,
     standard: 5,
-    comprehensive: 8
-  }
-};
+    comprehensive: 8,
+  },
+}
 
 /**
  * Consolidated research configuration
@@ -125,24 +125,24 @@ const depthConfig: ResearchDepthConfig = {
 const researchConfig: ResearchConfig = {
   // Default to Perplexity provider
   defaultProvider: 'perplexity',
-  
+
   // Use debug setting from perplexity config for consistency
   debug: PERPLEXITY_DEBUG,
-  
+
   // Default research options
   defaultOptions: {
     depth: 'standard',
     sourcesLimit: 5,
-    includeSourceContent: true
+    includeSourceContent: true,
   },
-  
+
   // Provider-specific configurations
   providers: {
     perplexity: {
       model: PERPLEXITY_MODEL,
-      depthConfig
-    }
-  }
-};
+      depthConfig,
+    },
+  },
+}
 
-export default researchConfig; 
+export default researchConfig

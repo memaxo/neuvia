@@ -1,44 +1,44 @@
-"use client";
+'use client'
 
-import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { UploadIcon, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Button } from '@/components/ui/button'
+import { Loader2, UploadIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 interface DocumentUploaderProps {
-  onUpload: (file: File) => Promise<void>;
-  disabled?: boolean;
+  onUpload: (file: File) => Promise<void>
+  disabled?: boolean
 }
 
 export function DocumentUploader({
   onUpload,
-  disabled = false
+  disabled = false,
 }: DocumentUploaderProps) {
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
+    fileInputRef.current?.click()
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]
+    if (!file) return
 
     // Reset the input value to allow uploading the same file again
-    e.target.value = "";
+    e.target.value = ''
 
     try {
-      setIsUploading(true);
-      await onUpload(file);
-      toast.success("Document uploaded successfully");
+      setIsUploading(true)
+      await onUpload(file)
+      toast.success('Document uploaded successfully')
     } catch (error) {
-      console.error("Error uploading document:", error);
-      toast.error("Failed to upload document");
+      console.error('Error uploading document:', error)
+      toast.error('Failed to upload document')
     } finally {
-      setIsUploading(false);
+      setIsUploading(false)
     }
-  };
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -68,9 +68,7 @@ export function DocumentUploader({
           </>
         )}
       </Button>
-      <span className="text-xs text-muted-foreground">
-        PDF, DOC, DOCX, TXT
-      </span>
+      <span className="text-xs text-muted-foreground">PDF, DOC, DOCX, TXT</span>
     </div>
-  );
-} 
+  )
+}

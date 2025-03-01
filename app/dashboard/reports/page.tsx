@@ -1,97 +1,97 @@
 'use client'
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from 'react'
 
-import type { Report } from "@/lib/reports.types";
+import type { Report } from '@/lib/reports.types'
 import { createBrowserClient } from '@/lib/supabase'
 
-import { ReportsFilters } from "./components/reports-filters";
-import { ReportsList } from "./components/reports-list";
-import { ReportsOverview } from "./components/reports-overview";
+import { ReportsFilters } from './components/reports-filters'
+import { ReportsList } from './components/reports-list'
+import { ReportsOverview } from './components/reports-overview'
 
 export default function ReportsPage() {
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const supabase = createBrowserClient();
+  const [reports, setReports] = useState<Report[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const supabase = createBrowserClient()
 
   useEffect(() => {
     async function fetchReports() {
       try {
         const { data, error } = await supabase
-          .from("reports")
-          .select("*")
-          .order("created_at", { ascending: false });
+          .from('reports')
+          .select('*')
+          .order('created_at', { ascending: false })
 
-        if (error) throw error;
+        if (error) throw error
 
         // Cast the reports to the correct type
-        setReports(data as unknown as Report[]);
+        setReports(data as unknown as Report[])
       } catch (e) {
-        setError(e as Error);
+        setError(e as Error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
 
-    fetchReports();
-  }, [supabase]);
+    fetchReports()
+  }, [supabase])
 
   // Calculate overview stats
   const stats = {
     total: reports.length,
-    completed: reports.filter((r) => r.status === "completed").length,
-    processing: reports.filter((r) => r.status === "processing").length,
-    failed: reports.filter((r) => r.status === "failed").length,
-  };
+    completed: reports.filter((r) => r.status === 'completed').length,
+    processing: reports.filter((r) => r.status === 'processing').length,
+    failed: reports.filter((r) => r.status === 'failed').length,
+  }
 
   const handleFilterChange = async (filters: {
-    type?: Report["type"];
-    timeframe?: string;
-    status?: Report["status"];
+    type?: Report['type']
+    timeframe?: string
+    status?: Report['status']
   }) => {
     try {
-      setLoading(true);
-      let query = supabase.from("reports").select("*");
+      setLoading(true)
+      let query = supabase.from('reports').select('*')
 
       if (filters.type) {
-        query = query.eq("type", filters.type);
+        query = query.eq('type', filters.type)
       }
       if (filters.status) {
-        query = query.eq("status", filters.status);
+        query = query.eq('status', filters.status)
       }
       if (filters.timeframe) {
-        const now = new Date();
-        let startDate: Date;
+        const now = new Date()
+        let startDate: Date
         switch (filters.timeframe) {
-          case "7d":
-            startDate = new Date(now.setDate(now.getDate() - 7));
-            break;
-          case "30d":
-            startDate = new Date(now.setDate(now.getDate() - 30));
-            break;
-          case "quarter":
-            startDate = new Date(now.setMonth(now.getMonth() - 3));
-            break;
+          case '7d':
+            startDate = new Date(now.setDate(now.getDate() - 7))
+            break
+          case '30d':
+            startDate = new Date(now.setDate(now.getDate() - 30))
+            break
+          case 'quarter':
+            startDate = new Date(now.setMonth(now.getMonth() - 3))
+            break
           default:
-            startDate = new Date(0);
+            startDate = new Date(0)
         }
-        query = query.gte("created_at", startDate.toISOString());
+        query = query.gte('created_at', startDate.toISOString())
       }
 
-      query = query.order("created_at", { ascending: false });
+      query = query.order('created_at', { ascending: false })
 
-      const { data, error } = await query;
+      const { data, error } = await query
 
-      if (error) throw error;
+      if (error) throw error
 
-      setReports(data as unknown as Report[]);
+      setReports(data as unknown as Report[])
     } catch (e) {
-      setError(e as Error);
+      setError(e as Error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   if (error) {
     return (
@@ -101,14 +101,14 @@ export default function ReportsPage() {
           <p className="text-red-400">Error loading reports: {error.message}</p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
     <div className="relative flex-1">
       {/* Background layer */}
       <div className="absolute inset-0 bg-[rgb(var(--background))] shadow-2xl" />
-      
+
       {/* Content stack */}
       <div className="relative space-y-6 p-6">
         {/* Header */}
@@ -120,28 +120,28 @@ export default function ReportsPage() {
         <ReportsOverview
           stats={[
             {
-              name: "Total Reports",
+              name: 'Total Reports',
               value: stats.total,
-              change: "+5%",
-              changeType: "increase",
+              change: '+5%',
+              changeType: 'increase',
             },
             {
-              name: "Completed",
+              name: 'Completed',
               value: stats.completed,
-              change: "+12%",
-              changeType: "increase",
+              change: '+12%',
+              changeType: 'increase',
             },
             {
-              name: "Processing",
+              name: 'Processing',
               value: stats.processing,
-              change: "0",
-              changeType: "neutral",
+              change: '0',
+              changeType: 'neutral',
             },
             {
-              name: "Failed",
+              name: 'Failed',
               value: stats.failed,
-              change: "-2%",
-              changeType: "decrease",
+              change: '-2%',
+              changeType: 'decrease',
             },
           ]}
         />
@@ -166,5 +166,5 @@ export default function ReportsPage() {
         </div>
       </div>
     </div>
-  );
-} 
+  )
+}

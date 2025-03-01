@@ -16,10 +16,16 @@ export async function POST() {
     if (error) {
       // Type guard to ensure 'error' is an Error object
       if (error instanceof Error) {
-        return Response.json({ success: false, error: error.message }, { status: 500 })
+        return Response.json(
+          { success: false, error: error.message },
+          { status: 500 }
+        )
       } else {
         // Handle cases where 'error' is not an Error object (e.g., a string or object)
-        return Response.json({ success: false, error: String(error) }, { status: 500 })
+        return Response.json(
+          { success: false, error: String(error) },
+          { status: 500 }
+        )
       }
     }
 

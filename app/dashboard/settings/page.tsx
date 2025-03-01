@@ -1,11 +1,11 @@
 import {
-  Settings as _,
   Bell,
   Database,
   Lock,
   Palette,
   User,
   Workflow,
+  Settings as _,
 } from 'lucide-react'
 
 import { AccountSettings } from './components/account-settings'
@@ -65,7 +65,7 @@ export default function SettingsPage() {
     <div className="relative flex-1">
       {/* Background layer */}
       <div className="absolute inset-0 bg-[rgb(var(--background))] shadow-2xl" />
-      
+
       {/* Content stack */}
       <div className="relative space-y-6 p-6">
         {/* Header Section */}

@@ -1,43 +1,43 @@
-'use client';
+'use client'
 
-import { useState, useRef, FormEvent } from 'react';
-import { useChat } from '@/contexts/chat-context';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { PaperClipIcon, SendIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { useChat } from '@/contexts/chat-context'
+import { PaperClipIcon, SendIcon } from 'lucide-react'
+import { FormEvent, useRef, useState } from 'react'
 
 export function MultimodalInput() {
-  const { state, sendMessage } = useChat();
-  const [input, setInput] = useState('');
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { state, sendMessage } = useChat()
+  const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() && attachments.length === 0) return;
+    e.preventDefault()
+    if (!input.trim() && attachments.length === 0) return
 
     try {
       // TODO: Handle file uploads
-      await sendMessage(input);
-      setInput('');
-      setAttachments([]);
+      await sendMessage(input)
+      setInput('')
+      setAttachments([])
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error('Failed to send message:', error)
     }
-  };
+  }
 
   const handleFileSelect = () => {
-    fileInputRef.current?.click();
-  };
+    fileInputRef.current?.click()
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    setAttachments(prev => [...prev, ...files]);
-  };
+    const files = Array.from(e.target.files || [])
+    setAttachments((prev) => [...prev, ...files])
+  }
 
   const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+  }
 
   return (
     <form onSubmit={handleSubmit} className="w-full">
@@ -82,15 +82,17 @@ export function MultimodalInput() {
             disabled={state.isLoading}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
+                e.preventDefault()
+                handleSubmit(e)
               }
             }}
           />
 
           <Button
             type="submit"
-            disabled={(!input.trim() && attachments.length === 0) || state.isLoading}
+            disabled={
+              (!input.trim() && attachments.length === 0) || state.isLoading
+            }
           >
             <SendIcon className="h-4 w-4" />
           </Button>
@@ -105,5 +107,5 @@ export function MultimodalInput() {
         multiple
       />
     </form>
-  );
-} 
+  )
+}

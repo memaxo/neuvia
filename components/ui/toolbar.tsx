@@ -1,32 +1,33 @@
-'use client';
+'use client'
 
-import type { CreateMessage, Message } from 'ai';
-import type { ChatRequestOptions } from '@/lib/types';
-import cx from 'classnames';
-import {
-  AnimatePresence,
-  motion,
-  useMotionValue,
-  useTransform,
-} from 'framer-motion';
-import {
-  type Dispatch,
-  memo,
-  type SetStateAction,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-import { useOnClickOutside } from 'usehooks-ts';
-import { nanoid } from 'nanoid';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { sanitizeUIMessages } from '@/lib/utils';
+} from '@/components/ui/tooltip'
+import type { ChatRequestOptions } from '@/lib/types'
+import { sanitizeUIMessages } from '@/lib/utils'
+import type { CreateMessage, Message } from 'ai'
+import cx from 'classnames'
+import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useTransform,
+} from 'framer-motion'
+import { nanoid } from 'nanoid'
+import {
+  type Dispatch,
+  type SetStateAction,
+  memo,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+import { useOnClickOutside } from 'usehooks-ts'
 
+import { BlockKind } from './block'
 import {
   ArrowUpIcon,
   CodeIcon,
@@ -38,8 +39,7 @@ import {
   StopIcon,
   SummarizeIcon,
   TerminalIcon,
-} from './icons';
-import { BlockKind } from './block';
+} from './icons'
 
 type ToolProps = {
   type:
@@ -48,19 +48,19 @@ type ToolProps = {
     | 'adjust-reading-level'
     | 'code-review'
     | 'add-comments'
-    | 'add-logs';
-  description: string;
-  icon: JSX.Element;
-  selectedTool: string | null;
-  setSelectedTool: Dispatch<SetStateAction<string | null>>;
-  isToolbarVisible?: boolean;
-  setIsToolbarVisible?: Dispatch<SetStateAction<boolean>>;
-  isAnimating: boolean;
+    | 'add-logs'
+  description: string
+  icon: JSX.Element
+  selectedTool: string | null
+  setSelectedTool: Dispatch<SetStateAction<string | null>>
+  isToolbarVisible?: boolean
+  setIsToolbarVisible?: Dispatch<SetStateAction<boolean>>
+  isAnimating: boolean
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-};
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
+}
 
 const Tool = ({
   type,
@@ -73,62 +73,62 @@ const Tool = ({
   isAnimating,
   append,
 }: ToolProps) => {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isHovered, setIsHovered] = useState(false)
 
   useEffect(() => {
     if (selectedTool !== type) {
-      setIsHovered(false);
+      setIsHovered(false)
     }
-  }, [selectedTool, type]);
+  }, [selectedTool, type])
 
   const handleSelect = () => {
     if (!isToolbarVisible && setIsToolbarVisible) {
-      setIsToolbarVisible(true);
-      return;
+      setIsToolbarVisible(true)
+      return
     }
 
     if (!selectedTool) {
-      setIsHovered(true);
-      setSelectedTool(type);
-      return;
+      setIsHovered(true)
+      setSelectedTool(type)
+      return
     }
 
     if (selectedTool !== type) {
-      setSelectedTool(type);
+      setSelectedTool(type)
     } else {
       if (type === 'final-polish') {
         append({
           role: 'user',
           content:
             'Please add final polish and check for grammar, add section titles for better structure, and ensure everything reads smoothly.',
-        });
+        })
 
-        setSelectedTool(null);
+        setSelectedTool(null)
       } else if (type === 'request-suggestions') {
         append({
           role: 'user',
           content:
             'Please add suggestions you have that could improve the writing.',
-        });
+        })
 
-        setSelectedTool(null);
+        setSelectedTool(null)
       } else if (type === 'add-comments') {
         append({
           role: 'user',
           content: 'Please add comments to explain the code.',
-        });
+        })
 
-        setSelectedTool(null);
+        setSelectedTool(null)
       } else if (type === 'add-logs') {
         append({
           role: 'user',
           content: 'Please add logs to help debug the code.',
-        });
+        })
 
-        setSelectedTool(null);
+        setSelectedTool(null)
       }
     }
-  };
+  }
 
   return (
     <Tooltip open={isHovered && !isAnimating}>
@@ -138,14 +138,14 @@ const Tool = ({
             'bg-primary !text-primary-foreground': selectedTool === type,
           })}
           onHoverStart={() => {
-            setIsHovered(true);
+            setIsHovered(true)
           }}
           onHoverEnd={() => {
-            if (selectedTool !== type) setIsHovered(false);
+            if (selectedTool !== type) setIsHovered(false)
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
-              handleSelect();
+              handleSelect()
             }
           }}
           initial={{ scale: 1, opacity: 0 }}
@@ -158,7 +158,7 @@ const Tool = ({
             transition: { duration: 0.1 },
           }}
           onClick={() => {
-            handleSelect();
+            handleSelect()
           }}
         >
           {selectedTool === type ? <ArrowUpIcon /> : icon}
@@ -172,22 +172,22 @@ const Tool = ({
         {description}
       </TooltipContent>
     </Tooltip>
-  );
-};
+  )
+}
 
-const randomArr = [...Array(6)].map((x) => nanoid(5));
+const randomArr = [...Array(6)].map((x) => nanoid(5))
 
 const ReadingLevelSelector = ({
   setSelectedTool,
   append,
   isAnimating,
 }: {
-  setSelectedTool: Dispatch<SetStateAction<string | null>>;
-  isAnimating: boolean;
+  setSelectedTool: Dispatch<SetStateAction<string | null>>
+  isAnimating: boolean
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
 }) => {
   const LEVELS = [
     'Elementary',
@@ -196,24 +196,24 @@ const ReadingLevelSelector = ({
     'High School',
     'College',
     'Graduate',
-  ];
+  ]
 
-  const y = useMotionValue(-40 * 2);
-  const dragConstraints = 5 * 40 + 2;
-  const yToLevel = useTransform(y, [0, -dragConstraints], [0, 5]);
+  const y = useMotionValue(-40 * 2)
+  const dragConstraints = 5 * 40 + 2
+  const yToLevel = useTransform(y, [0, -dragConstraints], [0, 5])
 
-  const [currentLevel, setCurrentLevel] = useState(2);
+  const [currentLevel, setCurrentLevel] = useState(2)
   const [hasUserSelectedLevel, setHasUserSelectedLevel] =
-    useState<boolean>(false);
+    useState<boolean>(false)
 
   useEffect(() => {
     const unsubscribe = yToLevel.on('change', (latest) => {
-      const level = Math.min(5, Math.max(0, Math.round(Math.abs(latest))));
-      setCurrentLevel(level);
-    });
+      const level = Math.min(5, Math.max(0, Math.round(Math.abs(latest))))
+      setCurrentLevel(level)
+    })
 
-    return () => unsubscribe();
-  }, [yToLevel]);
+    return () => unsubscribe()
+  }, [yToLevel])
 
   return (
     <div className="relative flex flex-col justify-end items-center">
@@ -239,7 +239,7 @@ const ReadingLevelSelector = ({
                 {
                   'bg-primary text-primary-foreground': currentLevel !== 2,
                   'bg-background text-foreground': currentLevel === 2,
-                },
+                }
               )}
               style={{ y }}
               drag="y"
@@ -250,13 +250,13 @@ const ReadingLevelSelector = ({
               transition={{ duration: 0.1 }}
               dragConstraints={{ top: -dragConstraints, bottom: 0 }}
               onDragStart={() => {
-                setHasUserSelectedLevel(false);
+                setHasUserSelectedLevel(false)
               }}
               onDragEnd={() => {
                 if (currentLevel === 2) {
-                  setSelectedTool(null);
+                  setSelectedTool(null)
                 } else {
-                  setHasUserSelectedLevel(true);
+                  setHasUserSelectedLevel(true)
                 }
               }}
               onClick={() => {
@@ -264,9 +264,9 @@ const ReadingLevelSelector = ({
                   append({
                     role: 'user',
                     content: `Please adjust the reading level to ${LEVELS[currentLevel]} level.`,
-                  });
+                  })
 
-                  setSelectedTool(null);
+                  setSelectedTool(null)
                 }
               }}
             >
@@ -283,8 +283,8 @@ const ReadingLevelSelector = ({
         </Tooltip>
       </TooltipProvider>
     </div>
-  );
-};
+  )
+}
 
 const toolsByBlockKind: Record<
   BlockKind,
@@ -295,9 +295,9 @@ const toolsByBlockKind: Record<
       | 'adjust-reading-level'
       | 'code-review'
       | 'add-comments'
-      | 'add-logs';
-    description: string;
-    icon: JSX.Element;
+      | 'add-logs'
+    description: string
+    icon: JSX.Element
   }>
 > = {
   text: [
@@ -341,7 +341,7 @@ const toolsByBlockKind: Record<
       icon: <MessageIcon />,
     },
   ],
-};
+}
 
 export const Tools = ({
   isToolbarVisible,
@@ -352,18 +352,18 @@ export const Tools = ({
   setIsToolbarVisible,
   blockKind,
 }: {
-  isToolbarVisible: boolean;
-  selectedTool: string | null;
-  setSelectedTool: Dispatch<SetStateAction<string | null>>;
+  isToolbarVisible: boolean
+  selectedTool: string | null
+  setSelectedTool: Dispatch<SetStateAction<string | null>>
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  isAnimating: boolean;
-  setIsToolbarVisible: Dispatch<SetStateAction<boolean>>;
-  blockKind: BlockKind;
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
+  isAnimating: boolean
+  setIsToolbarVisible: Dispatch<SetStateAction<boolean>>
+  blockKind: BlockKind
 }) => {
-  const [primaryTool, ...secondaryTools] = toolsByBlockKind[blockKind];
+  const [primaryTool, ...secondaryTools] = toolsByBlockKind[blockKind]
 
   return (
     <motion.div
@@ -400,8 +400,8 @@ export const Tools = ({
         isAnimating={isAnimating}
       />
     </motion.div>
-  );
-};
+  )
+}
 
 const PureToolbar = ({
   isToolbarVisible,
@@ -412,58 +412,58 @@ const PureToolbar = ({
   setMessages,
   blockKind,
 }: {
-  isToolbarVisible: boolean;
-  setIsToolbarVisible: Dispatch<SetStateAction<boolean>>;
-  isLoading: boolean;
+  isToolbarVisible: boolean
+  setIsToolbarVisible: Dispatch<SetStateAction<boolean>>
+  isLoading: boolean
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  stop: () => void;
-  setMessages: Dispatch<SetStateAction<Message[]>>;
-  blockKind: BlockKind;
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
+  stop: () => void
+  setMessages: Dispatch<SetStateAction<Message[]>>
+  blockKind: BlockKind
 }) => {
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
-  const [selectedTool, setSelectedTool] = useState<string | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
+  const [selectedTool, setSelectedTool] = useState<string | null>(null)
+  const [isAnimating, setIsAnimating] = useState(false)
 
   useOnClickOutside(toolbarRef, () => {
-    setIsToolbarVisible(false);
-    setSelectedTool(null);
-  });
+    setIsToolbarVisible(false)
+    setSelectedTool(null)
+  })
 
   const startCloseTimer = () => {
     if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+      clearTimeout(timeoutRef.current)
     }
 
     timeoutRef.current = setTimeout(() => {
-      setSelectedTool(null);
-      setIsToolbarVisible(false);
-    }, 2000);
-  };
+      setSelectedTool(null)
+      setIsToolbarVisible(false)
+    }, 2000)
+  }
 
   const cancelCloseTimer = () => {
     if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+      clearTimeout(timeoutRef.current)
     }
-  };
+  }
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+        clearTimeout(timeoutRef.current)
       }
-    };
-  }, []);
+    }
+  }, [])
 
   useEffect(() => {
     if (isLoading) {
-      setIsToolbarVisible(false);
+      setIsToolbarVisible(false)
     }
-  }, [isLoading, setIsToolbarVisible]);
+  }, [isLoading, setIsToolbarVisible])
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -492,21 +492,21 @@ const PureToolbar = ({
         exit={{ opacity: 0, y: -20, transition: { duration: 0.1 } }}
         transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         onHoverStart={() => {
-          if (isLoading) return;
+          if (isLoading) return
 
-          cancelCloseTimer();
-          setIsToolbarVisible(true);
+          cancelCloseTimer()
+          setIsToolbarVisible(true)
         }}
         onHoverEnd={() => {
-          if (isLoading) return;
+          if (isLoading) return
 
-          startCloseTimer();
+          startCloseTimer()
         }}
         onAnimationStart={() => {
-          setIsAnimating(true);
+          setIsAnimating(true)
         }}
         onAnimationComplete={() => {
-          setIsAnimating(false);
+          setIsAnimating(false)
         }}
         ref={toolbarRef}
       >
@@ -518,8 +518,8 @@ const PureToolbar = ({
             exit={{ scale: 1 }}
             className="p-3"
             onClick={() => {
-              stop();
-              setMessages((messages) => sanitizeUIMessages(messages));
+              stop()
+              setMessages((messages) => sanitizeUIMessages(messages))
             }}
           >
             <StopIcon />
@@ -545,13 +545,13 @@ const PureToolbar = ({
         )}
       </motion.div>
     </TooltipProvider>
-  );
-};
+  )
+}
 
 export const Toolbar = memo(PureToolbar, (prevProps, nextProps) => {
-  if (prevProps.isLoading !== nextProps.isLoading) return false;
-  if (prevProps.isToolbarVisible !== nextProps.isToolbarVisible) return false;
-  if (prevProps.blockKind !== nextProps.blockKind) return false;
+  if (prevProps.isLoading !== nextProps.isLoading) return false
+  if (prevProps.isToolbarVisible !== nextProps.isToolbarVisible) return false
+  if (prevProps.blockKind !== nextProps.blockKind) return false
 
-  return true;
-});
+  return true
+})

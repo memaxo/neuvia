@@ -6,16 +6,16 @@ import {
   Info,
   MessageSquare,
   MoreVertical,
-  Upload,
-  User,
   Plus,
   Search,
+  Upload,
+  User,
   UserPlus,
   Users,
 } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -51,7 +51,7 @@ const statusConfig = {
     badge: 'status-badge-at-risk',
     icon: Info,
   },
-  'Healthy': {
+  Healthy: {
     badge: 'status-badge-stable',
     icon: User,
   },
@@ -95,11 +95,19 @@ export function PatientShortcuts() {
   }, [])
 
   if (loading) {
-    return <div className="p-4 text-center text-[rgb(var(--foreground)/var(--opacity-70))]">Loading patients...</div>
+    return (
+      <div className="p-4 text-center text-[rgb(var(--foreground)/var(--opacity-70))]">
+        Loading patients...
+      </div>
+    )
   }
 
   if (error) {
-    return <div className="p-4 text-center text-[rgb(var(--error)/var(--opacity-100))]">{error}</div>
+    return (
+      <div className="p-4 text-center text-[rgb(var(--error)/var(--opacity-100))]">
+        {error}
+      </div>
+    )
   }
 
   return (

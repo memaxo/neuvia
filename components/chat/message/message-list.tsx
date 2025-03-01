@@ -1,29 +1,29 @@
-"use client";
+'use client'
 
-import { useEffect, useRef } from "react";
-import { Message as ChatMessage } from "./message";
-import type { Message } from "@/lib/chat/types";
+import type { Message } from '@/lib/chat/types'
+import { useEffect, useRef } from 'react'
+import { Message as ChatMessage } from './message'
 
 interface ChatMessageListProps {
-  messages: Message[];
-  isLoading: boolean;
-  loadingMessage?: string;
+  messages: Message[]
+  isLoading: boolean
+  loadingMessage?: string
 }
 
 export function ChatMessageList({
   messages,
   isLoading,
-  loadingMessage = "Thinking..."
+  loadingMessage = 'Thinking...',
 }: ChatMessageListProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+    scrollToBottom()
+  }, [messages, isLoading])
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
@@ -39,17 +39,14 @@ export function ChatMessageList({
       ) : (
         <div className="space-y-6">
           {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message}
-            />
+            <ChatMessage key={message.id} message={message} />
           ))}
 
           {isLoading && (
             <ChatMessage
               message={{
-                id: "loading",
-                role: "assistant",
+                id: 'loading',
+                role: 'assistant',
                 content: loadingMessage,
               }}
             />
@@ -58,5 +55,5 @@ export function ChatMessageList({
         </div>
       )}
     </div>
-  );
-} 
+  )
+}

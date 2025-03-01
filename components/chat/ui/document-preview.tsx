@@ -1,31 +1,31 @@
-'use client';
+'use client'
 
 import {
-  memo,
   MouseEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
-} from 'react';
-import useSWR from 'swr';
+} from 'react'
+import useSWR from 'swr'
 
-import { Document } from '@/lib/db/schema';
-import { cn, fetcher } from '@/lib/utils';
-import { useBlock } from '@/hooks/use-block';
+import { useBlock } from '@/hooks/use-block'
+import { Document } from '@/lib/db/schema'
+import { cn, fetcher } from '@/lib/utils'
 
-import { BlockKind, UIBlock } from '@/components/ui/block';
-import { FileIcon, FullscreenIcon, LoaderIcon } from '@/components/icons';
-import { InlineDocumentSkeleton } from '@/components/ui/document-skeleton';
-import { Editor } from '@/components/ui/editor';
-import { DocumentToolCall, DocumentToolResult } from '@/components/ui/document';
-import { CodeEditor } from '@/components/ui/code-editor';
-import { SpreadsheetEditor } from '@/components/ui/spreadsheet-editor';
+import { FileIcon, FullscreenIcon, LoaderIcon } from '@/components/icons'
+import { BlockKind, UIBlock } from '@/components/ui/block'
+import { CodeEditor } from '@/components/ui/code-editor'
+import { DocumentToolCall, DocumentToolResult } from '@/components/ui/document'
+import { InlineDocumentSkeleton } from '@/components/ui/document-skeleton'
+import { Editor } from '@/components/ui/editor'
+import { SpreadsheetEditor } from '@/components/ui/spreadsheet-editor'
 
 interface DocumentPreviewProps {
-  isReadonly: boolean;
-  result?: any;
-  args?: any;
+  isReadonly: boolean
+  result?: any
+  args?: any
 }
 
 export function DocumentPreview({
@@ -33,17 +33,17 @@ export function DocumentPreview({
   result,
   args,
 }: DocumentPreviewProps) {
-  const { block, setBlock } = useBlock();
+  const { block, setBlock } = useBlock()
 
   const { data: documents, isLoading: isDocumentsFetching } = useSWR<
     Array<Document>
-  >(result ? `/api/document?id=${result.id}` : null, fetcher);
+  >(result ? `/api/document?id=${result.id}` : null, fetcher)
 
-  const previewDocument = useMemo(() => documents?.[0], [documents]);
-  const hitboxRef = useRef<HTMLDivElement>(null);
+  const previewDocument = useMemo(() => documents?.[0], [documents])
+  const hitboxRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const boundingBox = hitboxRef.current?.getBoundingClientRect();
+    const boundingBox = hitboxRef.current?.getBoundingClientRect()
     if (block.documentId && boundingBox) {
       setBlock((block) => ({
         ...block,
@@ -53,9 +53,9 @@ export function DocumentPreview({
           width: boundingBox.width,
           height: boundingBox.height,
         },
-      }));
+      }))
     }
-  }, [block.documentId, setBlock]);
+  }, [block.documentId, setBlock])
 
   if (block.isVisible) {
     if (result) {
@@ -65,7 +65,7 @@ export function DocumentPreview({
           result={{ id: result.id, title: result.title, kind: result.kind }}
           isReadonly={isReadonly}
         />
-      );
+      )
     }
 
     if (args) {
@@ -75,12 +75,12 @@ export function DocumentPreview({
           args={{ title: args.title }}
           isReadonly={isReadonly}
         />
-      );
+      )
     }
   }
 
   if (isDocumentsFetching) {
-    return <LoadingSkeleton />;
+    return <LoadingSkeleton />
   }
 
   const document: Document | null = previewDocument
@@ -94,9 +94,9 @@ export function DocumentPreview({
           createdAt: new Date(),
           userId: 'noop',
         }
-      : null;
+      : null
 
-  if (!document) return <LoadingSkeleton />;
+  if (!document) return <LoadingSkeleton />
 
   return (
     <div className="relative w-full cursor-pointer">
@@ -107,7 +107,7 @@ export function DocumentPreview({
       />
       <DocumentContent document={document} />
     </div>
-  );
+  )
 }
 
 const LoadingSkeleton = () => (
@@ -127,20 +127,20 @@ const LoadingSkeleton = () => (
       <InlineDocumentSkeleton />
     </div>
   </div>
-);
+)
 
 const PureHitboxLayer = ({
   hitboxRef,
   result,
   setBlock,
 }: {
-  hitboxRef: React.RefObject<HTMLDivElement>;
-  result: any;
-  setBlock: (updaterFn: UIBlock | ((currentBlock: UIBlock) => UIBlock)) => void;
+  hitboxRef: React.RefObject<HTMLDivElement>
+  result: any
+  setBlock: (updaterFn: UIBlock | ((currentBlock: UIBlock) => UIBlock)) => void
 }) => {
   const handleClick = useCallback(
     (event: MouseEvent<HTMLElement>) => {
-      const boundingBox = event.currentTarget.getBoundingClientRect();
+      const boundingBox = event.currentTarget.getBoundingClientRect()
 
       setBlock((block) =>
         block.status === 'streaming'
@@ -156,11 +156,11 @@ const PureHitboxLayer = ({
                 width: boundingBox.width,
                 height: boundingBox.height,
               },
-            },
-      );
+            }
+      )
     },
-    [setBlock, result],
-  );
+    [setBlock, result]
+  )
 
   return (
     <div
@@ -170,20 +170,20 @@ const PureHitboxLayer = ({
       role="presentation"
       aria-hidden="true"
     />
-  );
-};
+  )
+}
 
 const HitboxLayer = memo(PureHitboxLayer, (prevProps, nextProps) => {
-  if (!equal(prevProps.result, nextProps.result)) return false;
-  return true;
-});
+  if (!equal(prevProps.result, nextProps.result)) return false
+  return true
+})
 
 const PureDocumentHeader = ({
   title,
   isStreaming,
 }: {
-  title: string;
-  isStreaming: boolean;
+  title: string
+  isStreaming: boolean
 }) => (
   <div className="p-4 border rounded-t-2xl flex flex-row gap-2 items-start sm:items-center justify-between dark:bg-muted border-b-0 dark:border-zinc-700">
     <div className="flex flex-row items-start sm:items-center gap-3">
@@ -202,25 +202,25 @@ const PureDocumentHeader = ({
       <FullscreenIcon />
     </div>
   </div>
-);
+)
 
 const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
-  if (prevProps.title !== nextProps.title) return false;
-  if (prevProps.isStreaming !== nextProps.isStreaming) return false;
+  if (prevProps.title !== nextProps.title) return false
+  if (prevProps.isStreaming !== nextProps.isStreaming) return false
 
-  return true;
-});
+  return true
+})
 
 const DocumentContent = ({ document }: { document: Document }) => {
-  const { block } = useBlock();
+  const { block } = useBlock()
 
   const containerClassName = cn(
     'h-[257px] overflow-y-scroll border rounded-b-2xl dark:bg-muted border-t-0 dark:border-zinc-700',
     {
       'p-4 sm:px-14 sm:py-16': document.kind === 'text',
       'p-0': document.kind === 'code',
-    },
-  );
+    }
+  )
 
   const commonProps = {
     content: document.content ?? '',
@@ -229,7 +229,7 @@ const DocumentContent = ({ document }: { document: Document }) => {
     status: block.status,
     saveContent: () => {},
     suggestions: [],
-  };
+  }
 
   return (
     <div className={containerClassName}>
@@ -249,5 +249,5 @@ const DocumentContent = ({ document }: { document: Document }) => {
         </div>
       ) : null}
     </div>
-  );
-};
+  )
+}

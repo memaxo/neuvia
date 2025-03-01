@@ -1,33 +1,37 @@
-'use client';
+'use client'
 
-import React, { useState } from 'react';
-import { FileUploader } from '@/components/file-uploader';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, CheckCircle2, FileText } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
-import { useToast } from '@/components/ui/use-toast';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { FileUploader } from '@/components/file-uploader'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { useToast } from '@/components/ui/use-toast'
+import { AlertCircle, CheckCircle2, FileText } from 'lucide-react'
+import React, { useState } from 'react'
 
-import { uploadService } from '@/lib/services/upload-service';
-import type { DocumentType, FileUpload, DocumentUploadStatus } from '@/lib/types/upload';
+import { uploadService } from '@/lib/services/upload-service'
+import type {
+  DocumentType,
+  DocumentUploadStatus,
+  FileUpload,
+} from '@/lib/types/upload'
 
 /**
  * Props for the DocumentUploader component
  */
 export interface DocumentUploaderProps {
-  patientId?: string;
-  departmentId?: string;
-  documentType?: DocumentType;
-  onComplete?: (fileUpload: FileUpload) => void;
-  onError?: (error: string) => void;
-  onStatusChange?: (status: DocumentUploadStatus) => void;
-  className?: string;
-  showProgress?: boolean;
-  allowedTypes?: string[];
-  maxSize?: number;
-  multiple?: boolean;
-  description?: string;
+  patientId?: string
+  departmentId?: string
+  documentType?: DocumentType
+  onComplete?: (fileUpload: FileUpload) => void
+  onError?: (error: string) => void
+  onStatusChange?: (status: DocumentUploadStatus) => void
+  className?: string
+  showProgress?: boolean
+  allowedTypes?: string[]
+  maxSize?: number
+  multiple?: boolean
+  description?: string
 }
 
 /**
@@ -47,42 +51,45 @@ export function DocumentUploader({
   multiple = false,
   description,
 }: DocumentUploaderProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [file, setFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<DocumentUploadStatus>({
     status: 'idle',
-    progress: 0
-  });
-  const [currentFiles, setCurrentFiles] = useState<File[]>([]);
-  
-  const { toast } = useToast();
-  
+    progress: 0,
+  })
+  const [currentFiles, setCurrentFiles] = useState<File[]>([])
+
+  const { toast } = useToast()
+
   /**
    * Update the upload status and notify via callback if provided
    */
   const updateStatus = (status: Partial<DocumentUploadStatus>) => {
-    const newStatus = { ...uploadStatus, ...status };
-    setUploadStatus(newStatus);
-    onStatusChange?.(newStatus);
-  };
-  
+    const newStatus = { ...uploadStatus, ...status }
+    setUploadStatus(newStatus)
+    onStatusChange?.(newStatus)
+  }
+
   /**
    * Handle file upload using the UploadService
    */
-  const handleFileUpload = async (files: File[], progressCallback: (progress: number, file: File) => void) => {
-    if (files.length === 0) return;
-    
+  const handleFileUpload = async (
+    files: File[],
+    progressCallback: (progress: number, file: File) => void
+  ) => {
+    if (files.length === 0) return
+
     // For now, we only handle the first file if multiple is false
-    const fileToUpload = files[0];
-    setFile(fileToUpload);
-    setUploading(true);
-    
+    const fileToUpload = files[0]
+    setFile(fileToUpload)
+    setUploading(true)
+
     updateStatus({
       status: 'uploading',
       progress: 0,
-      currentStep: 'Starting upload'
-    });
-    
+      currentStep: 'Starting upload',
+    })
+
     try {
       // Use the uploadService to handle the file upload
       const result = await uploadService.uploadPatientDocument(
@@ -95,77 +102,81 @@ export function DocumentUploader({
           updateStatus({
             status: progress < 100 ? 'uploading' : 'processing',
             progress,
-            currentStep: status
-          });
-          
+            currentStep: status,
+          })
+
           // Update the FileUploader's progress indicator
-          progressCallback(progress, fileToUpload);
+          progressCallback(progress, fileToUpload)
         }
-      );
-      
+      )
+
       // Upload successful
       updateStatus({
         status: 'success',
         progress: 100,
-        currentStep: 'Upload complete'
-      });
-      
+        currentStep: 'Upload complete',
+      })
+
       toast({
         title: 'Document Uploaded',
         description: 'Document has been successfully uploaded and processed.',
-      });
-      
+      })
+
       // Notify parent component
-      onComplete?.(result);
-      
+      onComplete?.(result)
     } catch (error) {
       // Handle upload error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+
       updateStatus({
         status: 'error',
         progress: 0,
-        error: errorMessage
-      });
-      
+        error: errorMessage,
+      })
+
       toast({
         title: 'Upload Error',
         description: errorMessage,
         variant: 'destructive',
-      });
-      
-      onError?.(errorMessage);
+      })
+
+      onError?.(errorMessage)
     } finally {
-      setUploading(false);
+      setUploading(false)
     }
-  };
-  
+  }
+
   /**
    * Render progress indicator if showProgress is true
    */
   const renderProgress = () => {
-    if (!showProgress || uploadStatus.status === 'idle') return null;
-    
+    if (!showProgress || uploadStatus.status === 'idle') return null
+
     return (
       <Card className="mb-4">
         <CardContent className="pt-6">
           <div className="mb-2 flex items-center justify-between">
             <div className="font-medium">
-              {uploadStatus.status === 'uploading' ? 'Uploading Document' :
-               uploadStatus.status === 'processing' ? 'Processing Document' :
-               uploadStatus.status === 'success' ? 'Document Processed' : 'Upload Error'}
+              {uploadStatus.status === 'uploading'
+                ? 'Uploading Document'
+                : uploadStatus.status === 'processing'
+                  ? 'Processing Document'
+                  : uploadStatus.status === 'success'
+                    ? 'Document Processed'
+                    : 'Upload Error'}
             </div>
             <div className="text-muted-foreground text-sm">
               {uploadStatus.progress}% Complete
             </div>
           </div>
-          
+
           <Progress className="mb-2" value={uploadStatus.progress} />
-          
+
           <div className="text-muted-foreground text-sm">
             {uploadStatus.currentStep || 'Waiting...'}
           </div>
-          
+
           {uploadStatus.status === 'error' && (
             <Alert className="mt-2" variant="error">
               <AlertCircle className="size-4" />
@@ -173,25 +184,27 @@ export function DocumentUploader({
               <AlertDescription>{uploadStatus.error}</AlertDescription>
             </Alert>
           )}
-          
+
           {uploadStatus.status === 'success' && (
             <Alert className="mt-2" variant="success">
               <CheckCircle2 className="size-4 text-green-600" />
               <AlertTitle className="text-green-600">Success</AlertTitle>
-              <AlertDescription>Document processed successfully.</AlertDescription>
+              <AlertDescription>
+                Document processed successfully.
+              </AlertDescription>
             </Alert>
           )}
         </CardContent>
       </Card>
-    );
-  };
-  
+    )
+  }
+
   /**
    * Render file preview if a file is selected
    */
   const renderFilePreview = () => {
-    if (!file) return null;
-    
+    if (!file) return null
+
     return (
       <div className="bg-card mb-4 flex items-center justify-between rounded-lg border p-3">
         <div className="flex items-center gap-3">
@@ -206,27 +219,30 @@ export function DocumentUploader({
           </div>
         </div>
       </div>
-    );
-  };
-  
+    )
+  }
+
   return (
     <div className={`space-y-4 ${className || ''}`}>
       {description && (
         <p className="text-muted-foreground mb-2 text-sm">{description}</p>
       )}
-      
+
       {renderFilePreview()}
       {renderProgress()}
-      
+
       <FileUploader
         accept={{
           'application/pdf': ['.pdf'],
           'text/plain': ['.txt'],
           'application/msword': ['.doc'],
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-          ...(allowedTypes ? { allowedTypes } : {})
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            ['.docx'],
+          ...(allowedTypes ? { allowedTypes } : {}),
         }}
-        className={file && uploadStatus.status !== 'error' ? 'hidden' : undefined}
+        className={
+          file && uploadStatus.status !== 'error' ? 'hidden' : undefined
+        }
         disabled={uploading}
         maxFileCount={multiple ? undefined : 1}
         maxSize={maxSize || 20 * 1024 * 1024} // Default to 20MB unless specified
@@ -235,20 +251,20 @@ export function DocumentUploader({
         onValueChange={setCurrentFiles}
         value={currentFiles}
       />
-      
+
       {uploadStatus.status === 'success' && (
         <div className="mt-4 flex justify-end">
           <Button
             onClick={() => {
               // Reset the uploader state
-              setFile(null);
-              setCurrentFiles([]);
+              setFile(null)
+              setCurrentFiles([])
               updateStatus({
                 status: 'idle',
                 progress: 0,
                 currentStep: undefined,
-                error: undefined
-              });
+                error: undefined,
+              })
             }}
           >
             Upload Another Document
@@ -256,5 +272,5 @@ export function DocumentUploader({
         </div>
       )}
     </div>
-  );
-} 
+  )
+}

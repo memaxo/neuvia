@@ -22,7 +22,7 @@ export const fontSans = localFont({
       path: '../node_modules/geist/dist/fonts/geist-sans/Geist-Bold.woff2',
       weight: '700',
       style: 'normal',
-    }
+    },
   ],
   variable: '--font-sans',
   display: 'swap',
@@ -51,7 +51,7 @@ export const fontMono = localFont({
       path: '../node_modules/geist/dist/fonts/geist-mono/GeistMono-Bold.woff2',
       weight: '700',
       style: 'normal',
-    }
+    },
   ],
   variable: '--font-mono',
   display: 'swap',

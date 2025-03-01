@@ -44,23 +44,36 @@ export function DashboardHeader() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="space-y-1">
-                <p className="text-sm font-medium text-[rgb(var(--foreground))]">Dr. Smith</p>
-                <p className="text-xs text-[rgb(var(--foreground))/var(--opacity-60)]">dr.smith@neuvia.com</p>
+                <p className="text-sm font-medium text-[rgb(var(--foreground))]">
+                  Dr. Smith
+                </p>
+                <p className="text-xs text-[rgb(var(--foreground))/var(--opacity-60)]">
+                  dr.smith@neuvia.com
+                </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
-                <Link className="flex w-full items-center" href={'/dashboard/profile' as Route}>
+                <Link
+                  className="flex w-full items-center"
+                  href={'/dashboard/profile' as Route}
+                >
                   Profile
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
-                <Link className="flex w-full items-center" href={'/dashboard/settings' as Route}>
+                <Link
+                  className="flex w-full items-center"
+                  href={'/dashboard/settings' as Route}
+                >
                   Settings
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-[rgb(var(--error))] hover:text-[rgb(var(--error))/var(--opacity-90)]">
-                <Link className="flex w-full items-center" href={'/auth/signout' as Route}>
+                <Link
+                  className="flex w-full items-center"
+                  href={'/auth/signout' as Route}
+                >
                   Sign out
                 </Link>
               </DropdownMenuItem>

@@ -24,13 +24,16 @@ export const colors = {
       text: 'text-[rgb(var(--error)/1)]',
       bg: 'bg-[rgb(var(--error)/0.1)]',
       border: 'border-[rgb(var(--error)/0.2)]',
-    }
+    },
   },
   gradients: {
-    subtle: 'from-[rgb(var(--primary)/0.05)] via-transparent to-[rgb(var(--accent)/0.05)]',
-    medium: 'from-[rgb(var(--primary)/0.1)] via-transparent to-[rgb(var(--accent)/0.1)]',
-    strong: 'from-[rgb(var(--primary)/0.2)] via-transparent to-[rgb(var(--accent)/0.2)]',
-  }
+    subtle:
+      'from-[rgb(var(--primary)/0.05)] via-transparent to-[rgb(var(--accent)/0.05)]',
+    medium:
+      'from-[rgb(var(--primary)/0.1)] via-transparent to-[rgb(var(--accent)/0.1)]',
+    strong:
+      'from-[rgb(var(--primary)/0.2)] via-transparent to-[rgb(var(--accent)/0.2)]',
+  },
 } as const
 
 export const effects = {
@@ -41,5 +44,5 @@ export const effects = {
   },
   scan: {
     line: 'bg-gradient-to-r from-transparent via-blue-500/30 to-transparent',
-  }
+  },
 } as const

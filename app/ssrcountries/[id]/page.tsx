@@ -1,17 +1,17 @@
 import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 
-import { getCountryById } from '@/queries/country-by-id'
 import { createServerClient } from '@/lib/supabase/clients'
+import { getCountryById } from '@/queries/country-by-id'
 
 import CountryDisplay from './country'
 
 async function CountryContent({ id }: { id: number }) {
   const supabase = await createServerClient()
-  
+
   try {
     const country = await getCountryById(supabase, id)
-    
+
     if (!country) {
       notFound()
     }

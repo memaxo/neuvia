@@ -51,11 +51,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "audit_logs_department_id_fkey"
-            columns: ["department_id"]
+            foreignKeyName: 'audit_logs_department_id_fkey'
+            columns: ['department_id']
             isOneToOne: false
-            referencedRelation: "departments"
-            referencedColumns: ["id"]
+            referencedRelation: 'departments'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -88,7 +88,7 @@ export type Database = {
       }
       countries: {
         Row: {
-          continent: Database["public"]["Enums"]["continents"] | null
+          continent: Database['public']['Enums']['continents'] | null
           id: number
           iso2: string
           iso3: string | null
@@ -96,7 +96,7 @@ export type Database = {
           name: string | null
         }
         Insert: {
-          continent?: Database["public"]["Enums"]["continents"] | null
+          continent?: Database['public']['Enums']['continents'] | null
           id: number
           iso2: string
           iso3?: string | null
@@ -104,7 +104,7 @@ export type Database = {
           name?: string | null
         }
         Update: {
-          continent?: Database["public"]["Enums"]["continents"] | null
+          continent?: Database['public']['Enums']['continents'] | null
           id?: number
           iso2?: string
           iso3?: string | null
@@ -200,11 +200,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "document_chunks_document_id_fkey"
-            columns: ["document_id"]
+            foreignKeyName: 'document_chunks_document_id_fkey'
+            columns: ['document_id']
             isOneToOne: false
-            referencedRelation: "patient_documents"
-            referencedColumns: ["id"]
+            referencedRelation: 'patient_documents'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -232,11 +232,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "document_embeddings_document_id_fkey"
-            columns: ["document_id"]
+            foreignKeyName: 'document_embeddings_document_id_fkey'
+            columns: ['document_id']
             isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
+            referencedRelation: 'documents'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -318,17 +318,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "messages_chat_id_fkey"
-            columns: ["chat_id"]
+            foreignKeyName: 'messages_chat_id_fkey'
+            columns: ['chat_id']
             isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
+            referencedRelation: 'chats'
+            referencedColumns: ['id']
           },
         ]
       }
       patient_documents: {
         Row: {
-          category: Database["public"]["Enums"]["document_category"]
+          category: Database['public']['Enums']['document_category']
           checksum: string
           chunk_embeddings: Json | null
           content_summary: string | null
@@ -356,7 +356,7 @@ export type Database = {
           uploaded_by: string | null
         }
         Insert: {
-          category: Database["public"]["Enums"]["document_category"]
+          category: Database['public']['Enums']['document_category']
           checksum: string
           chunk_embeddings?: Json | null
           content_summary?: string | null
@@ -384,7 +384,7 @@ export type Database = {
           uploaded_by?: string | null
         }
         Update: {
-          category?: Database["public"]["Enums"]["document_category"]
+          category?: Database['public']['Enums']['document_category']
           checksum?: string
           chunk_embeddings?: Json | null
           content_summary?: string | null
@@ -413,11 +413,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "patient_documents_patient_id_fkey"
-            columns: ["patient_id"]
+            foreignKeyName: 'patient_documents_patient_id_fkey'
+            columns: ['patient_id']
             isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
+            referencedRelation: 'patients'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -466,18 +466,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "patient_summaries_department_id_fkey"
-            columns: ["department_id"]
+            foreignKeyName: 'patient_summaries_department_id_fkey'
+            columns: ['department_id']
             isOneToOne: false
-            referencedRelation: "departments"
-            referencedColumns: ["id"]
+            referencedRelation: 'departments'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "patient_summaries_patient_id_fkey"
-            columns: ["patient_id"]
+            foreignKeyName: 'patient_summaries_patient_id_fkey'
+            columns: ['patient_id']
             isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
+            referencedRelation: 'patients'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -517,7 +517,7 @@ export type Database = {
           primary_care_physician: string | null
           social_determinants: Json | null
           state: string | null
-          status: Database["public"]["Enums"]["patient_status"]
+          status: Database['public']['Enums']['patient_status']
           updated_at: string | null
           vital_signs: Json | null
         }
@@ -556,7 +556,7 @@ export type Database = {
           primary_care_physician?: string | null
           social_determinants?: Json | null
           state?: string | null
-          status?: Database["public"]["Enums"]["patient_status"]
+          status?: Database['public']['Enums']['patient_status']
           updated_at?: string | null
           vital_signs?: Json | null
         }
@@ -595,7 +595,7 @@ export type Database = {
           primary_care_physician?: string | null
           social_determinants?: Json | null
           state?: string | null
-          status?: Database["public"]["Enums"]["patient_status"]
+          status?: Database['public']['Enums']['patient_status']
           updated_at?: string | null
           vital_signs?: Json | null
         }
@@ -609,7 +609,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_active: boolean | null
-          medical_role: Database["public"]["Enums"]["medical_role"]
+          medical_role: Database['public']['Enums']['medical_role']
           metadata: Json | null
           updated_at: string | null
           username: string | null
@@ -622,7 +622,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_active?: boolean | null
-          medical_role?: Database["public"]["Enums"]["medical_role"]
+          medical_role?: Database['public']['Enums']['medical_role']
           metadata?: Json | null
           updated_at?: string | null
           username?: string | null
@@ -635,7 +635,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_active?: boolean | null
-          medical_role?: Database["public"]["Enums"]["medical_role"]
+          medical_role?: Database['public']['Enums']['medical_role']
           metadata?: Json | null
           updated_at?: string | null
           username?: string | null
@@ -670,11 +670,11 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "report_audit_logs_report_id_fkey"
-            columns: ["report_id"]
+            foreignKeyName: 'report_audit_logs_report_id_fkey'
+            columns: ['report_id']
             isOneToOne: false
-            referencedRelation: "reports"
-            referencedColumns: ["id"]
+            referencedRelation: 'reports'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -777,48 +777,48 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "reports_department_id_fkey"
-            columns: ["department_id"]
+            foreignKeyName: 'reports_department_id_fkey'
+            columns: ['department_id']
             isOneToOne: false
-            referencedRelation: "departments"
-            referencedColumns: ["id"]
+            referencedRelation: 'departments'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "reports_patient_id_fkey"
-            columns: ["patient_id"]
+            foreignKeyName: 'reports_patient_id_fkey'
+            columns: ['patient_id']
             isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
+            referencedRelation: 'patients'
+            referencedColumns: ['id']
           },
         ]
       }
       resource_permissions: {
         Row: {
-          access_level: Database["public"]["Enums"]["access_level"]
+          access_level: Database['public']['Enums']['access_level']
           conditions: Json | null
           created_at: string | null
           id: string
-          medical_role: Database["public"]["Enums"]["medical_role"]
+          medical_role: Database['public']['Enums']['medical_role']
           metadata: Json | null
           resource_type: string
           updated_at: string | null
         }
         Insert: {
-          access_level?: Database["public"]["Enums"]["access_level"]
+          access_level?: Database['public']['Enums']['access_level']
           conditions?: Json | null
           created_at?: string | null
           id?: string
-          medical_role: Database["public"]["Enums"]["medical_role"]
+          medical_role: Database['public']['Enums']['medical_role']
           metadata?: Json | null
           resource_type: string
           updated_at?: string | null
         }
         Update: {
-          access_level?: Database["public"]["Enums"]["access_level"]
+          access_level?: Database['public']['Enums']['access_level']
           conditions?: Json | null
           created_at?: string | null
           id?: string
-          medical_role?: Database["public"]["Enums"]["medical_role"]
+          medical_role?: Database['public']['Enums']['medical_role']
           metadata?: Json | null
           resource_type?: string
           updated_at?: string | null
@@ -827,7 +827,7 @@ export type Database = {
       }
       user_departments: {
         Row: {
-          access_level: Database["public"]["Enums"]["access_level"]
+          access_level: Database['public']['Enums']['access_level']
           created_at: string | null
           department_id: string | null
           id: string
@@ -837,7 +837,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          access_level?: Database["public"]["Enums"]["access_level"]
+          access_level?: Database['public']['Enums']['access_level']
           created_at?: string | null
           department_id?: string | null
           id?: string
@@ -847,7 +847,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          access_level?: Database["public"]["Enums"]["access_level"]
+          access_level?: Database['public']['Enums']['access_level']
           created_at?: string | null
           department_id?: string | null
           id?: string
@@ -858,18 +858,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "user_departments_department_id_fkey"
-            columns: ["department_id"]
+            foreignKeyName: 'user_departments_department_id_fkey'
+            columns: ['department_id']
             isOneToOne: false
-            referencedRelation: "departments"
-            referencedColumns: ["id"]
+            referencedRelation: 'departments'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "user_departments_user_id_fkey"
-            columns: ["user_id"]
+            foreignKeyName: 'user_departments_user_id_fkey'
+            columns: ['user_id']
             isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -897,18 +897,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "votes_chat_id_fkey"
-            columns: ["chat_id"]
+            foreignKeyName: 'votes_chat_id_fkey'
+            columns: ['chat_id']
             isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
+            referencedRelation: 'chats'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "votes_message_id_fkey"
-            columns: ["message_id"]
+            foreignKeyName: 'votes_message_id_fkey'
+            columns: ['message_id']
             isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
+            referencedRelation: 'messages'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -917,7 +917,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -930,7 +930,7 @@ export type Database = {
           chat_id?: string | null
           correction_history?: Json | null
           created_at?: string
-          current_step?: Database["public"]["Enums"]["workflow_step"]
+          current_step?: Database['public']['Enums']['workflow_step']
           current_summary_id?: string | null
           id?: string
           last_message_id?: string | null
@@ -943,7 +943,7 @@ export type Database = {
           chat_id?: string | null
           correction_history?: Json | null
           created_at?: string
-          current_step?: Database["public"]["Enums"]["workflow_step"]
+          current_step?: Database['public']['Enums']['workflow_step']
           current_summary_id?: string | null
           id?: string
           last_message_id?: string | null
@@ -954,18 +954,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "workflow_states_chat_id_fkey"
-            columns: ["chat_id"]
+            foreignKeyName: 'workflow_states_chat_id_fkey'
+            columns: ['chat_id']
             isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
+            referencedRelation: 'chats'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "workflow_states_last_message_id_fkey"
-            columns: ["last_message_id"]
+            foreignKeyName: 'workflow_states_last_message_id_fkey'
+            columns: ['last_message_id']
             isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
+            referencedRelation: 'messages'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -983,7 +983,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -996,27 +996,27 @@ export type Database = {
       binary_quantize:
         | {
             Args: {
-              "": string
+              '': string
             }
             Returns: unknown
           }
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: unknown
           }
       check_document_category_access: {
         Args: {
-          category: Database["public"]["Enums"]["document_category"]
-          required_level: Database["public"]["Enums"]["access_level"]
+          category: Database['public']['Enums']['document_category']
+          required_level: Database['public']['Enums']['access_level']
         }
         Returns: boolean
       }
       check_resource_access: {
         Args: {
           resource_type: string
-          required_level: Database["public"]["Enums"]["access_level"]
+          required_level: Database['public']['Enums']['access_level']
         }
         Returns: boolean
       }
@@ -1029,7 +1029,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -1041,79 +1041,79 @@ export type Database = {
       }
       gtrgm_compress: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       gtrgm_decompress: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       gtrgm_in: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       gtrgm_options: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: undefined
       }
       gtrgm_out: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       halfvec_avg: {
         Args: {
-          "": number[]
+          '': number[]
         }
         Returns: unknown
       }
       halfvec_out: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       halfvec_send: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: string
       }
       halfvec_typmod_in: {
         Args: {
-          "": unknown[]
+          '': unknown[]
         }
         Returns: number
       }
       hnsw_bit_support: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       hnsw_halfvec_support: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       hnsw_sparsevec_support: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       hnswhandler: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
@@ -1127,7 +1127,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -1139,51 +1139,51 @@ export type Database = {
       }
       ivfflat_bit_support: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       ivfflat_halfvec_support: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       ivfflathandler: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       l2_norm:
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: number
           }
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: number
           }
       l2_normalize:
         | {
             Args: {
-              "": string
+              '': string
             }
             Returns: string
           }
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: unknown
           }
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: unknown
           }
@@ -1239,7 +1239,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -1257,7 +1257,7 @@ export type Database = {
           chat_id: string | null
           correction_history: Json | null
           created_at: string
-          current_step: Database["public"]["Enums"]["workflow_step"]
+          current_step: Database['public']['Enums']['workflow_step']
           current_summary_id: string | null
           id: string
           last_message_id: string | null
@@ -1269,7 +1269,7 @@ export type Database = {
       }
       set_limit: {
         Args: {
-          "": number
+          '': number
         }
         Returns: number
       }
@@ -1279,25 +1279,25 @@ export type Database = {
       }
       show_trgm: {
         Args: {
-          "": string
+          '': string
         }
         Returns: string[]
       }
       sparsevec_out: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: unknown
       }
       sparsevec_send: {
         Args: {
-          "": unknown
+          '': unknown
         }
         Returns: string
       }
       sparsevec_typmod_in: {
         Args: {
-          "": unknown[]
+          '': unknown[]
         }
         Returns: number
       }
@@ -1305,14 +1305,14 @@ export type Database = {
         | {
             Args: {
               p_user_id: string
-              p_step: Database["public"]["Enums"]["workflow_step"]
+              p_step: Database['public']['Enums']['workflow_step']
               p_metadata?: Json
             }
             Returns: {
               chat_id: string | null
               correction_history: Json | null
               created_at: string
-              current_step: Database["public"]["Enums"]["workflow_step"]
+              current_step: Database['public']['Enums']['workflow_step']
               current_summary_id: string | null
               id: string
               last_message_id: string | null
@@ -1325,7 +1325,7 @@ export type Database = {
         | {
             Args: {
               p_user_id: string
-              p_step: Database["public"]["Enums"]["workflow_step"]
+              p_step: Database['public']['Enums']['workflow_step']
               p_metadata?: Json
               p_chat_id?: string
               p_last_message_id?: string
@@ -1334,7 +1334,7 @@ export type Database = {
               chat_id: string | null
               correction_history: Json | null
               created_at: string
-              current_step: Database["public"]["Enums"]["workflow_step"]
+              current_step: Database['public']['Enums']['workflow_step']
               current_summary_id: string | null
               id: string
               last_message_id: string | null
@@ -1358,81 +1358,81 @@ export type Database = {
       }
       vector_avg: {
         Args: {
-          "": number[]
+          '': number[]
         }
         Returns: string
       }
       vector_dims:
         | {
             Args: {
-              "": string
+              '': string
             }
             Returns: number
           }
         | {
             Args: {
-              "": unknown
+              '': unknown
             }
             Returns: number
           }
       vector_norm: {
         Args: {
-          "": string
+          '': string
         }
         Returns: number
       }
       vector_out: {
         Args: {
-          "": string
+          '': string
         }
         Returns: unknown
       }
       vector_send: {
         Args: {
-          "": string
+          '': string
         }
         Returns: string
       }
       vector_typmod_in: {
         Args: {
-          "": unknown[]
+          '': unknown[]
         }
         Returns: number
       }
     }
     Enums: {
-      access_level: "none" | "read" | "write" | "admin"
+      access_level: 'none' | 'read' | 'write' | 'admin'
       continents:
-        | "Africa"
-        | "Antarctica"
-        | "Asia"
-        | "Europe"
-        | "Oceania"
-        | "North America"
-        | "South America"
+        | 'Africa'
+        | 'Antarctica'
+        | 'Asia'
+        | 'Europe'
+        | 'Oceania'
+        | 'North America'
+        | 'South America'
       document_category:
-        | "clinical"
-        | "lab"
-        | "imaging"
-        | "prescription"
-        | "administrative"
-      medical_role: "admin" | "doctor" | "nurse" | "staff" | "researcher"
-      patient_status: "active" | "inactive" | "archived" | "deceased"
+        | 'clinical'
+        | 'lab'
+        | 'imaging'
+        | 'prescription'
+        | 'administrative'
+      medical_role: 'admin' | 'doctor' | 'nurse' | 'staff' | 'researcher'
+      patient_status: 'active' | 'inactive' | 'archived' | 'deceased'
       workflow_step:
-        | "idle"
-        | "uploading"
-        | "extracting"
-        | "verification"
-        | "report_generation"
-        | "complete"
-        | "chat_started"
-        | "chat_in_progress"
-        | "chat_completed"
-        | "chat_error"
-        | "verification_pending"
-        | "verification_in_progress"
-        | "verification_completed"
-        | "verification_failed"
+        | 'idle'
+        | 'uploading'
+        | 'extracting'
+        | 'verification'
+        | 'report_generation'
+        | 'complete'
+        | 'chat_started'
+        | 'chat_in_progress'
+        | 'chat_completed'
+        | 'chat_error'
+        | 'verification_pending'
+        | 'verification_in_progress'
+        | 'verification_completed'
+        | 'verification_failed'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1440,27 +1440,27 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type PublicSchema = Database[Extract<keyof Database, 'public'>]
 
 export type Tables<
   PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+    | keyof (PublicSchema['Tables'] & PublicSchema['Views'])
     | { schema: keyof Database },
   TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+    ? keyof (Database[PublicTableNameOrOptions['schema']]['Tables'] &
+        Database[PublicTableNameOrOptions['schema']]['Views'])
     : never = never,
 > = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+  ? (Database[PublicTableNameOrOptions['schema']]['Tables'] &
+      Database[PublicTableNameOrOptions['schema']]['Views'])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof (PublicSchema['Tables'] &
+        PublicSchema['Views'])
+    ? (PublicSchema['Tables'] &
+        PublicSchema['Views'])[PublicTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1469,19 +1469,19 @@ export type Tables<
 
 export type TablesInsert<
   PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+    | keyof PublicSchema['Tables']
     | { schema: keyof Database },
   TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[PublicTableNameOrOptions['schema']]['Tables']
     : never = never,
 > = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[PublicTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema['Tables']
+    ? PublicSchema['Tables'][PublicTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -1490,19 +1490,19 @@ export type TablesInsert<
 
 export type TablesUpdate<
   PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+    | keyof PublicSchema['Tables']
     | { schema: keyof Database },
   TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[PublicTableNameOrOptions['schema']]['Tables']
     : never = never,
 > = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? Database[PublicTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : PublicTableNameOrOptions extends keyof PublicSchema['Tables']
+    ? PublicSchema['Tables'][PublicTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -1511,28 +1511,28 @@ export type TablesUpdate<
 
 export type Enums<
   PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
+    | keyof PublicSchema['Enums']
     | { schema: keyof Database },
   EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof Database[PublicEnumNameOrOptions['schema']]['Enums']
     : never = never,
 > = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+  ? Database[PublicEnumNameOrOptions['schema']]['Enums'][EnumName]
+  : PublicEnumNameOrOptions extends keyof PublicSchema['Enums']
+    ? PublicSchema['Enums'][PublicEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
+    | keyof PublicSchema['CompositeTypes']
     | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof Database[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  ? Database[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema['CompositeTypes']
+    ? PublicSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
     : never

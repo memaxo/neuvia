@@ -18,7 +18,7 @@ export function generateNonce(): string {
  * 2. Implements Trusted Types for DOM XSS prevention
  * 3. Handles development vs production differences
  * 4. Supports Spline 3D and other third-party integrations
- * 
+ *
  * @param nonce The nonce to include in the CSP
  * @returns A string containing the complete CSP header value
  */
@@ -30,19 +30,19 @@ export function createCSPHeader(nonce: string): string {
     // Script execution policy
     'script-src': [
       "'self'",
-      "'strict-dynamic'",  // Allow scripts loaded by trusted scripts
-      `'nonce-${nonce}'`,  // Allow scripts with matching nonce
-      'wasm-unsafe-eval',  // Required for Spline's WebAssembly
+      "'strict-dynamic'", // Allow scripts loaded by trusted scripts
+      `'nonce-${nonce}'`, // Allow scripts with matching nonce
+      'wasm-unsafe-eval', // Required for Spline's WebAssembly
       // Third-party domains
       'https://*.spline.design',
       'https://unpkg.com',
       // Development-only relaxations
-      ...(process.env.NODE_ENV === 'development' 
+      ...(process.env.NODE_ENV === 'development'
         ? [
-            "'unsafe-eval'",   // Required for React DevTools/HMR
-            "'unsafe-inline'" // Fallback for older browsers
+            "'unsafe-eval'", // Required for React DevTools/HMR
+            "'unsafe-inline'", // Fallback for older browsers
           ]
-        : [])
+        : []),
     ],
 
     // Style loading policy
@@ -50,20 +50,18 @@ export function createCSPHeader(nonce: string): string {
       "'self'",
       `'nonce-${nonce}'`,
       // Development-only relaxations for Tailwind JIT
-      ...(process.env.NODE_ENV === 'development' 
-        ? ["'unsafe-inline'"]
-        : [])
+      ...(process.env.NODE_ENV === 'development' ? ["'unsafe-inline'"] : []),
     ],
 
     // Image loading policy - includes blob: for Spline's dynamic textures
     'img-src': [
       "'self'",
-      'data:',    // For embedded images
-      'blob:',    // For Spline's dynamic content
+      'data:', // For embedded images
+      'blob:', // For Spline's dynamic content
       'https://*.supabase.co',
       'https://*.vercel.app',
       'https://*.githubusercontent.com',
-      'https://*.spline.design'
+      'https://*.spline.design',
     ],
 
     // Media loading policy
@@ -72,7 +70,7 @@ export function createCSPHeader(nonce: string): string {
       'https://*.supabase.co',
       'https://*.quantumone.b-cdn.net',
       'https://*.unsplash.com',
-      'https://*.spline.design'
+      'https://*.spline.design',
     ],
 
     // API and WebSocket connections
@@ -83,29 +81,25 @@ export function createCSPHeader(nonce: string): string {
       'https://api.openai.com',
       'https://*.spline.design',
       // Allow WebSocket in development for HMR
-      process.env.NODE_ENV === 'development' ? 'ws://localhost:*' : ''
+      process.env.NODE_ENV === 'development' ? 'ws://localhost:*' : '',
     ],
 
     // Font loading restrictions
     'font-src': [
       "'self'",
       'https://fonts.googleapis.com',
-      'https://fonts.gstatic.com'
+      'https://fonts.gstatic.com',
     ],
 
     // Frame loading policy
-    'frame-src': [
-      "'self'",
-      'https://*.supabase.co',
-      'https://*.spline.design'
-    ],
+    'frame-src': ["'self'", 'https://*.supabase.co', 'https://*.spline.design'],
 
     // Prevent object injection attacks
     'object-src': ["'none'"],
 
     // Worker and frame policies for Spline
-    'child-src': ["'self'", "blob:", "https://*.spline.design"],
-    'worker-src': ["'self'", "blob:", "https://*.spline.design"],
+    'child-src': ["'self'", 'blob:', 'https://*.spline.design'],
+    'worker-src': ["'self'", 'blob:', 'https://*.spline.design'],
 
     // Prevent base tag injection
     'base-uri': ["'self'"],
@@ -117,44 +111,47 @@ export function createCSPHeader(nonce: string): string {
     'frame-ancestors': ["'none'"],
 
     // PWA manifest location
-    'manifest-src': ["'self'", "https://neuvia.vercel.app"],
+    'manifest-src': ["'self'", 'https://neuvia.vercel.app'],
 
     // Force HTTPS in production
-    ...(process.env.NODE_ENV === 'production' 
-      ? { 'upgrade-insecure-requests': [] } 
+    ...(process.env.NODE_ENV === 'production'
+      ? { 'upgrade-insecure-requests': [] }
       : {}),
 
     // Trusted Types Configuration
-    ...(process.env.NODE_ENV === 'development' && process.env.DISABLE_TRUSTED_TYPES === 'true'
-      ? {}  // Skip Trusted Types in development if explicitly disabled
+    ...(process.env.NODE_ENV === 'development' &&
+    process.env.DISABLE_TRUSTED_TYPES === 'true'
+      ? {} // Skip Trusted Types in development if explicitly disabled
       : {
           // Define allowed Trusted Type policies
           'trusted-types': [
-            'nextjs',              // Next.js core policy
-            'nextjs#bundler',      // Next.js bundler policy
-            'nextjs#inline-script',// Next.js inline scripts
-            'nextjs#script',       // Next.js script loading
-            'default'              // Default policy
+            'nextjs', // Next.js core policy
+            'nextjs#bundler', // Next.js bundler policy
+            'nextjs#inline-script', // Next.js inline scripts
+            'nextjs#script', // Next.js script loading
+            'default', // Default policy
           ],
           // Allow duplicate policies (fixes Firefox extensions)
           'trusted-types-allow-duplicates': [],
           // Only enforce in production
-          ...(process.env.NODE_ENV === 'production' 
+          ...(process.env.NODE_ENV === 'production'
             ? { 'require-trusted-types-for': ["'script'"] }
-            : {})
+            : {}),
         }),
 
     // CSP violation reporting
     'report-uri': [process.env.CSP_REPORT_URI || '/api/csp-report'],
-    'report-to': ['csp-endpoint']
+    'report-to': ['csp-endpoint'],
   }
 
   // Filter out empty values and join directives
   return Object.entries(directives)
     .map(([key, values]) => {
       const filteredValues = values.filter(Boolean)
-      return filteredValues.length > 0 ? `${key} ${filteredValues.join(' ')}` : key
+      return filteredValues.length > 0
+        ? `${key} ${filteredValues.join(' ')}`
+        : key
     })
     .filter(Boolean)
     .join('; ')
-} 
+}

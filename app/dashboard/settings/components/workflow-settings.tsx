@@ -4,7 +4,13 @@ import { AlertCircle, Clock, Filter, MessageSquare } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 
@@ -49,11 +55,13 @@ export function WorkflowSettings() {
         </RadioGroup>
       </div>
 
-        <Separator className="bg-[#6B818C]/5" />
+      <Separator className="bg-[#6B818C]/5" />
 
       {/* Notifications */}
       <div className="space-y-4">
-        <h4 className="text-sm font-medium text-white/90">Workflow Notifications</h4>
+        <h4 className="text-sm font-medium text-white/90">
+          Workflow Notifications
+        </h4>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -97,7 +105,9 @@ export function WorkflowSettings() {
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <MessageSquare className="size-4 text-cyan-400" />
-          <h4 className="text-sm font-medium text-white/90">AI Assistant Preferences</h4>
+          <h4 className="text-sm font-medium text-white/90">
+            AI Assistant Preferences
+          </h4>
         </div>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -113,7 +123,9 @@ export function WorkflowSettings() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="o3-mini">o3-mini (Fast)</SelectItem>
-                <SelectItem value="gemini-flash">Gemini Flash (Accurate)</SelectItem>
+                <SelectItem value="gemini-flash">
+                  Gemini Flash (Accurate)
+                </SelectItem>
                 <SelectItem value="hybrid">Hybrid (Balanced)</SelectItem>
               </SelectContent>
             </Select>
@@ -148,9 +160,7 @@ export function WorkflowSettings() {
           <AlertCircle className="size-4" />
           <span className="text-sm">Changes are saved automatically</span>
         </div>
-        <Button
-          className="group relative overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]"
-        >
+        <Button className="group relative overflow-hidden bg-gradient-to-r from-[#004FFF] to-[#004FFF] text-white shadow-lg transition-all duration-300 hover:from-[#004FFF]/90 hover:to-[#004FFF]/90 hover:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
           Reset to Defaults
           <div className="absolute inset-0 overflow-hidden">
             <div className="group-hover:animate-scan absolute -left-full top-0 h-px w-full bg-gradient-to-r from-transparent via-white/60 to-transparent" />
@@ -159,4 +169,4 @@ export function WorkflowSettings() {
       </div>
     </div>
   )
-} 
+}

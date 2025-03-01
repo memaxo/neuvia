@@ -20,7 +20,14 @@ export default async function page() {
     <div className="isolate flex min-h-screen items-center justify-center bg-background">
       {/* Static background layer */}
       <div className="fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--foreground))_1px,transparent_1px)] bg-[size:24px_24px] opacity-5" />
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--foreground)) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }}
+        />
       </div>
 
       {/* Ambient effects layer */}

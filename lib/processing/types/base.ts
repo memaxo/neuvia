@@ -2,31 +2,31 @@
  * Base types for document processing across the application
  */
 
-import type { ProcessingPhase } from '@/lib/workflow/types';
+import type { ProcessingPhase } from '@/lib/workflow/types'
 
 /**
  * All possible processing status values
  */
-export type ProcessingStatusValue = 
-  | 'pending' 
-  | 'idle' 
-  | 'processing' 
-  | 'success' 
-  | 'error' 
-  | 'completed';
+export type ProcessingStatusValue =
+  | 'pending'
+  | 'idle'
+  | 'processing'
+  | 'success'
+  | 'error'
+  | 'completed'
 
 /**
  * All possible processing phases
  */
-export type ProcessingPhase = 
-  | 'initialization' 
-  | 'extraction' 
-  | 'analysis' 
-  | 'verification' 
-  | 'research' 
-  | 'generation' 
-  | 'formatting' 
-  | 'reporting';
+export type ProcessingPhase =
+  | 'initialization'
+  | 'extraction'
+  | 'analysis'
+  | 'verification'
+  | 'research'
+  | 'generation'
+  | 'formatting'
+  | 'reporting'
 
 /**
  * Status of a processing operation
@@ -35,27 +35,27 @@ export interface ProcessingStatus {
   /**
    * Current status of the processing operation
    */
-  status: ProcessingStatusValue;
-  
+  status: ProcessingStatusValue
+
   /**
    * Progress indicator (0-100)
    */
-  progress: number;
-  
+  progress: number
+
   /**
    * Optional description of the current step
    */
-  currentStep?: string;
-  
+  currentStep?: string
+
   /**
    * Error message if status is 'error'
    */
-  error?: string;
-  
+  error?: string
+
   /**
    * Phase of the process (for multi-phase operations)
    */
-  phase?: ProcessingPhase;
+  phase?: ProcessingPhase
 }
 
 /**
@@ -65,22 +65,22 @@ export interface DocumentType {
   /**
    * Category of document (e.g., 'clinical', 'administrative')
    */
-  category: string;
-  
+  category: string
+
   /**
    * Type of document (e.g., 'report', 'note', 'form')
    */
-  type: string;
-  
+  type: string
+
   /**
    * Optional subtype for more specific categorization
    */
-  subtype?: string;
-  
+  subtype?: string
+
   /**
    * Additional metadata for the document
    */
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -90,20 +90,20 @@ export interface DocumentBase {
   /**
    * Unique identifier for the document
    */
-  id: string;
-  
+  id: string
+
   /**
    * When the document was created
    */
-  createdAt: Date;
-  
+  createdAt: Date
+
   /**
    * Document type information
    */
-  documentType: DocumentType;
-  
+  documentType: DocumentType
+
   /**
    * Patient ID associated with the document (if applicable)
    */
-  patientId?: string;
-} 
+  patientId?: string
+}

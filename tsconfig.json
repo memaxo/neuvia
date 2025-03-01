@@ -45,8 +45,5 @@
     "**/*.ts",
     "**/*.tsx"
   ],
-  "exclude": [
-    "node_modules",
-    "app/open-deep-research/**/*"
-  ]
+  "exclude": ["node_modules", "app/open-deep-research/**/*"]
 }

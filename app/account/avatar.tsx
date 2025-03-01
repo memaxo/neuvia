@@ -1,7 +1,7 @@
 'use client'
 
-import React from 'react'
 import { AvatarUploader } from '@/components/upload/avatar-uploader'
+import React from 'react'
 
 interface AvatarProps {
   uid: string | null
@@ -22,13 +22,15 @@ export default function Avatar({
   if (!uid) {
     return (
       <div className="flex flex-col items-center gap-4">
-        <div 
+        <div
           className="flex items-center justify-center rounded-full bg-secondary text-secondary-foreground"
           style={{ height: size, width: size }}
         >
           {email?.charAt(0).toUpperCase() ?? '?'}
         </div>
-        <p className="text-sm text-muted-foreground">Log in to update profile picture</p>
+        <p className="text-sm text-muted-foreground">
+          Log in to update profile picture
+        </p>
       </div>
     )
   }

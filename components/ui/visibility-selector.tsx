@@ -1,30 +1,30 @@
-'use client';
+'use client'
 
-import { ReactNode, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
+} from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
+import { ReactNode, useMemo, useState } from 'react'
 
+import { useChatVisibility } from '@/hooks/use-chat-visibility'
 import {
   CheckCircleFillIcon,
   ChevronDownIcon,
   GlobeIcon,
   LockIcon,
-} from './icons';
-import { useChatVisibility } from '@/hooks/use-chat-visibility';
+} from './icons'
 
-export type VisibilityType = 'private' | 'public';
+export type VisibilityType = 'private' | 'public'
 
 const visibilities: Array<{
-  id: VisibilityType;
-  label: string;
-  description: string;
-  icon: ReactNode;
+  id: VisibilityType
+  label: string
+  description: string
+  icon: ReactNode
 }> = [
   {
     id: 'private',
@@ -38,27 +38,27 @@ const visibilities: Array<{
     description: 'Anyone with the link can access this chat',
     icon: <GlobeIcon />,
   },
-];
+]
 
 export function VisibilitySelector({
   chatId,
   className,
   selectedVisibilityType,
 }: {
-  chatId: string;
-  selectedVisibilityType: VisibilityType;
+  chatId: string
+  selectedVisibilityType: VisibilityType
 } & React.ComponentProps<typeof Button>) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   const { visibilityType, setVisibilityType } = useChatVisibility({
     chatId,
     initialVisibility: selectedVisibilityType,
-  });
+  })
 
   const selectedVisibility = useMemo(
     () => visibilities.find((visibility) => visibility.id === visibilityType),
-    [visibilityType],
-  );
+    [visibilityType]
+  )
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -66,7 +66,7 @@ export function VisibilitySelector({
         asChild
         className={cn(
           'w-fit data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
-          className,
+          className
         )}
       >
         <Button
@@ -84,8 +84,8 @@ export function VisibilitySelector({
           <DropdownMenuItem
             key={visibility.id}
             onSelect={() => {
-              setVisibilityType(visibility.id);
-              setOpen(false);
+              setVisibilityType(visibility.id)
+              setOpen(false)
             }}
             className="gap-4 group/item flex flex-row justify-between items-center"
             data-active={visibility.id === visibilityType}
@@ -105,5 +105,5 @@ export function VisibilitySelector({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  )
 }

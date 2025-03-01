@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-import { generateNonce, createCSPHeader } from '@/lib/utils/nonce'
+import { createCSPHeader, generateNonce } from '@/lib/utils/nonce'
 
 export async function middleware(request: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function middleware(request: NextRequest) {
 
     // Generate nonce with enhanced entropy
     const nonce = generateNonce()
-    
+
     // Update CSP header with Spline requirements
     const cspHeader = createCSPHeader(nonce)
     response.headers.set('Content-Security-Policy', cspHeader)
@@ -29,13 +29,16 @@ export async function middleware(request: NextRequest) {
             cookies.forEach(({ name, value, options }) => {
               response.cookies.set(name, value, options)
             })
-          }
-        }
+          },
+        },
       }
     )
 
     // Refresh session if needed and get current user
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
 
     // Handle authentication errors
     if (error) {
@@ -75,7 +78,8 @@ export const config = {
      * - api routes
      */
     {
-      source: '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|robots.txt|sitemap.xml|.*\\.(?:jpg|jpeg|gif|png|svg|ico)).*)',
+      source:
+        '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|robots.txt|sitemap.xml|.*\\.(?:jpg|jpeg|gif|png|svg|ico)).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

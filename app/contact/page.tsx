@@ -11,7 +11,7 @@ import { siteConfig } from '@/config/site'
 
 export default async function ContactPage() {
   const { data, error } = await getUser()
-  
+
   if (error || !data?.user) {
     redirect('/auth')
   }

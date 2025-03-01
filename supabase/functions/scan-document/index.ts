@@ -3,9 +3,9 @@
 // This enables autocomplete, go to definition, etc.
 
 // Setup type definitions for built-in Supabase Runtime APIs
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 
-import { createClient } from "jsr:@supabase/supabase-js"
+import { createClient } from 'jsr:@supabase/supabase-js'
 
 import { corsHeaders } from '../_shared/cors.ts'
 
@@ -22,7 +22,7 @@ interface ValidationResult {
   error?: string
 }
 
-console.log("Hello from Functions!")
+console.log('Hello from Functions!')
 
 // Create a Supabase client with the service role key
 const supabaseAdmin = createClient(
@@ -37,81 +37,100 @@ const supabaseAdmin = createClient(
 )
 
 // Validate medical file formats
-async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<ValidationResult> {
+async function validateMedicalFile(
+  data: Uint8Array,
+  fileType: string
+): Promise<ValidationResult> {
   try {
     // Medical Images
     if (fileType.includes('dicom')) {
       // Check for DICOM magic number (128 byte preamble + 'DICM')
-      const isDICOM = data.length > 132 && 
+      const isDICOM =
+        data.length > 132 &&
         data[128] === 0x44 && // 'D'
         data[129] === 0x49 && // 'I'
         data[130] === 0x43 && // 'C'
-        data[131] === 0x4D    // 'M'
-      
+        data[131] === 0x4d // 'M'
+
       if (!isDICOM) {
         return { isValid: false, error: 'Invalid DICOM format' }
       }
-      
-      return { 
-        isValid: true, 
+
+      return {
+        isValid: true,
         format: 'DICOM',
         metadata: {
           validated: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       }
     }
-    
+
     // NIfTI validation
     if (fileType.includes('nii') || fileType.includes('nifti')) {
       // Check for NIfTI-1 magic number ('ni1\0' or 'n+1\0')
-      const isNIfTI = data.length > 4 && (
-        (data[0] === 0x6E && data[1] === 0x69 && data[2] === 0x31 && data[3] === 0x00) || // 'ni1\0'
-        (data[0] === 0x6E && data[1] === 0x2B && data[2] === 0x31 && data[3] === 0x00)    // 'n+1\0'
-      )
-      
+      const isNIfTI =
+        data.length > 4 &&
+        ((data[0] === 0x6e &&
+          data[1] === 0x69 &&
+          data[2] === 0x31 &&
+          data[3] === 0x00) || // 'ni1\0'
+          (data[0] === 0x6e &&
+            data[1] === 0x2b &&
+            data[2] === 0x31 &&
+            data[3] === 0x00)) // 'n+1\0'
+
       if (!isNIfTI) {
         return { isValid: false, error: 'Invalid NIfTI format' }
       }
-      
-      return { 
-        isValid: true, 
+
+      return {
+        isValid: true,
         format: 'NIfTI',
         metadata: {
           validated: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       }
     }
-    
+
     // Image validation for JPEG/PNG
-    if (fileType.includes('jpeg') || fileType.includes('jpg') || fileType.includes('png')) {
+    if (
+      fileType.includes('jpeg') ||
+      fileType.includes('jpg') ||
+      fileType.includes('png')
+    ) {
       // Simple magic number check for JPEG/PNG
-      const isJPEG = data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF
-      const isPNG = data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47
-      
+      const isJPEG = data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff
+      const isPNG =
+        data[0] === 0x89 &&
+        data[1] === 0x50 &&
+        data[2] === 0x4e &&
+        data[3] === 0x47
+
       if (!isJPEG && !isPNG) {
         return { isValid: false, error: 'Invalid image format' }
       }
-      
-      return { 
-        isValid: true, 
+
+      return {
+        isValid: true,
         format: isJPEG ? 'JPEG' : 'PNG',
         metadata: {
           validated: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       }
     }
 
     // PDF validation
     if (fileType.includes('pdf')) {
       // Check for PDF magic number ('%PDF')
-      const isPDF = data.length > 4 &&
+      const isPDF =
+        data.length > 4 &&
         data[0] === 0x25 && // '%'
         data[1] === 0x50 && // 'P'
         data[2] === 0x44 && // 'D'
-        data[3] === 0x46    // 'F'
+        data[3] === 0x46 // 'F'
 
       if (!isPDF) {
         return { isValid: false, error: 'Invalid PDF format' }
@@ -122,20 +141,25 @@ async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<
         format: 'PDF',
         metadata: {
           validated: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       }
     }
 
     // Word document validation (DOCX)
-    if (fileType.includes('openxmlformats-officedocument.wordprocessingml.document') || 
-        fileType.includes('msword')) {
+    if (
+      fileType.includes(
+        'openxmlformats-officedocument.wordprocessingml.document'
+      ) ||
+      fileType.includes('msword')
+    ) {
       // Check for ZIP magic number (DOCX is a ZIP file)
-      const isZIP = data.length > 4 &&
+      const isZIP =
+        data.length > 4 &&
         data[0] === 0x50 && // 'P'
-        data[1] === 0x4B && // 'K'
+        data[1] === 0x4b && // 'K'
         data[2] === 0x03 && // '\x03'
-        data[3] === 0x04    // '\x04'
+        data[3] === 0x04 // '\x04'
 
       if (!isZIP) {
         return { isValid: false, error: 'Invalid Word document format' }
@@ -146,27 +170,29 @@ async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<
         format: 'DOCX',
         metadata: {
           validated: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       }
     }
 
     // Text and Markdown files
-    if (fileType.includes('text/plain') || 
-        fileType.includes('text/markdown') || 
-        fileType.includes('text/x-markdown')) {
+    if (
+      fileType.includes('text/plain') ||
+      fileType.includes('text/markdown') ||
+      fileType.includes('text/x-markdown')
+    ) {
       // Check if content is valid UTF-8
       try {
         const decoder = new TextDecoder('utf-8', { fatal: true })
         decoder.decode(data)
-        
+
         return {
           isValid: true,
           format: fileType.includes('markdown') ? 'Markdown' : 'Text',
           metadata: {
             validated: true,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         }
       } catch {
         return { isValid: false, error: 'Invalid text encoding' }
@@ -178,7 +204,10 @@ async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<
       try {
         const content = new TextDecoder().decode(data)
         // Basic XML validation - check for opening and closing tags
-        if (!content.trim().startsWith('<?xml') && !content.trim().startsWith('<')) {
+        if (
+          !content.trim().startsWith('<?xml') &&
+          !content.trim().startsWith('<')
+        ) {
           return { isValid: false, error: 'Invalid XML format' }
         }
         return {
@@ -186,8 +215,8 @@ async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<
           format: 'XML',
           metadata: {
             validated: true,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         }
       } catch {
         return { isValid: false, error: 'Invalid XML format' }
@@ -204,14 +233,14 @@ async function validateMedicalFile(data: Uint8Array, fileType: string): Promise<
           format: 'JSON',
           metadata: {
             validated: true,
-            timestamp: new Date().toISOString()
-          }
+            timestamp: new Date().toISOString(),
+          },
         }
       } catch {
         return { isValid: false, error: 'Invalid JSON format' }
       }
     }
-    
+
     return { isValid: false, error: 'Unsupported file type' }
   } catch (err) {
     const error = err as Error
@@ -235,8 +264,7 @@ Deno.serve(async (req) => {
     const { filePath, userId, uploadId }: ScanRequest = await req.json()
 
     // Download file for scanning
-    const { data: fileData, error: downloadError } = await supabaseAdmin
-      .storage
+    const { data: fileData, error: downloadError } = await supabaseAdmin.storage
       .from('scans')
       .download(filePath)
 
@@ -249,14 +277,20 @@ Deno.serve(async (req) => {
     const fileArray = new Uint8Array(fileBuffer)
 
     // Validate file format
-    const validationResult = await validateMedicalFile(fileArray, filePath.toLowerCase())
+    const validationResult = await validateMedicalFile(
+      fileArray,
+      filePath.toLowerCase()
+    )
 
     if (!validationResult.isValid) {
       // Update upload status to failed
-      await supabaseAdmin.from('upload_logs').update({
-        status: 'failed',
-        error_message: validationResult.error
-      }).eq('id', uploadId)
+      await supabaseAdmin
+        .from('upload_logs')
+        .update({
+          status: 'failed',
+          error_message: validationResult.error,
+        })
+        .eq('id', uploadId)
 
       // Delete invalid file
       await supabaseAdmin.storage.from('scans').remove([filePath])
@@ -265,37 +299,36 @@ Deno.serve(async (req) => {
     }
 
     // Update upload status and metadata
-    await supabaseAdmin.from('upload_logs').update({
-      status: 'validated',
-      metadata: validationResult.metadata,
-      validated_at: new Date().toISOString()
-    }).eq('id', uploadId)
+    await supabaseAdmin
+      .from('upload_logs')
+      .update({
+        status: 'validated',
+        metadata: validationResult.metadata,
+        validated_at: new Date().toISOString(),
+      })
+      .eq('id', uploadId)
 
     return new Response(
       JSON.stringify({
         success: true,
-        validation: validationResult
+        validation: validationResult,
       }),
       {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       }
     )
-
   } catch (err) {
     const error = err as Error
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 400,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    })
   }
 })
 

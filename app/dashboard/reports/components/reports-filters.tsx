@@ -16,8 +16,8 @@ const filters = {
         text: 'text-filter-primary',
         hover: 'hover-filter-primary',
         gradient: 'gradient-overlay-primary',
-        scan: 'scan-line-primary'
-      }
+        scan: 'scan-line-primary',
+      },
     },
     {
       label: 'Progress',
@@ -28,8 +28,8 @@ const filters = {
         text: 'text-filter-accent',
         hover: 'hover-filter-accent',
         gradient: 'gradient-overlay-accent',
-        scan: 'scan-line-accent'
-      }
+        scan: 'scan-line-accent',
+      },
     },
     {
       label: 'Analytics',
@@ -40,8 +40,8 @@ const filters = {
         text: 'text-filter-processing',
         hover: 'hover-filter-processing',
         gradient: 'gradient-overlay-processing',
-        scan: 'scan-line-processing'
-      }
+        scan: 'scan-line-processing',
+      },
     },
   ],
   timeframe: [
@@ -50,7 +50,7 @@ const filters = {
     { label: 'Last Quarter', value: 'quarter' },
   ],
   status: [
-    { 
+    {
       label: 'Completed',
       value: 'completed',
       colorClass: {
@@ -58,10 +58,10 @@ const filters = {
         text: 'text-filter-success',
         hover: 'hover-filter-success',
         gradient: 'gradient-overlay-success',
-        scan: 'scan-line-success'
-      }
+        scan: 'scan-line-success',
+      },
     },
-    { 
+    {
       label: 'Processing',
       value: 'processing',
       colorClass: {
@@ -69,10 +69,10 @@ const filters = {
         text: 'text-filter-processing',
         hover: 'hover-filter-processing',
         gradient: 'gradient-overlay-processing',
-        scan: 'scan-line-processing'
-      }
+        scan: 'scan-line-processing',
+      },
     },
-    { 
+    {
       label: 'Failed',
       value: 'failed',
       colorClass: {
@@ -80,8 +80,8 @@ const filters = {
         text: 'text-filter-error',
         hover: 'hover-filter-error',
         gradient: 'gradient-overlay-error',
-        scan: 'scan-line-error'
-      }
+        scan: 'scan-line-error',
+      },
     },
   ],
 } as const
@@ -98,15 +98,17 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
   return (
     <div className="space-y-6">
       {/* Report Type Filters */}
-      <div className={cn(
-        // Base card styles
-        "relative overflow-hidden rounded-xl",
-        // Border and background
-        "border border-[rgb(var(--border))/var(--opacity-10)]",
-        "bg-[rgb(var(--background))/var(--opacity-40)]",
-        // Effects
-        "backdrop-blur-sm"
-      )}>
+      <div
+        className={cn(
+          // Base card styles
+          'relative overflow-hidden rounded-xl',
+          // Border and background
+          'border border-[rgb(var(--border))/var(--opacity-10)]',
+          'bg-[rgb(var(--background))/var(--opacity-40)]',
+          // Effects
+          'backdrop-blur-sm'
+        )}
+      >
         <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
           <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Report Type
@@ -120,32 +122,36 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                 onClick={() => onFilterChange?.({ type: filter.value })}
                 className={cn(
                   // Base styles
-                  "group relative w-full",
+                  'group relative w-full',
                   // Layout
-                  "flex items-center justify-between",
+                  'flex items-center justify-between',
                   // Border and background
-                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
-                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  'rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]',
+                  'bg-[rgb(var(--background))/var(--opacity-20)]',
                   // Padding and effects
-                  "p-4 backdrop-blur-sm",
+                  'p-4 backdrop-blur-sm',
                   // Transitions
-                  "transition-all duration-300",
+                  'transition-all duration-300',
                   // Hover states
-                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
-                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                  'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
+                  'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
               >
                 {/* Gradient overlay */}
-                <div className={cn(
-                  "absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100",
-                  "bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1]"
-                )} />
+                <div
+                  className={cn(
+                    'absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100',
+                    'bg-gradient-to-br from-[rgb(var(--primary))/0.1] via-transparent to-[rgb(var(--accent))/0.1]'
+                  )}
+                />
 
                 <div className="relative z-10 flex items-center gap-3">
-                  <div className={cn(
-                    "rounded-lg p-2",
-                    "bg-[rgb(var(--primary))/0.1]"
-                  )}>
+                  <div
+                    className={cn(
+                      'rounded-lg p-2',
+                      'bg-[rgb(var(--primary))/0.1]'
+                    )}
+                  >
                     <filter.icon className="size-4 text-[rgb(var(--primary))]" />
                   </div>
                   <span className="text-sm font-medium text-[rgb(var(--muted-foreground))] transition-colors duration-300 group-hover:text-[rgb(var(--foreground))]">
@@ -164,15 +170,17 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
       </div>
 
       {/* Timeframe Filters */}
-      <div className={cn(
-        // Base card styles
-        "relative overflow-hidden rounded-xl",
-        // Border and background
-        "border border-[rgb(var(--border))/var(--opacity-10)]",
-        "bg-[rgb(var(--background))/var(--opacity-40)]",
-        // Effects
-        "backdrop-blur-sm"
-      )}>
+      <div
+        className={cn(
+          // Base card styles
+          'relative overflow-hidden rounded-xl',
+          // Border and background
+          'border border-[rgb(var(--border))/var(--opacity-10)]',
+          'bg-[rgb(var(--background))/var(--opacity-40)]',
+          // Effects
+          'backdrop-blur-sm'
+        )}
+      >
         <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
           <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Timeframe
@@ -186,19 +194,19 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                 onClick={() => onFilterChange?.({ timeframe: filter.value })}
                 className={cn(
                   // Base styles
-                  "group relative w-full",
+                  'group relative w-full',
                   // Layout
-                  "flex items-center justify-between",
+                  'flex items-center justify-between',
                   // Border and background
-                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
-                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  'rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]',
+                  'bg-[rgb(var(--background))/var(--opacity-20)]',
                   // Padding and effects
-                  "p-4 backdrop-blur-sm",
+                  'p-4 backdrop-blur-sm',
                   // Transitions
-                  "transition-all duration-300",
+                  'transition-all duration-300',
                   // Hover states
-                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
-                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                  'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
+                  'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
               >
                 {/* Gradient overlay */}
@@ -224,15 +232,17 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
       </div>
 
       {/* Status Filters */}
-      <div className={cn(
-        // Base card styles
-        "relative overflow-hidden rounded-xl",
-        // Border and background
-        "border border-[rgb(var(--border))/var(--opacity-10)]",
-        "bg-[rgb(var(--background))/var(--opacity-40)]",
-        // Effects
-        "backdrop-blur-sm"
-      )}>
+      <div
+        className={cn(
+          // Base card styles
+          'relative overflow-hidden rounded-xl',
+          // Border and background
+          'border border-[rgb(var(--border))/var(--opacity-10)]',
+          'bg-[rgb(var(--background))/var(--opacity-40)]',
+          // Effects
+          'backdrop-blur-sm'
+        )}
+      >
         <div className="border-b border-[rgb(var(--border))/var(--opacity-10)] p-6">
           <h3 className="bg-gradient-to-r from-[rgb(var(--primary))] to-[rgb(var(--accent))] bg-clip-text text-lg font-semibold text-transparent">
             Status
@@ -246,19 +256,19 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
                 onClick={() => onFilterChange?.({ status: filter.value })}
                 className={cn(
                   // Base styles
-                  "group relative w-full",
+                  'group relative w-full',
                   // Layout
-                  "flex items-center justify-between",
+                  'flex items-center justify-between',
                   // Border and background
-                  "rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]",
-                  "bg-[rgb(var(--background))/var(--opacity-20)]",
+                  'rounded-xl border border-[rgb(var(--border))/var(--opacity-10)]',
+                  'bg-[rgb(var(--background))/var(--opacity-20)]',
                   // Padding and effects
-                  "p-4 backdrop-blur-sm",
+                  'p-4 backdrop-blur-sm',
                   // Transitions
-                  "transition-all duration-300",
+                  'transition-all duration-300',
                   // Hover states
-                  "hover:border-[rgb(var(--primary))/var(--opacity-20)]",
-                  "hover:bg-[rgb(var(--background))/var(--opacity-40)]"
+                  'hover:border-[rgb(var(--primary))/var(--opacity-20)]',
+                  'hover:bg-[rgb(var(--background))/var(--opacity-40)]'
                 )}
               >
                 {/* Gradient overlay */}
@@ -284,4 +294,4 @@ export function ReportsFilters({ onFilterChange }: ReportsFiltersProps) {
       </div>
     </div>
   )
-} 
+}

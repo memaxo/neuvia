@@ -1,54 +1,57 @@
-"use client";
+'use client'
 
-import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { SendIcon } from "lucide-react";
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { SendIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 interface MessageInputProps {
-  onSendMessage: (message: string) => void;
-  isDisabled?: boolean;
-  placeholder?: string;
+  onSendMessage: (message: string) => void
+  isDisabled?: boolean
+  placeholder?: string
 }
 
 export function MessageInput({
   onSendMessage,
   isDisabled = false,
-  placeholder = "Type a message..."
+  placeholder = 'Type a message...',
 }: MessageInputProps) {
-  const [message, setMessage] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [message, setMessage] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      const scrollHeight = textareaRef.current.scrollHeight;
-      textareaRef.current.style.height = scrollHeight + "px";
+      textareaRef.current.style.height = 'auto'
+      const scrollHeight = textareaRef.current.scrollHeight
+      textareaRef.current.style.height = `${scrollHeight}px`
     }
-  }, [message]);
+  }, [message])
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     if (message.trim() && !isDisabled) {
-      onSendMessage(message);
-      setMessage("");
-      
+      onSendMessage(message)
+      setMessage('')
+
       // Reset the textarea height
       if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = 'auto'
       }
     }
-  };
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
     }
-  };
+  }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end p-4 bg-background border-t">
+    <form
+      onSubmit={handleSubmit}
+      className="flex items-end p-4 bg-background border-t"
+    >
       <div className="relative flex-1 mr-2">
         <Textarea
           ref={textareaRef}
@@ -58,17 +61,17 @@ export function MessageInput({
           placeholder={placeholder}
           disabled={isDisabled}
           className="min-h-[50px] max-h-[200px] py-3 pr-10 resize-none"
-          style={{ height: "auto" }}
+          style={{ height: 'auto' }}
         />
       </div>
-      <Button 
-        type="submit" 
-        size="icon" 
+      <Button
+        type="submit"
+        size="icon"
         disabled={isDisabled || !message.trim()}
         className="h-10 w-10"
       >
         <SendIcon className="h-5 w-5" />
       </Button>
     </form>
-  );
-} 
+  )
+}

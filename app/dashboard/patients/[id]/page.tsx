@@ -1,21 +1,29 @@
-import { format } from 'date-fns';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getPatient, getPatientDocumentStats } from '../actions';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { FileUp, FilePlus, Clock } from 'lucide-react';
-import { PatientDocuments } from './components/patient-documents';
-import { PatientDocumentStats } from './components/patient-document-stats';
-import { PatientOverview } from './components/patient-overview';
-import { PatientMedicalInfo } from './components/patient-medical-info';
-import { PatientDocumentTimeline } from './components/patient-document-timeline';
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { format } from 'date-fns'
+import { Clock, FilePlus, FileUp } from 'lucide-react'
+import Link from 'next/link'
+import { getPatient, getPatientDocumentStats } from '../actions'
+import { PatientDocumentStats } from './components/patient-document-stats'
+import { PatientDocumentTimeline } from './components/patient-document-timeline'
+import { PatientDocuments } from './components/patient-documents'
+import { PatientMedicalInfo } from './components/patient-medical-info'
+import { PatientOverview } from './components/patient-overview'
 
-export default async function PatientDetailPage({ params }: { params: { id: string } }) {
-  const patient = await getPatient(params.id);
-  const documentStats = await getPatientDocumentStats(params.id);
-  
+export default async function PatientDetailPage({
+  params,
+}: { params: { id: string } }) {
+  const patient = await getPatient(params.id)
+  const documentStats = await getPatientDocumentStats(params.id)
+
   return (
     <div className="space-y-6 p-6">
       {/* Patient header with key information */}
@@ -26,15 +34,19 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
           </h1>
           <div className="mt-1 flex items-center gap-2">
             <p className="text-muted-foreground text-sm">
-              MRN: {patient.mrn} • DOB: {format(new Date(patient.date_of_birth), 'PP')} • 
-              {patient.gender && ` ${patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}`}
+              MRN: {patient.mrn} • DOB:{' '}
+              {format(new Date(patient.date_of_birth), 'PP')} •
+              {patient.gender &&
+                ` ${patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)}`}
             </p>
-            <Badge variant={patient.status === 'active' ? 'default' : 'secondary'}>
+            <Badge
+              variant={patient.status === 'active' ? 'default' : 'secondary'}
+            >
               {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
             </Badge>
           </div>
         </div>
-        
+
         <div className="flex gap-2">
           <Button asChild size="sm" variant="outline">
             <Link href={`/dashboard/patients/${params.id}/edit`}>
@@ -49,10 +61,10 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
           </Button>
         </div>
       </div>
-      
+
       {/* Document stats */}
       <PatientDocumentStats stats={documentStats} />
-      
+
       {/* Tabbed interface */}
       <Tabs className="w-full" defaultValue="overview">
         <TabsList className="grid w-full grid-cols-5">
@@ -65,11 +77,11 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
           <TabsTrigger value="medical">Medical Info</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent className="mt-6" value="overview">
           <PatientOverview patient={patient} />
         </TabsContent>
-        
+
         <TabsContent className="mt-6" value="documents">
           <Card>
             <CardHeader className="pb-3">
@@ -81,7 +93,9 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
                   </CardDescription>
                 </div>
                 <Button asChild size="sm">
-                  <Link href={`/dashboard/patients/${params.id}/documents/upload`}>
+                  <Link
+                    href={`/dashboard/patients/${params.id}/documents/upload`}
+                  >
                     <FilePlus className="mr-2 size-4" />
                     Add Document
                   </Link>
@@ -89,11 +103,14 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
               </div>
             </CardHeader>
             <CardContent>
-              <PatientDocuments documents={patient.documents} patientId={params.id} />
+              <PatientDocuments
+                documents={patient.documents}
+                patientId={params.id}
+              />
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent className="mt-6" value="timeline">
           <Card>
             <CardHeader className="pb-3">
@@ -105,7 +122,9 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
                   </CardDescription>
                 </div>
                 <Button asChild size="sm">
-                  <Link href={`/dashboard/patients/${params.id}/documents/upload`}>
+                  <Link
+                    href={`/dashboard/patients/${params.id}/documents/upload`}
+                  >
                     <FilePlus className="mr-2 size-4" />
                     Add Document
                   </Link>
@@ -113,15 +132,18 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
               </div>
             </CardHeader>
             <CardContent>
-              <PatientDocumentTimeline documents={patient.documents} patientId={params.id} />
+              <PatientDocumentTimeline
+                documents={patient.documents}
+                patientId={params.id}
+              />
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent className="mt-6" value="medical">
           <PatientMedicalInfo patient={patient} />
         </TabsContent>
-        
+
         <TabsContent className="mt-6" value="reports">
           <Card>
             <CardHeader>
@@ -133,7 +155,9 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
             <CardContent>
               {/* Reports will be implemented in Phase 2 */}
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-muted-foreground mb-4">No reports available yet</p>
+                <p className="text-muted-foreground mb-4">
+                  No reports available yet
+                </p>
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/dashboard/patients/${params.id}/reports/new`}>
                     Generate New Report
@@ -145,5 +169,5 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
         </TabsContent>
       </Tabs>
     </div>
-  );
-} 
+  )
+}

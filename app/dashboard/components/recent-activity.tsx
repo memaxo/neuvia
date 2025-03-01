@@ -1,7 +1,16 @@
 'use client'
 
-import { Activity, Eye, FileText, Upload, X, AlertCircle, Clock, MessageSquare } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import {
+  Activity,
+  AlertCircle,
+  Clock,
+  Eye,
+  FileText,
+  MessageSquare,
+  Upload,
+  X,
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -31,7 +40,8 @@ export function RecentActivity() {
         const data = await response.json()
         setActivities(data.notifications)
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+        const errorMessage =
+          err instanceof Error ? err.message : 'Unknown error'
         setError(errorMessage)
         toast.error(errorMessage)
       } finally {
@@ -42,7 +52,11 @@ export function RecentActivity() {
   }, [])
 
   if (loading) {
-    return <div className="p-6 text-center text-white/70">Loading notifications...</div>
+    return (
+      <div className="p-6 text-center text-white/70">
+        Loading notifications...
+      </div>
+    )
   }
 
   if (error) {
@@ -58,7 +72,9 @@ export function RecentActivity() {
             <h3 className="text-2xl font-extrabold text-[#35605A] drop-shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               Recent Activity
             </h3>
-            <span className="text-sm text-[#6B818C]">Latest updates and activities</span>
+            <span className="text-sm text-[#6B818C]">
+              Latest updates and activities
+            </span>
           </div>
         </div>
       </div>
@@ -72,10 +88,16 @@ export function RecentActivity() {
           <div className="space-y-4">
             {activities.length > 0 ? (
               activities.map((activity) => {
-                const Icon = activity.type === 'alert' ? AlertCircle
-                        : activity.type === 'update' ? Activity
-                        : activity.type === 'reminder' ? Clock
-                        : activity.type === 'message' ? MessageSquare : AlertCircle
+                const Icon =
+                  activity.type === 'alert'
+                    ? AlertCircle
+                    : activity.type === 'update'
+                      ? Activity
+                      : activity.type === 'reminder'
+                        ? Clock
+                        : activity.type === 'message'
+                          ? MessageSquare
+                          : AlertCircle
 
                 return (
                   <div
@@ -112,15 +134,23 @@ export function RecentActivity() {
                           </span>
                         </div>
                         {!activity.read && (
-                          <Button className="size-6 text-white/40 hover:text-white/60" size="icon" variant="ghost">
+                          <Button
+                            className="size-6 text-white/40 hover:text-white/60"
+                            size="icon"
+                            variant="ghost"
+                          >
                             <X className="size-4" />
                           </Button>
                         )}
                       </div>
                       <div className="mt-2 flex items-center gap-4 text-xs text-white/40">
-                        <span>{new Date(activity.timestamp).toLocaleString()}</span>
+                        <span>
+                          {new Date(activity.timestamp).toLocaleString()}
+                        </span>
                         {activity.relatedTo && (
-                          <span>{activity.relatedTo.type}: {activity.relatedTo.name}</span>
+                          <span>
+                            {activity.relatedTo.type}: {activity.relatedTo.name}
+                          </span>
                         )}
                       </div>
                     </div>

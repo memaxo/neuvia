@@ -1,17 +1,17 @@
-'use client';
+'use client'
 
-import { motion } from 'framer-motion';
-import { Button } from './ui/button';
-import type { CreateMessage, Message } from 'ai';
-import type { ChatRequestOptions } from '@/lib/types';
-import { memo } from 'react';
+import type { ChatRequestOptions } from '@/lib/types'
+import type { CreateMessage, Message } from 'ai'
+import { motion } from 'framer-motion'
+import { memo } from 'react'
+import { Button } from './ui/button'
 
 interface SuggestedActionsProps {
-  chatId: string;
+  chatId: string
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
 }
 
 function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
@@ -27,7 +27,7 @@ function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
       label: 'multiple perspectives',
       action: 'Research and analyze different viewpoints and evidence about: ',
     },
-  ];
+  ]
 
   return (
     <div className="grid sm:grid-cols-2 gap-2 w-full">
@@ -43,12 +43,12 @@ function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
           <Button
             variant="ghost"
             onClick={async () => {
-              window.history.replaceState({}, '', `/chat/${chatId}`);
+              window.history.replaceState({}, '', `/chat/${chatId}`)
 
               append({
                 role: 'user',
                 content: suggestedAction.action,
-              });
+              })
             }}
             className="text-left border rounded-xl px-4 py-3.5 text-sm flex-1 gap-1 sm:flex-col w-full h-auto justify-start items-start"
           >
@@ -60,7 +60,7 @@ function PureSuggestedActions({ chatId, append }: SuggestedActionsProps) {
         </motion.div>
       ))}
     </div>
-  );
+  )
 }
 
-export const SuggestedActions = memo(PureSuggestedActions, () => true);
+export const SuggestedActions = memo(PureSuggestedActions, () => true)

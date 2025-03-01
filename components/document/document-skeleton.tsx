@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 export const DocumentSkeleton = () => {
   return (
@@ -11,8 +11,8 @@ export const DocumentSkeleton = () => {
       <div className="animate-pulse rounded-lg h-8 bg-muted-foreground/20 w-52" />
       <div className="animate-pulse rounded-lg h-5 bg-muted-foreground/20 w-2/3" />
     </div>
-  );
-};
+  )
+}
 
 export const InlineDocumentSkeleton = () => {
   return (
@@ -25,5 +25,5 @@ export const InlineDocumentSkeleton = () => {
       <div className="animate-pulse rounded-lg h-4 bg-muted-foreground/20 w-36" />
       <div className="animate-pulse rounded-lg h-4 bg-muted-foreground/20 w-64" />
     </div>
-  );
-};
+  )
+}

@@ -1,4 +1,7 @@
-import { createServerClient as createServerSupabaseClient, createBrowserClient as createBrowserSupabaseClient } from '@supabase/ssr'
+import {
+  createBrowserClient as createBrowserSupabaseClient,
+  createServerClient as createServerSupabaseClient,
+} from '@supabase/ssr'
 import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js'
 import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
 import { cookies } from 'next/headers'
@@ -6,8 +9,12 @@ import { cookies } from 'next/headers'
 import type { Database } from '@/lib/supabase'
 
 // Singleton instances
-let browserClient: ReturnType<typeof createBrowserSupabaseClient<Database>> | undefined
-let adminClient: ReturnType<typeof createAdminSupabaseClient<Database>> | undefined
+let browserClient:
+  | ReturnType<typeof createBrowserSupabaseClient<Database>>
+  | undefined
+let adminClient:
+  | ReturnType<typeof createAdminSupabaseClient<Database>>
+  | undefined
 
 // Cookie configuration following Supabase best practices
 const COOKIE_OPTIONS = {
@@ -15,7 +22,7 @@ const COOKIE_OPTIONS = {
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   path: '/',
-  maxAge: 3600 // 1 hour max-age as recommended
+  maxAge: 3600, // 1 hour max-age as recommended
 }
 
 interface CookieData {
@@ -48,13 +55,13 @@ export async function createServerClient() {
               }
             }
           })
-        }
+        },
       },
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true
-      }
+        detectSessionInUrl: true,
+      },
     }
   )
 }
@@ -71,13 +78,13 @@ export async function createReadOnlyClient() {
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: () => {} // Read-only client doesn't need to set cookies
+        setAll: () => {}, // Read-only client doesn't need to set cookies
       },
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true
-      }
+        detectSessionInUrl: true,
+      },
     }
   )
 }
@@ -96,7 +103,7 @@ export function createBrowserClient() {
       if (typeof document === 'undefined') return []
       const cookieStr = document.cookie
       if (!cookieStr) return []
-      return cookieStr.split('; ').map(pair => {
+      return cookieStr.split('; ').map((pair) => {
         const [name, ...rest] = pair.split('=')
         return { name, value: rest.join('='), options: {} }
       })
@@ -106,17 +113,20 @@ export function createBrowserClient() {
       cookiesArray.forEach(({ name, value, options }) => {
         let cookieStr = `${name}=${value}`
         if (typeof options !== 'undefined') {
-          if (typeof options.path === 'string') cookieStr += `; path=${options.path}`
-          if (typeof options.domain === 'string') cookieStr += `; domain=${options.domain}`
+          if (typeof options.path === 'string')
+            cookieStr += `; path=${options.path}`
+          if (typeof options.domain === 'string')
+            cookieStr += `; domain=${options.domain}`
           if (options.expires instanceof Date) {
             cookieStr += `; expires=${options.expires.toUTCString()}`
           }
           if (options.secure === true) cookieStr += '; secure'
-          if (typeof options.sameSite === 'string') cookieStr += `; samesite=${options.sameSite}`
+          if (typeof options.sameSite === 'string')
+            cookieStr += `; samesite=${options.sameSite}`
         }
         document.cookie = cookieStr
       })
-    }
+    },
   }
 
   browserClient = createBrowserSupabaseClient<Database>(
@@ -126,9 +136,9 @@ export function createBrowserClient() {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
       },
-      cookies: clientCookies
+      cookies: clientCookies,
     }
   )
 
@@ -154,8 +164,8 @@ export function createAdminClient() {
     {
       auth: {
         autoRefreshToken: false,
-        persistSession: false
-      }
+        persistSession: false,
+      },
     }
   )
 
@@ -163,4 +173,4 @@ export function createAdminClient() {
 }
 
 // Export auth admin client for convenience
-export const adminAuthClient = createAdminClient().auth 
+export const adminAuthClient = createAdminClient().auth

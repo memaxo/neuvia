@@ -1,62 +1,63 @@
+import type {
+  WorkflowContext,
+  WorkflowStep,
+} from '@/lib/processing/types/workflow'
+import { workflowManager } from '@/lib/utils/workflow-manager'
+import type { WorkflowOptions } from '@/lib/utils/workflow-manager'
 /**
  * Langchain Workflow Integration Utilities
- * 
+ *
  * Helper functions for integrating Langchain with our workflow manager
  */
-import { 
-  BaseCallbackHandler 
-} from '@langchain/core/callbacks/base';
-import { workflowManager } from '@/lib/utils/workflow-manager';
-import type { WorkflowStep, WorkflowContext } from '@/lib/processing/types/workflow';
-import type { WorkflowOptions } from '@/lib/utils/workflow-manager';
+import { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 
 /**
  * Workflow callback handler that integrates with our workflow manager
  */
 class WorkflowCallbackHandler extends BaseCallbackHandler {
-  name = "WorkflowCallbackHandler";
-  
+  name = 'WorkflowCallbackHandler'
+
   constructor(
     private readonly workflowContext: WorkflowContext,
     private readonly onProgress?: (progress: number) => void
   ) {
-    super();
+    super()
   }
-  
+
   async handleLLMStart(): Promise<void> {
-    this.reportProgress(10);
+    this.reportProgress(10)
   }
-  
+
   async handleLLMEnd(): Promise<void> {
-    this.reportProgress(100);
+    this.reportProgress(100)
   }
-  
+
   async handleLLMError(err: Error): Promise<void> {
-    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err);
+    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err)
   }
-  
+
   async handleChainStart(): Promise<void> {
-    this.reportProgress(5);
+    this.reportProgress(5)
   }
-  
+
   async handleChainEnd(): Promise<void> {
-    this.reportProgress(95);
+    this.reportProgress(95)
   }
-  
+
   async handleChainError(err: Error): Promise<void> {
-    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err);
+    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err)
   }
-  
+
   async handleToolStart(): Promise<void> {
-    this.reportProgress(30);
+    this.reportProgress(30)
   }
-  
+
   async handleToolEnd(): Promise<void> {
-    this.reportProgress(70);
+    this.reportProgress(70)
   }
-  
+
   async handleToolError(err: Error): Promise<void> {
-    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err);
+    workflowManager.reportError({ onError: (msg) => console.error(msg) }, err)
   }
 
   /**
@@ -64,13 +65,9 @@ class WorkflowCallbackHandler extends BaseCallbackHandler {
    */
   private reportProgress(progress: number): void {
     // Only include onProgress in options if it exists
-    const options = this.onProgress ? { onProgress: this.onProgress } : {};
-    
-    workflowManager.reportProgress(
-      options,
-      this.workflowContext.step,
-      progress
-    );
+    const options = this.onProgress ? { onProgress: this.onProgress } : {}
+
+    workflowManager.reportProgress(options, this.workflowContext.step, progress)
   }
 }
 
@@ -81,8 +78,8 @@ export function createWorkflowCallbacks(
   workflowId: string | null,
   step: WorkflowStep,
   options?: {
-    onProgress?: (progress: number) => void;
-    stepDescription?: string;
+    onProgress?: (progress: number) => void
+    stepDescription?: string
   }
 ): BaseCallbackHandler[] {
   // Create a workflow context for consistent handling
@@ -90,9 +87,9 @@ export function createWorkflowCallbacks(
     workflowId,
     step,
     options?.stepDescription
-  );
-  
-  return [new WorkflowCallbackHandler(workflowContext, options?.onProgress)];
+  )
+
+  return [new WorkflowCallbackHandler(workflowContext, options?.onProgress)]
 }
 
 /**
@@ -104,12 +101,12 @@ export async function runWithWorkflow<T>(
   options?: WorkflowOptions<T> & { workflowId?: string | null }
 ): Promise<T> {
   // Extract workflowId and create clean options
-  const { workflowId, ...cleanOptions } = options || {};
-  
+  const { workflowId, ...cleanOptions } = options || {}
+
   return workflowManager.handleWorkflowOperation<T>(
     workflowId || null,
     workflowStep,
     operation,
     cleanOptions
-  );
-} 
+  )
+}

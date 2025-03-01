@@ -75,7 +75,11 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
                 key={`gradient-${i}`}
               >
                 <stop offset="0%" stopColor={segment.color} stopOpacity="1" />
-                <stop offset="100%" stopColor={segment.color} stopOpacity="0.7" />
+                <stop
+                  offset="100%"
+                  stopColor={segment.color}
+                  stopOpacity="0.7"
+                />
               </linearGradient>
             ))}
             <filter id="pie-glow">
@@ -118,7 +122,9 @@ export function PieChart({ data, size = 120 }: PieChartProps) {
                       {segment.status}
                     </span>
                   </div>
-                  <p className="text-sm text-white/70">Count: {segment.count}</p>
+                  <p className="text-sm text-white/70">
+                    Count: {segment.count}
+                  </p>
                   <p className="text-sm text-white/70">
                     {segment.percentage}% of total
                   </p>

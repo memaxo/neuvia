@@ -1,5 +1,5 @@
-import { ChatWindow } from "@/components/chat/chat-window";
-import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { ChatWindow } from '@/components/chat/chat-window'
+import { GuideInfoBox } from '@/components/guide/GuideInfoBox'
 
 export default function AgentsPage() {
   const InfoCard = (
@@ -8,18 +8,18 @@ export default function AgentsPage() {
         <li className="text-l">
           🧱
           <span className="ml-2">
-            This template showcases how to output structured responses with a{" "}
+            This template showcases how to output structured responses with a{' '}
             <a href="https://js.langchain.com/" target="_blank">
               LangChain.js
-            </a>{" "}
-            chain and the Vercel{" "}
+            </a>{' '}
+            chain and the Vercel{' '}
             <a href="https://sdk.vercel.ai/docs" target="_blank">
               AI SDK
-            </a>{" "}
-            in a{" "}
+            </a>{' '}
+            in a{' '}
             <a href="https://nextjs.org/" target="_blank">
               Next.js
-            </a>{" "}
+            </a>{' '}
             project.
           </span>
         </li>
@@ -40,9 +40,9 @@ export default function AgentsPage() {
         <li className="text-l hidden md:block">
           📊
           <span className="ml-2">
-            By default, the chain returns an object with <code>tone</code>,{" "}
-            <code>word_count</code>, <code>entity</code>,{" "}
-            <code>chat_response</code>, and an optional{" "}
+            By default, the chain returns an object with <code>tone</code>,{' '}
+            <code>word_count</code>, <code>entity</code>,{' '}
+            <code>chat_response</code>, and an optional{' '}
             <code>final_punctuation</code>, but you can change it to whatever
             you&apos;d like!
           </span>
@@ -50,10 +50,10 @@ export default function AgentsPage() {
         <li className="text-l hidden md:block">
           💎
           <span className="ml-2">
-            It uses a lightweight, convenient, and powerful{" "}
+            It uses a lightweight, convenient, and powerful{' '}
             <a href="https://zod.dev/" target="_blank">
               schema validation library called Zod
-            </a>{" "}
+            </a>{' '}
             to define schemas, but you can initialize the chain with JSON schema
             too.
           </span>
@@ -61,7 +61,7 @@ export default function AgentsPage() {
         <li className="text-l hidden md:block">
           🎨
           <span className="ml-2">
-            The main frontend logic is found in{" "}
+            The main frontend logic is found in{' '}
             <code>app/structured_output/page.tsx</code>.
           </span>
         </li>
@@ -73,7 +73,7 @@ export default function AgentsPage() {
         </li>
       </ul>
     </GuideInfoBox>
-  );
+  )
   return (
     <ChatWindow
       emoji="🧱"
@@ -81,5 +81,5 @@ export default function AgentsPage() {
       endpoint="api/chat/structured_output"
       placeholder={`No matter what you type here, I'll always return the same JSON object with the same structure!`}
     />
-  );
+  )
 }

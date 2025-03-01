@@ -1,13 +1,13 @@
 'use client'
 
-import React from 'react';
+import React from 'react'
 
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'
 
-import type { DocumentAnalysis } from '../types';
+import type { DocumentAnalysis } from '../types'
 
 interface DocumentAnalysisProps {
-  analysis: DocumentAnalysis;
+  analysis: DocumentAnalysis
 }
 
 export function DocumentAnalysis({ analysis }: DocumentAnalysisProps) {
@@ -40,5 +40,5 @@ export function DocumentAnalysis({ analysis }: DocumentAnalysisProps) {
         )}
       </div>
     </div>
-  );
+  )
 }

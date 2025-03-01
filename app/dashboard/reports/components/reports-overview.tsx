@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, TrendingUp, Users, Clock } from 'lucide-react'
+import { Clock, FileText, TrendingUp, Users } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -49,14 +49,14 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
             key={index}
             className={cn(
               // Base card styles
-              "relative overflow-hidden rounded-xl",
+              'relative overflow-hidden rounded-xl',
               // Border and background
-              "border border-[rgb(var(--border))/var(--opacity-10)]",
-              "bg-[rgb(var(--background))/var(--opacity-40)]",
+              'border border-[rgb(var(--border))/var(--opacity-10)]',
+              'bg-[rgb(var(--background))/var(--opacity-40)]',
               // Effects
-              "backdrop-blur-sm",
+              'backdrop-blur-sm',
               // Group hover
-              "group"
+              'group'
             )}
           >
             {/* Gradient overlay */}
@@ -65,18 +65,26 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
             <div className="relative z-10 p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-[rgb(var(--muted-foreground))]">{stat.name}</p>
-                  <h3 className="mt-2 text-2xl font-bold text-[rgb(var(--foreground))]">{stat.value}</h3>
+                  <p className="text-sm text-[rgb(var(--muted-foreground))]">
+                    {stat.name}
+                  </p>
+                  <h3 className="mt-2 text-2xl font-bold text-[rgb(var(--foreground))]">
+                    {stat.value}
+                  </h3>
                 </div>
                 <div className="rounded-xl bg-[rgb(var(--primary)/0.1)] p-3">
                   <Icon className="size-6 text-[rgb(var(--primary))]" />
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2">
-                <span className={cn('text-sm', getColorByType(stat.changeType))}>
+                <span
+                  className={cn('text-sm', getColorByType(stat.changeType))}
+                >
                   {stat.change}
                 </span>
-                <span className="text-sm text-[rgb(var(--muted-foreground))]">vs last month</span>
+                <span className="text-sm text-[rgb(var(--muted-foreground))]">
+                  vs last month
+                </span>
               </div>
             </div>
 
@@ -89,4 +97,4 @@ export function ReportsOverview({ stats }: ReportsOverviewProps) {
       })}
     </div>
   )
-} 
+}

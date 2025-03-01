@@ -2,7 +2,7 @@
 // https://deno.land/manual/getting_started/setup_your_environment
 // This enables autocomplete, go to definition, etc.
 
-import { createClient } from "jsr:@supabase/supabase-js"
+import { createClient } from 'jsr:@supabase/supabase-js'
 
 import { corsHeaders } from '../_shared/cors.ts'
 
@@ -46,11 +46,19 @@ Deno.serve(async (req) => {
       throw new Error('No authorization header')
     }
 
-    const { fileName, fileSize, fileType, userId, metadata }: ProcessUploadRequest = await req.json()
+    const {
+      fileName,
+      fileSize,
+      fileType,
+      userId,
+      metadata,
+    }: ProcessUploadRequest = await req.json()
 
     // Validate file type
-    if (!ALLOWED_TYPES.some(type => fileType.toLowerCase().includes(type))) {
-      throw new Error('Invalid file type. Allowed types: JPEG, PNG, DICOM, NIfTI')
+    if (!ALLOWED_TYPES.some((type) => fileType.toLowerCase().includes(type))) {
+      throw new Error(
+        'Invalid file type. Allowed types: JPEG, PNG, DICOM, NIfTI'
+      )
     }
 
     // Validate file size
@@ -62,13 +70,12 @@ Deno.serve(async (req) => {
     const timestamp = new Date().toISOString()
     const fileExt = fileName.split('.').pop()
     const uniqueFileName = `${timestamp}-${crypto.randomUUID()}.${fileExt}`
-    const filePath = metadata?.patientId 
+    const filePath = metadata?.patientId
       ? `uploads/${userId}/${metadata.patientId}/${uniqueFileName}`
       : `uploads/${userId}/${uniqueFileName}`
 
     // Generate presigned URL for upload
-    const { data, error } = await supabaseAdmin
-      .storage
+    const { data, error } = await supabaseAdmin.storage
       .from('scans')
       .createSignedUploadUrl(filePath)
 
@@ -86,34 +93,30 @@ Deno.serve(async (req) => {
       document_type: metadata?.documentType,
       study_date: metadata?.studyDate,
       status: 'pending',
-      path: filePath
+      path: filePath,
     })
 
     return new Response(
       JSON.stringify({
         uploadUrl: data.signedUrl,
-        path: filePath
+        path: filePath,
       }),
       {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       }
     )
-
   } catch (err) {
     const error = err as Error
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 400,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      },
+    })
   }
 })
 

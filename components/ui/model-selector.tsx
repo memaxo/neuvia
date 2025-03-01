@@ -1,19 +1,19 @@
-'use client';
+'use client'
 
-import { startTransition, useMemo, useOptimistic, useState } from 'react';
+import { startTransition, useMemo, useOptimistic, useState } from 'react'
 
-import { saveModelId } from '@/app/(chat)/actions';
-import { Button } from '@/components/ui/button';
+import { saveModelId } from '@/app/(chat)/actions'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Model } from '@/lib/ai/models';
-import { cn } from '@/lib/utils';
+} from '@/components/ui/dropdown-menu'
+import { Model } from '@/lib/ai/models'
+import { cn } from '@/lib/utils'
 
-import { CheckCircleFillIcon, ChevronDownIcon } from './icons';
+import { CheckCircleFillIcon, ChevronDownIcon } from './icons'
 
 export function ModelSelector({
   selectedModelId,
@@ -21,18 +21,18 @@ export function ModelSelector({
   models,
   label,
 }: {
-  selectedModelId: string;
-  models: Array<Model>;
-  label: string;
+  selectedModelId: string
+  models: Array<Model>
+  label: string
 } & React.ComponentProps<typeof Button>) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
   const [optimisticModelId, setOptimisticModelId] =
-    useOptimistic(selectedModelId);
+    useOptimistic(selectedModelId)
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === optimisticModelId),
-    [optimisticModelId],
-  );
+    [optimisticModelId]
+  )
 
   return (
     <div className="flex flex-row gap-1">
@@ -42,7 +42,7 @@ export function ModelSelector({
           asChild
           className={cn(
             'w-fit data-[state=open]:bg-accent data-[state=open]:text-accent-foreground',
-            className,
+            className
           )}
         >
           <Button variant="outline" className="md:px-2 md:h-[34px]">
@@ -58,12 +58,12 @@ export function ModelSelector({
             <DropdownMenuItem
               key={model.id}
               onSelect={() => {
-                setOpen(false);
+                setOpen(false)
 
                 startTransition(() => {
-                  setOptimisticModelId(model.id);
-                  saveModelId(model.id);
-                });
+                  setOptimisticModelId(model.id)
+                  saveModelId(model.id)
+                })
               }}
               className="gap-4 group/item flex flex-row justify-between items-center"
               data-active={model.id === optimisticModelId}
@@ -84,5 +84,5 @@ export function ModelSelector({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-  );
+  )
 }

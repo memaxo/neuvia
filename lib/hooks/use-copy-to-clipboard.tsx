@@ -33,7 +33,9 @@ export function useCopyToClipboard({
       }
 
       if (value.length > maxLength) {
-        throw new Error(`Content exceeds maximum length of ${maxLength} characters`)
+        throw new Error(
+          `Content exceeds maximum length of ${maxLength} characters`
+        )
       }
 
       // Check for clipboard API support
@@ -55,7 +57,8 @@ export function useCopyToClipboard({
         setIsCopied(false)
       }, timeout)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to copy content'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to copy content'
       setError(errorMessage)
       console.error('Copy to clipboard failed:', err)
     }

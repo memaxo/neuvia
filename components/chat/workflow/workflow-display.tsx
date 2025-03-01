@@ -1,22 +1,22 @@
-"use client";
+'use client'
 
-import { Button } from "@/components/ui/button";
-import { DocumentPreview } from "@/components/chat/document-preview";
-import type { WorkflowStep } from "@/lib/workflow/types";
+import { DocumentPreview } from '@/components/chat/document-preview'
+import { Button } from '@/components/ui/button'
+import type { WorkflowStep } from '@/lib/workflow/types'
 
 interface ActiveDocument {
-  id: string;
-  title: string;
-  content: string;
-  kind: "text" | "code" | "spreadsheet";
+  id: string
+  title: string
+  content: string
+  kind: 'text' | 'code' | 'spreadsheet'
 }
 
 interface WorkflowStatusDisplayProps {
-  currentStep: WorkflowStep;
-  activeDocument?: ActiveDocument | null;
-  onGenerateReport: () => void;
-  onSkipReport: () => void;
-  onContinue: () => void;
+  currentStep: WorkflowStep
+  activeDocument?: ActiveDocument | null
+  onGenerateReport: () => void
+  onSkipReport: () => void
+  onContinue: () => void
 }
 
 export function WorkflowStatusDisplay({
@@ -24,14 +24,15 @@ export function WorkflowStatusDisplay({
   activeDocument,
   onGenerateReport,
   onSkipReport,
-  onContinue
+  onContinue,
 }: WorkflowStatusDisplayProps) {
   return (
     <div className="mb-6">
       {currentStep === 'idle' && (
         <div className="bg-secondary/10 rounded border p-4">
           <p className="text-sm">
-            You can upload a file to begin the extraction & verification process, or start chatting directly.
+            You can upload a file to begin the extraction & verification
+            process, or start chatting directly.
           </p>
         </div>
       )}
@@ -40,7 +41,8 @@ export function WorkflowStatusDisplay({
         <div className="bg-secondary/10 rounded border p-4">
           <h2 className="font-semibold">Extraction In Progress...</h2>
           <p className="mt-2 text-sm">
-            Your document is being processed. Please wait while data is extracted.
+            Your document is being processed. Please wait while data is
+            extracted.
           </p>
           {activeDocument && (
             <div className="mt-4">
@@ -54,13 +56,11 @@ export function WorkflowStatusDisplay({
         <div className="bg-secondary/10 rounded border p-4">
           <h2 className="font-semibold">Processing Complete</h2>
           <p className="mt-2 text-sm">
-            Document processing is complete. The extracted information will be used to update patient summaries.
+            Document processing is complete. The extracted information will be
+            used to update patient summaries.
           </p>
           <div className="mt-4 flex justify-end">
-            <Button 
-              onClick={onContinue}
-              variant="default"
-            >
+            <Button onClick={onContinue} variant="default">
               Continue
             </Button>
           </div>
@@ -71,19 +71,14 @@ export function WorkflowStatusDisplay({
         <div className="bg-secondary/10 rounded border p-4">
           <h2 className="font-semibold">Report Generation</h2>
           <p className="mt-2 text-sm">
-            You can finalize the process by generating a comprehensive report, or skip.
+            You can finalize the process by generating a comprehensive report,
+            or skip.
           </p>
           <div className="mt-4 flex gap-2 justify-end">
-            <Button
-              onClick={onGenerateReport}
-              variant="default"
-            >
+            <Button onClick={onGenerateReport} variant="default">
               Generate Report
             </Button>
-            <Button
-              onClick={onSkipReport}
-              variant="outline"
-            >
+            <Button onClick={onSkipReport} variant="outline">
               Skip
             </Button>
           </div>
@@ -93,9 +88,12 @@ export function WorkflowStatusDisplay({
       {currentStep === 'complete' && (
         <div className="bg-secondary/10 rounded border p-4">
           <h2 className="mb-2 font-semibold">Process Complete</h2>
-          <p>You have completed the entire pipeline. You may continue the conversation or upload more documents.</p>
+          <p>
+            You have completed the entire pipeline. You may continue the
+            conversation or upload more documents.
+          </p>
         </div>
       )}
     </div>
-  );
-} 
+  )
+}

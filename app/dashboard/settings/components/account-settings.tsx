@@ -27,7 +27,9 @@ export function AccountSettings() {
           </button>
         </div>
         <div>
-          <h4 className="text-sm font-medium text-[rgb(var(--foreground))]">Profile Photo</h4>
+          <h4 className="text-sm font-medium text-[rgb(var(--foreground))]">
+            Profile Photo
+          </h4>
           <p className="text-sm text-[rgb(var(--foreground))/var(--opacity-50)]">
             Upload a new photo or remove the current one
           </p>
@@ -57,7 +59,9 @@ export function AccountSettings() {
       <div className="space-y-4">
         {/* Name */}
         <div className="space-y-2">
-          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">Full Name</Label>
+          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">
+            Full Name
+          </Label>
           <div className="group relative">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgb(var(--primary))/var(--opacity-20)] via-transparent to-[rgb(var(--primary))/var(--opacity-20)] opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
             <div className="relative">
@@ -72,7 +76,9 @@ export function AccountSettings() {
 
         {/* Email */}
         <div className="space-y-2">
-          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">Email Address</Label>
+          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">
+            Email Address
+          </Label>
           <div className="group relative">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgb(var(--primary))/var(--opacity-20)] via-transparent to-[rgb(var(--primary))/var(--opacity-20)] opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
             <div className="relative">
@@ -88,7 +94,9 @@ export function AccountSettings() {
 
         {/* Phone */}
         <div className="space-y-2">
-          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">Phone Number</Label>
+          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">
+            Phone Number
+          </Label>
           <div className="group relative">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgb(var(--primary))/var(--opacity-20)] via-transparent to-[rgb(var(--primary))/var(--opacity-20)] opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
             <div className="relative">
@@ -104,7 +112,9 @@ export function AccountSettings() {
 
         {/* Organization */}
         <div className="space-y-2">
-          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">Organization</Label>
+          <Label className="text-[rgb(var(--foreground))/var(--opacity-70)]">
+            Organization
+          </Label>
           <div className="group relative">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgb(var(--primary))/var(--opacity-20)] via-transparent to-[rgb(var(--primary))/var(--opacity-20)] opacity-0 transition-opacity duration-300 group-focus-within:opacity-100" />
             <div className="relative">

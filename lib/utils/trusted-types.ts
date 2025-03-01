@@ -4,7 +4,10 @@
  * @param policy The policy configuration object
  * @returns The created or existing policy
  */
-export function createTrustedPolicy(name: string, policy: TrustedTypePolicyOptions) {
+export function createTrustedPolicy(
+  name: string,
+  policy: TrustedTypePolicyOptions
+) {
   if (typeof window === 'undefined') return null
 
   // Check if Trusted Types is supported
@@ -37,4 +40,4 @@ interface TrustedTypePolicyOptions {
   createScript?: (input: string) => string
   createScriptURL?: (input: string) => string
   createURL?: (input: string) => string
-} 
+}

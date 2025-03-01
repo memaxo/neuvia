@@ -1,20 +1,20 @@
-'use client';
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { useToast } from '@/components/ui/use-toast';
-import { Button } from '@/components/ui/button';
-import { Loader, User } from 'lucide-react';
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/use-toast'
+import { Loader, User } from 'lucide-react'
+import Image from 'next/image'
+import React, { useState, useEffect } from 'react'
 
-import { uploadService } from '@/lib/services/upload-service';
+import { uploadService } from '@/lib/services/upload-service'
 
 interface AvatarUploaderProps {
-  userId: string;
-  initialUrl?: string | null;
-  size?: number;
-  onUpload?: (url: string) => void;
-  onError?: (error: string) => void;
-  className?: string;
+  userId: string
+  initialUrl?: string | null
+  size?: number
+  onUpload?: (url: string) => void
+  onError?: (error: string) => void
+  className?: string
 }
 
 export function AvatarUploader({
@@ -25,29 +25,31 @@ export function AvatarUploader({
   onError,
   className,
 }: AvatarUploaderProps) {
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialUrl);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  const { toast } = useToast();
-  
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialUrl)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const { toast } = useToast()
+
   // Load initial avatar URL if provided
   useEffect(() => {
     if (initialUrl) {
-      setAvatarUrl(initialUrl);
+      setAvatarUrl(initialUrl)
     }
-  }, [initialUrl]);
-  
+  }, [initialUrl])
+
   /**
    * Handle avatar file selection and upload
    */
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || event.target.files.length === 0) return;
-    
-    const file = event.target.files[0];
-    setUploading(true);
-    setError(null);
-    
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (!event.target.files || event.target.files.length === 0) return
+
+    const file = event.target.files[0]
+    setUploading(true)
+    setError(null)
+
     try {
       // Upload the avatar using the uploadService
       const filePath = await uploadService.uploadAvatar(
@@ -56,39 +58,39 @@ export function AvatarUploader({
         (progress, status) => {
           // Progress handling could be added here
         }
-      );
-      
+      )
+
       // Get the avatar URL
-      const avatarUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${filePath}`;
-      setAvatarUrl(avatarUrl);
-      
+      const avatarUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${filePath}`
+      setAvatarUrl(avatarUrl)
+
       toast({
         title: 'Avatar Updated',
         description: 'Your profile picture has been updated successfully.',
-      });
-      
+      })
+
       // Notify parent component
-      onUpload?.(filePath);
-      
+      onUpload?.(filePath)
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setError(errorMessage);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      setError(errorMessage)
+
       toast({
         title: 'Upload Error',
         description: errorMessage,
         variant: 'destructive',
-      });
-      
-      onError?.(errorMessage);
+      })
+
+      onError?.(errorMessage)
     } finally {
-      setUploading(false);
-      
+      setUploading(false)
+
       // Reset the input field so the same file can be selected again
-      event.target.value = '';
+      event.target.value = ''
     }
-  };
-  
+  }
+
   return (
     <div className={`flex flex-col items-center gap-4 ${className || ''}`}>
       <div className="relative">
@@ -109,9 +111,9 @@ export function AvatarUploader({
             <User size={size * 0.5} />
           </div>
         )}
-        
+
         {uploading && (
-          <div 
+          <div
             className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50"
             style={{ height: size, width: size }}
           >
@@ -120,11 +122,7 @@ export function AvatarUploader({
         )}
       </div>
 
-      {error && (
-        <div className="text-destructive text-sm">
-          {error}
-        </div>
-      )}
+      {error && <div className="text-destructive text-sm">{error}</div>}
 
       <div className="flex items-center gap-2">
         <label
@@ -143,5 +141,5 @@ export function AvatarUploader({
         />
       </div>
     </div>
-  );
-} 
+  )
+}

@@ -1,4 +1,4 @@
-import type { DefaultValues} from 'react-hook-form';
+import type { DefaultValues } from 'react-hook-form'
 import { useForm } from 'react-hook-form'
 
 // Types

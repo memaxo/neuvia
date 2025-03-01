@@ -2,7 +2,7 @@
   "name": "Neuvia",
   "short_name": "Neuvia",
   "description": "A batteries included MVP Template.",
-  "start_url": "/", 
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#fff",
   "icons": [

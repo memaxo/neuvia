@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 export function ChatLoading() {
   return (
@@ -9,8 +9,10 @@ export function ChatLoading() {
           <div className="size-2 rounded-full bg-blue-400 animation-delay-200" />
           <div className="size-2 rounded-full bg-blue-400 animation-delay-400" />
         </div>
-        <p className="text-muted-foreground text-sm">Loading chat interface...</p>
+        <p className="text-muted-foreground text-sm">
+          Loading chat interface...
+        </p>
       </div>
     </div>
-  );
-} 
+  )
+}

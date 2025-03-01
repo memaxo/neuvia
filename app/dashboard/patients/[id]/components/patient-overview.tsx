@@ -1,52 +1,55 @@
-'use client';
+'use client'
 
-import { format } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  User,
-  Phone,
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { format } from 'date-fns'
+import {
+  AlertCircle,
+  Building,
+  CalendarCheck,
+  Contact2,
+  CreditCard,
+  HeartPulse,
+  Languages,
   Mail,
   MapPin,
-  CalendarCheck,
-  Languages,
-  HeartPulse,
-  AlertCircle,
+  Phone,
   Pill,
   Stethoscope,
-  Building,
-  CreditCard,
-  Contact2
-} from 'lucide-react';
+  User,
+} from 'lucide-react'
 
 interface PatientOverviewProps {
-  patient: any; // Using any for now, can be replaced with a proper Patient type
+  patient: any // Using any for now, can be replaced with a proper Patient type
 }
 
 export function PatientOverview({ patient }: PatientOverviewProps) {
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Not provided';
+    if (!dateString) return 'Not provided'
     try {
-      return format(new Date(dateString), 'MMMM d, yyyy');
+      return format(new Date(dateString), 'MMMM d, yyyy')
     } catch (e) {
-      return 'Invalid date';
+      return 'Invalid date'
     }
-  };
-  
+  }
+
   // Helper to parse JSON arrays with fallback
-  const parseJsonArray = (jsonString: string | null, defaultValue: any[] = []) => {
-    if (!jsonString) return defaultValue;
+  const parseJsonArray = (
+    jsonString: string | null,
+    defaultValue: any[] = []
+  ) => {
+    if (!jsonString) return defaultValue
     try {
-      return JSON.parse(jsonString);
+      return JSON.parse(jsonString)
     } catch (e) {
-      return defaultValue;
+      return defaultValue
     }
-  };
-  
+  }
+
   // Parse JSON arrays
-  const allergies = parseJsonArray(patient.allergies);
-  const medications = parseJsonArray(patient.current_medications);
-  const conditions = parseJsonArray(patient.conditions);
-  
+  const allergies = parseJsonArray(patient.allergies)
+  const medications = parseJsonArray(patient.current_medications)
+  const conditions = parseJsonArray(patient.conditions)
+
   return (
     <div className="space-y-6">
       {/* Personal Information */}
@@ -59,27 +62,43 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Full Name</div>
-            <div className="font-medium">{patient.first_name} {patient.last_name}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Full Name
+            </div>
+            <div className="font-medium">
+              {patient.first_name} {patient.last_name}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Date of Birth</div>
-            <div className="font-medium">{formatDate(patient.date_of_birth)}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Date of Birth
+            </div>
+            <div className="font-medium">
+              {formatDate(patient.date_of_birth)}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Gender</div>
-            <div className="font-medium capitalize">{patient.gender || 'Not specified'}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Gender
+            </div>
+            <div className="font-medium capitalize">
+              {patient.gender || 'Not specified'}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Medical Record Number</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Medical Record Number
+            </div>
             <div className="font-medium">{patient.mrn || 'Not assigned'}</div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Preferred Language</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Preferred Language
+            </div>
             <div className="flex items-center font-medium">
               <Languages className="text-muted-foreground mr-1 size-3" />
               {patient.preferred_language || 'Not specified'}
@@ -87,7 +106,7 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Contact Information */}
       <Card>
         <CardHeader>
@@ -98,34 +117,44 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Email</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Email
+            </div>
             <div className="flex items-center font-medium">
               <Mail className="text-muted-foreground mr-1 size-3" />
               {patient.email || 'Not provided'}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Phone</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Phone
+            </div>
             <div className="font-medium">{patient.phone || 'Not provided'}</div>
           </div>
-          
+
           <div className="col-span-full">
-            <div className="text-muted-foreground text-sm font-medium">Address</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Address
+            </div>
             <div className="flex items-start font-medium">
               <MapPin className="text-muted-foreground mr-1 mt-1 size-3" />
               <div>
                 {patient.address_line1 ? (
                   <>
                     <div>{patient.address_line1}</div>
-                    {patient.address_line2 && <div>{patient.address_line2}</div>}
+                    {patient.address_line2 && (
+                      <div>{patient.address_line2}</div>
+                    )}
                     <div>
                       {[
                         patient.city,
                         patient.state,
                         patient.postal_code,
-                        patient.country
-                      ].filter(Boolean).join(', ')}
+                        patient.country,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
                     </div>
                   </>
                 ) : (
@@ -136,7 +165,7 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Emergency Contact */}
       <Card>
         <CardHeader>
@@ -147,22 +176,34 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Name</div>
-            <div className="font-medium">{patient.emergency_contact_name || 'Not provided'}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Name
+            </div>
+            <div className="font-medium">
+              {patient.emergency_contact_name || 'Not provided'}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Phone</div>
-            <div className="font-medium">{patient.emergency_contact_phone || 'Not provided'}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Phone
+            </div>
+            <div className="font-medium">
+              {patient.emergency_contact_phone || 'Not provided'}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Relationship</div>
-            <div className="font-medium">{patient.emergency_contact_relationship || 'Not specified'}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Relationship
+            </div>
+            <div className="font-medium">
+              {patient.emergency_contact_relationship || 'Not specified'}
+            </div>
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Medical Information Preview */}
       <Card>
         <CardHeader>
@@ -173,18 +214,24 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Blood Type</div>
-            <div className="font-medium">{patient.blood_type || 'Not recorded'}</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Blood Type
+            </div>
+            <div className="font-medium">
+              {patient.blood_type || 'Not recorded'}
+            </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Primary Care Physician</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Primary Care Physician
+            </div>
             <div className="flex items-center font-medium">
               <Stethoscope className="text-muted-foreground mr-1 size-3" />
               {patient.primary_care_physician || 'Not assigned'}
             </div>
           </div>
-          
+
           <div>
             <div className="text-muted-foreground flex items-center text-sm font-medium">
               <AlertCircle className="text-muted-foreground mr-1 size-3" />
@@ -192,7 +239,9 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
             </div>
             <div className="text-sm">
               {allergies.length === 0 ? (
-                <span className="text-muted-foreground">No known allergies</span>
+                <span className="text-muted-foreground">
+                  No known allergies
+                </span>
               ) : (
                 <ul className="list-disc pl-5">
                   {allergies.map((allergy: any, index: number) => (
@@ -202,7 +251,7 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
               )}
             </div>
           </div>
-          
+
           <div>
             <div className="text-muted-foreground flex items-center text-sm font-medium">
               <Pill className="text-muted-foreground mr-1 size-3" />
@@ -210,7 +259,9 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
             </div>
             <div className="text-sm">
               {medications.length === 0 ? (
-                <span className="text-muted-foreground">No current medications</span>
+                <span className="text-muted-foreground">
+                  No current medications
+                </span>
               ) : (
                 <ul className="list-disc pl-5">
                   {medications.map((medication: any, index: number) => (
@@ -222,7 +273,7 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Administrative Information */}
       <Card>
         <CardHeader>
@@ -233,30 +284,38 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Insurance Provider</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Insurance Provider
+            </div>
             <div className="font-medium">
               {patient.insurance_provider || 'Not provided'}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Insurance ID</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Insurance ID
+            </div>
             <div className="flex items-center font-medium">
               <CreditCard className="text-muted-foreground mr-1 size-3" />
               {patient.insurance_id || 'Not provided'}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Created</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Created
+            </div>
             <div className="flex items-center font-medium">
               <CalendarCheck className="text-muted-foreground mr-1 size-3" />
               {formatDate(patient.created_at)}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-muted-foreground text-sm font-medium">Last Updated</div>
+            <div className="text-muted-foreground text-sm font-medium">
+              Last Updated
+            </div>
             <div className="flex items-center font-medium">
               <CalendarCheck className="text-muted-foreground mr-1 size-3" />
               {formatDate(patient.updated_at)}
@@ -265,5 +324,5 @@ export function PatientOverview({ patient }: PatientOverviewProps) {
         </CardContent>
       </Card>
     </div>
-  );
-} 
+  )
+}

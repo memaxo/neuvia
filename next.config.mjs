@@ -65,9 +65,9 @@ const nextConfig = {
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@splinetool/react-spline/next': '@splinetool/react-spline'
+      '@splinetool/react-spline/next': '@splinetool/react-spline',
     }
-    
+
     // Add support for WebAssembly
     config.experiments = {
       ...config.experiments,
@@ -78,7 +78,7 @@ const nextConfig = {
     // Ensure proper handling of Spline's dependencies
     config.module.rules.push({
       test: /\.(glb|gltf)$/,
-      type: 'asset/resource'
+      type: 'asset/resource',
     })
 
     config.externals.push('pino-pretty', 'lokijs', 'encoding')
@@ -86,7 +86,7 @@ const nextConfig = {
   },
   experimental: {
     typedRoutes: true,
-    mdxRs: true
+    mdxRs: true,
   },
   images: {
     remotePatterns: [
@@ -147,18 +147,18 @@ const nextConfig = {
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: '*'  // Consider restricting to specific domains in production
+            value: '*', // Consider restricting to specific domains in production
           },
           {
             key: 'Access-Control-Allow-Methods',
-            value: 'GET'
+            value: 'GET',
           },
           {
             key: 'Access-Control-Allow-Headers',
-            value: '*'
-          }
-        ]
-      }
+            value: '*',
+          },
+        ],
+      },
     ]
   },
   pageExtensions: ['ts', 'tsx', 'mdx', 'js', 'jsx', 'rs'],
@@ -181,9 +181,9 @@ const withPWAConfig = withPWA({
           cacheName: 'google-fonts-webfonts',
           expiration: {
             maxEntries: 4,
-            maxAgeSeconds: 365 * 24 * 60 * 60 // 365 days
-          }
-        }
+            maxAgeSeconds: 365 * 24 * 60 * 60, // 365 days
+          },
+        },
       },
       {
         urlPattern: /^https:\/\/fonts\.(?:googleapis)\.com\/.*/i,
@@ -192,9 +192,9 @@ const withPWAConfig = withPWA({
           cacheName: 'google-fonts-stylesheets',
           expiration: {
             maxEntries: 4,
-            maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-          }
-        }
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          },
+        },
       },
       {
         urlPattern: /\.(?:eot|otf|ttc|ttf|woff|woff2|font.css)$/i,
@@ -203,9 +203,9 @@ const withPWAConfig = withPWA({
           cacheName: 'static-font-assets',
           expiration: {
             maxEntries: 4,
-            maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-          }
-        }
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          },
+        },
       },
       {
         urlPattern: /\.(?:jpg|jpeg|gif|png|svg|ico|webp)$/i,
@@ -214,9 +214,9 @@ const withPWAConfig = withPWA({
           cacheName: 'static-image-assets',
           expiration: {
             maxEntries: 64,
-            maxAgeSeconds: 24 * 60 * 60 // 24 hours
-          }
-        }
+            maxAgeSeconds: 24 * 60 * 60, // 24 hours
+          },
+        },
       },
       {
         urlPattern: /\/_next\/image\?url=.+$/i,
@@ -225,12 +225,12 @@ const withPWAConfig = withPWA({
           cacheName: 'next-image',
           expiration: {
             maxEntries: 64,
-            maxAgeSeconds: 24 * 60 * 60 // 24 hours
-          }
-        }
-      }
-    ]
-  }
+            maxAgeSeconds: 24 * 60 * 60, // 24 hours
+          },
+        },
+      },
+    ],
+  },
 })
 
 // Export the final config with all plugins applied

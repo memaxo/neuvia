@@ -1,26 +1,26 @@
-import type { Message } from 'ai';
-import type { ChatRequestOptions } from '@/lib/types';
-import { PreviewMessage, ThinkingMessage } from './message';
-import { useScrollToBottom } from './use-scroll-to-bottom';
-import { Overview } from './overview';
-import { memo } from 'react';
-import { Vote } from '@/lib/db/schema';
-import equal from 'fast-deep-equal';
-import { toast } from 'sonner';
+import { Vote } from '@/lib/db/schema'
+import type { ChatRequestOptions } from '@/lib/types'
+import type { Message } from 'ai'
+import equal from 'fast-deep-equal'
+import { memo } from 'react'
+import { toast } from 'sonner'
+import { PreviewMessage, ThinkingMessage } from './message'
+import { Overview } from './overview'
+import { useScrollToBottom } from './use-scroll-to-bottom'
 
 interface MessagesProps {
-  chatId: string;
-  isLoading: boolean;
-  votes: Array<Vote> | undefined;
-  messages: Array<Message>;
+  chatId: string
+  isLoading: boolean
+  votes: Array<Vote> | undefined
+  messages: Array<Message>
   setMessages: (
-    messages: Message[] | ((messages: Message[]) => Message[]),
-  ) => void;
+    messages: Message[] | ((messages: Message[]) => Message[])
+  ) => void
   reload: (
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  isReadonly: boolean;
-  isBlockVisible: boolean;
+    chatRequestOptions?: ChatRequestOptions
+  ) => Promise<string | null | undefined>
+  isReadonly: boolean
+  isBlockVisible: boolean
 }
 
 function PureMessages({
@@ -33,21 +33,21 @@ function PureMessages({
   isReadonly,
 }: MessagesProps) {
   const [messagesContainerRef, messagesEndRef] =
-    useScrollToBottom<HTMLDivElement>();
+    useScrollToBottom<HTMLDivElement>()
 
   // Handle rate limit error
   const handleError = async (error: any) => {
     if (error?.response?.status === 429) {
-      const data = await error.response.json();
-      const resetInSeconds = Math.ceil((data.reset - Date.now()) / 1000);
+      const data = await error.response.json()
+      const resetInSeconds = Math.ceil((data.reset - Date.now()) / 1000)
       toast.error(
         `Rate limit exceeded. Please wait ${resetInSeconds} seconds before trying again.`,
         {
           duration: Math.min(resetInSeconds * 1000, 5000),
-        },
-      );
+        }
+      )
     }
-  };
+  }
 
   return (
     <div
@@ -70,10 +70,10 @@ function PureMessages({
           setMessages={setMessages}
           reload={async (options?: ChatRequestOptions) => {
             try {
-              return await reload(options);
+              return await reload(options)
             } catch (error) {
-              handleError(error);
-              return null;
+              handleError(error)
+              return null
             }
           }}
           isReadonly={isReadonly}
@@ -89,16 +89,16 @@ function PureMessages({
         className="shrink-0 min-w-[24px] min-h-[24px]"
       />
     </div>
-  );
+  )
 }
 
 export const Messages = memo(PureMessages, (prevProps, nextProps) => {
-  if (prevProps.isBlockVisible && nextProps.isBlockVisible) return true;
+  if (prevProps.isBlockVisible && nextProps.isBlockVisible) return true
 
-  if (prevProps.isLoading !== nextProps.isLoading) return false;
-  if (prevProps.isLoading && nextProps.isLoading) return false;
-  if (prevProps.messages.length !== nextProps.messages.length) return false;
-  if (!equal(prevProps.votes, nextProps.votes)) return false;
+  if (prevProps.isLoading !== nextProps.isLoading) return false
+  if (prevProps.isLoading && nextProps.isLoading) return false
+  if (prevProps.messages.length !== nextProps.messages.length) return false
+  if (!equal(prevProps.votes, nextProps.votes)) return false
 
-  return true;
-});
+  return true
+})

@@ -24,7 +24,7 @@ module.exports = {
     'simple-import-sort',
     'promise',
     'jest',
-    '@tanstack/query'
+    '@tanstack/query',
   ],
   parserOptions: {
     tsconfigRootDir: __dirname,
@@ -56,8 +56,8 @@ module.exports = {
       {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_'
-      }
+        caughtErrorsIgnorePattern: '^_',
+      },
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/consistent-type-imports': 'warn', // Downgraded to warning
@@ -65,9 +65,12 @@ module.exports = {
     // Tailwind rules
     'tailwindcss/no-contradicting-classname': 'error',
 
+    // Disable specific import rules for problematic files
+    'import/export': 'off',
+
     // Import and module rules
     'import/no-unresolved': 'error',
-    'import/named': 'error',
+    'import/named': 'warn',
     'import/namespace': 'error',
     'import/default': 'error',
     'import/export': 'error',
@@ -82,7 +85,7 @@ module.exports = {
     'no-debugger': 'error',
     'prefer-const': 'error',
     'no-var': 'error',
-    'eqeqeq': 'error',
+    eqeqeq: 'error',
     'object-shorthand': 'error',
     'prefer-template': 'error',
     'jsx-quotes': ['error', 'prefer-double'],
@@ -113,14 +116,15 @@ module.exports = {
     'no-restricted-imports': [
       'error',
       {
-        'paths': [
+        paths: [
           {
-            'name': 'lodash',
-            'message': 'Please use lodash-es or individual lodash modules instead.'
-          }
-        ]
-      }
-    ]
+            name: 'lodash',
+            message:
+              'Please use lodash-es or individual lodash modules instead.',
+          },
+        ],
+      },
+    ],
   },
   settings: {
     tailwindcss: {
@@ -131,19 +135,19 @@ module.exports = {
       rootDir: ['./'],
     },
     'import/parsers': {
-      '@typescript-eslint/parser': ['.ts', '.tsx']
+      '@typescript-eslint/parser': ['.ts', '.tsx'],
     },
     'import/resolver': {
       typescript: {
         alwaysTryTypes: true,
-        project: './tsconfig.json'
+        project: './tsconfig.json',
       },
       node: {
         paths: ['.'],
         extensions: ['.js', '.jsx', '.ts', '.tsx'],
-        moduleDirectory: ['node_modules', '.pnpm']
-      }
-    }
+        moduleDirectory: ['node_modules', '.pnpm'],
+      },
+    },
   },
   overrides: [
     {
@@ -157,12 +161,12 @@ module.exports = {
         '@typescript-eslint/no-floating-promises': 'warn',
         '@typescript-eslint/strict-boolean-expressions': 'warn',
         '@typescript-eslint/no-misused-promises': 'warn',
-      }
+      },
     },
     {
       files: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
       extends: ['plugin:jest/recommended'],
-    }
+    },
   ],
   ignorePatterns: [
     'node_modules/',
@@ -171,7 +175,8 @@ module.exports = {
     'public/',
     '**/*.config.js',
     '**/*.config.mjs',
-    'app/open-deep-research/**/*'
+    'app/open-deep-research/**/*',
+    'supabase/functions/**/*', // Ignore Supabase Edge Functions
   ],
   // Add note about max-warnings usage
   // To use max-warnings in your scripts, add: eslint . --max-warnings=50

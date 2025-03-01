@@ -1,7 +1,7 @@
 'use client'
 
 import { Slot } from '@radix-ui/react-slot'
-import type { VariantProps } from 'class-variance-authority';
+import type { VariantProps } from 'class-variance-authority'
 import { cva } from 'class-variance-authority'
 import { SidebarOpen } from 'lucide-react'
 import * as React from 'react'
@@ -177,9 +177,12 @@ const Sidebar = React.forwardRef<
     ref
   ) => {
     const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
-    const handleOpenChange = React.useCallback((value: boolean) => {
-      setOpenMobile(value)
-    }, [setOpenMobile])
+    const handleOpenChange = React.useCallback(
+      (value: boolean) => {
+        setOpenMobile(value)
+      },
+      [setOpenMobile]
+    )
 
     if (collapsible === 'none') {
       return (

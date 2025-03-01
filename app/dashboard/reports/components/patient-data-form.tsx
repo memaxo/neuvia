@@ -28,75 +28,90 @@ export function PatientDataForm() {
   }
 
   return (
-    <form className="card-premium animate-fade-in space-y-4 p-6" onSubmit={handleSubmit}>
+    <form
+      className="card-premium animate-fade-in space-y-4 p-6"
+      onSubmit={handleSubmit}
+    >
       <div>
-        <Label className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]" htmlFor="symptoms">
+        <Label
+          className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]"
+          htmlFor="symptoms"
+        >
           Symptoms
         </Label>
-        <Input 
-          className="search-input" 
-          id="symptoms" 
+        <Input
+          className="search-input"
+          id="symptoms"
           onChange={(e) => setSymptoms(e.target.value)}
           placeholder="Enter symptoms separated by commas"
-          value={symptoms} 
+          value={symptoms}
         />
       </div>
       <div>
-        <Label className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]" htmlFor="medicalHistory">
+        <Label
+          className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]"
+          htmlFor="medicalHistory"
+        >
           Medical History
         </Label>
-        <Textarea 
-          className="search-input min-h-[100px] resize-y" 
-          id="medicalHistory" 
+        <Textarea
+          className="search-input min-h-[100px] resize-y"
+          id="medicalHistory"
           onChange={(e) => setMedicalHistory(e.target.value)}
           placeholder="Enter medical history"
-          value={medicalHistory} 
+          value={medicalHistory}
         />
       </div>
       <div>
-        <Label className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]" htmlFor="currentMedications">
+        <Label
+          className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]"
+          htmlFor="currentMedications"
+        >
           Current Medications
         </Label>
-        <Input 
-          className="search-input" 
-          id="currentMedications" 
+        <Input
+          className="search-input"
+          id="currentMedications"
           onChange={(e) => setCurrentMedications(e.target.value)}
           placeholder="List current medications"
-          value={currentMedications} 
+          value={currentMedications}
         />
       </div>
       <div>
-        <Label className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]" htmlFor="allergies">
+        <Label
+          className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]"
+          htmlFor="allergies"
+        >
           Allergies
         </Label>
-        <Input 
-          className="search-input" 
-          id="allergies" 
+        <Input
+          className="search-input"
+          id="allergies"
           onChange={(e) => setAllergies(e.target.value)}
           placeholder="List allergies"
-          value={allergies} 
+          value={allergies}
         />
       </div>
       <div>
-        <Label className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]" htmlFor="vitalSigns">
+        <Label
+          className="mb-1.5 block text-[rgb(var(--foreground)/var(--opacity-90))]"
+          htmlFor="vitalSigns"
+        >
           Vital Signs
         </Label>
-        <Input 
-          className="search-input" 
-          id="vitalSigns" 
+        <Input
+          className="search-input"
+          id="vitalSigns"
           onChange={(e) => setVitalSigns(e.target.value)}
           placeholder="e.g., Blood Pressure, Heart Rate"
-          value={vitalSigns} 
+          value={vitalSigns}
         />
       </div>
       <div className="flex justify-end pt-2">
-        <Button 
-          className="action-button px-6 py-2" 
-          type="submit"
-        >
+        <Button className="action-button px-6 py-2" type="submit">
           Submit Data
         </Button>
       </div>
     </form>
   )
-} 
+}

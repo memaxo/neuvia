@@ -1,11 +1,11 @@
 /**
  * Patient Summary Types
- * 
+ *
  * Type definitions for patient summary functionality.
  */
-import type { DocumentType } from './base';
-import type { PatientDocument } from './document';
-import type { VerificationItem, VerificationStatus } from './verification';
+import type { DocumentType } from './base'
+import type { PatientDocument } from './document'
+import type { VerificationItem, VerificationStatus } from './verification'
 
 /**
  * Represents a section of a patient summary
@@ -14,13 +14,13 @@ export interface PatientSummarySection {
   /**
    * Section title
    */
-  title: string;
-  
+  title: string
+
   /**
    * Section content in markdown format
    */
-  content: string;
-  
+  content: string
+
   /**
    * Source documents used to generate this section
    */
@@ -28,18 +28,18 @@ export interface PatientSummarySection {
     /**
      * Document ID
      */
-    documentId: string;
-    
+    documentId: string
+
     /**
      * Type of document
      */
-    documentType: DocumentType;
-    
+    documentType: DocumentType
+
     /**
      * Confidence score (0-1)
      */
-    confidence: number;
-  }>;
+    confidence: number
+  }>
 }
 
 /**
@@ -49,36 +49,36 @@ export interface DocumentExtraction {
   /**
    * Source document ID
    */
-  documentId: string;
-  
+  documentId: string
+
   /**
    * Type of document
    */
-  documentType: DocumentType;
-  
+  documentType: DocumentType
+
   /**
    * Date of the document
    */
-  documentDate: string;
-  
+  documentDate: string
+
   /**
    * Extracted sections by medical category
    */
   sections: {
-    demographics?: ExtractedSection;
-    diagnoses?: ExtractedSection;
-    medications?: ExtractedSection;
-    labValues?: ExtractedSection;
-    procedures?: ExtractedSection;
-    plans?: ExtractedSection;
-    allergies?: ExtractedSection;
-    vitalSigns?: ExtractedSection;
-    socialHistory?: ExtractedSection;
-    familyHistory?: ExtractedSection;
-    physicalExam?: ExtractedSection;
-    [key: string]: ExtractedSection | undefined;
-  };
-  
+    demographics?: ExtractedSection
+    diagnoses?: ExtractedSection
+    medications?: ExtractedSection
+    labValues?: ExtractedSection
+    procedures?: ExtractedSection
+    plans?: ExtractedSection
+    allergies?: ExtractedSection
+    vitalSigns?: ExtractedSection
+    socialHistory?: ExtractedSection
+    familyHistory?: ExtractedSection
+    physicalExam?: ExtractedSection
+    [key: string]: ExtractedSection | undefined
+  }
+
   /**
    * Extraction metadata
    */
@@ -86,13 +86,13 @@ export interface DocumentExtraction {
     /**
      * Overall confidence score (0-1)
      */
-    extractionConfidence: number;
-    
+    extractionConfidence: number
+
     /**
      * When extraction was performed
      */
-    extractionDate: string;
-  };
+    extractionDate: string
+  }
 }
 
 /**
@@ -106,28 +106,28 @@ export interface ExtractedSection {
     /**
      * Extracted text content
      */
-    text: string;
-    
+    text: string
+
     /**
      * Importance score (1-10)
      */
-    importance: number;
-    
+    importance: number
+
     /**
      * Confidence score (0-1)
      */
-    confidence: number;
-    
+    confidence: number
+
     /**
      * Temporal marker (current, past, future)
      */
-    temporalMarker?: string;
-    
+    temporalMarker?: string
+
     /**
      * Original source context
      */
-    context?: string;
-  }>;
+    context?: string
+  }>
 }
 
 /**
@@ -137,48 +137,48 @@ export interface PatientSummary {
   /**
    * Basic patient information section
    */
-  patientInfo: PatientSummarySection;
-  
+  patientInfo: PatientSummarySection
+
   /**
    * Medical history section
    */
-  medicalHistory: PatientSummarySection;
-  
+  medicalHistory: PatientSummarySection
+
   /**
    * Current medical conditions section
    */
-  currentConditions: PatientSummarySection;
-  
+  currentConditions: PatientSummarySection
+
   /**
    * Medications section
    */
-  medications: PatientSummarySection;
-  
+  medications: PatientSummarySection
+
   /**
    * Recent findings section
    */
-  recentFindings: PatientSummarySection;
-  
+  recentFindings: PatientSummarySection
+
   /**
    * Treatment plans section
    */
-  treatmentPlans: PatientSummarySection;
-  
+  treatmentPlans: PatientSummarySection
+
   /**
    * Laboratory results section
    */
-  labResults: PatientSummarySection;
-  
+  labResults: PatientSummarySection
+
   /**
    * Imaging results section
    */
-  imagingResults: PatientSummarySection;
-  
+  imagingResults: PatientSummarySection
+
   /**
    * Recommendations section
    */
-  recommendations: PatientSummarySection;
-  
+  recommendations: PatientSummarySection
+
   /**
    * Summary metadata
    */
@@ -186,13 +186,13 @@ export interface PatientSummary {
     /**
      * When the summary was generated
      */
-    generatedAt: string;
-    
+    generatedAt: string
+
     /**
      * Number of documents analyzed
      */
-    documentCount: number;
-    
+    documentCount: number
+
     /**
      * List of analyzed documents
      */
@@ -200,24 +200,24 @@ export interface PatientSummary {
       /**
        * Document ID
        */
-      id: string;
-      
+      id: string
+
       /**
        * Type of document
        */
-      type: DocumentType;
-      
+      type: DocumentType
+
       /**
        * Document title
        */
-      title: string;
-      
+      title: string
+
       /**
        * Document date
        */
-      date: string;
-    }>;
-    
+      date: string
+    }>
+
     /**
      * Verification metadata (if the summary has been verified)
      */
@@ -225,25 +225,25 @@ export interface PatientSummary {
       /**
        * When the summary was verified
        */
-      verifiedAt?: string;
-      
+      verifiedAt?: string
+
       /**
        * Who verified the summary
        */
-      verifiedBy?: string;
-      
+      verifiedBy?: string
+
       /**
        * Verification status (verified/rejected)
        */
-      status?: string;
-      
+      status?: string
+
       /**
        * Optional verification comments
        */
-      comments?: string;
-    };
-  };
-} 
+      comments?: string
+    }
+  }
+}
 
 /**
  * Interface for combined summary with verification data
@@ -253,18 +253,18 @@ export interface VerifiedPatientSummary extends PatientSummary {
   /**
    * Verification items for this summary
    */
-  verificationItems?: VerificationItem[];
-  
+  verificationItems?: VerificationItem[]
+
   /**
    * Verification status details
    */
-  verificationStatus?: VerificationStatus;
-  
+  verificationStatus?: VerificationStatus
+
   /**
    * Original verified data structure from verification service
    */
-  verifiedData?: Record<string, any>;
-  
+  verifiedData?: Record<string, any>
+
   /**
    * Verification metadata
    */
@@ -272,16 +272,16 @@ export interface VerifiedPatientSummary extends PatientSummary {
     /**
      * When the summary was verified
      */
-    verifiedAt?: string;
-    
+    verifiedAt?: string
+
     /**
      * Who verified the summary
      */
-    verifiedBy?: string;
-    
+    verifiedBy?: string
+
     /**
      * Workflow ID if verified as part of a workflow
      */
-    workflowId?: string;
-  };
+    workflowId?: string
+  }
 }

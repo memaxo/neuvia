@@ -1,8 +1,8 @@
 import { Pencil1Icon, TrashIcon } from '@radix-ui/react-icons'
 import { Calendar, CircleIcon, Shield, User } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { Table as _ } from '@/components/ui/Table'
+import { Button } from '@/components/ui/button'
 
 // Temporary mock data
 const members = [

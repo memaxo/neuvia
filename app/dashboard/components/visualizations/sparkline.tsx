@@ -11,6 +11,9 @@ interface SparklineProps {
 }
 
 export function Sparkline({ data, color, height = 30 }: SparklineProps) {
+  // React hooks must be called at the top level of the component
+  const uniqueId = useId().replace(/[^a-zA-Z0-9]/g, '')
+
   // Early return if data is undefined or empty
   if (!data?.length) {
     return (
@@ -32,7 +35,6 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = max - min
-  const uniqueId = useId().replace(/[^a-zA-Z0-9]/g, '')
 
   // Create points for the sparkline
   const points = data
@@ -51,10 +53,12 @@ export function Sparkline({ data, color, height = 30 }: SparklineProps) {
       className="group overflow-visible"
       height={height}
       preserveAspectRatio="none"
-      style={{
-        '--gradient-url': `url(#${gradientId})`,
-        '--hover-gradient-url': `url(#${hoverGradientId})`,
-      } as React.CSSProperties}
+      style={
+        {
+          '--gradient-url': `url(#${gradientId})`,
+          '--hover-gradient-url': `url(#${hoverGradientId})`,
+        } as React.CSSProperties
+      }
       width="100%"
     >
       {/* Enhanced gradient definitions */}

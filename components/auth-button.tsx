@@ -5,8 +5,8 @@ import { AiOutlineLoading3Quarters } from 'react-icons/ai'
 
 import { logout } from '@/app/auth/actions'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { createBrowserClient } from '@/lib/supabase'
+import { cn } from '@/lib/utils'
 
 export default function AuthButton() {
   const [session, setSession] = useState<boolean>(false)

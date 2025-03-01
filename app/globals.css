@@ -14,12 +14,10 @@
   --animation-slow: 500ms;
 
   /* Typography */
-  --font-sans:
-    'Geist Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    Roboto, sans-serif;
-  --font-mono:
-    'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    monospace;
+  --font-sans: "Geist Sans", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -107,7 +105,7 @@
 }
 
 /* Light Mode */
-[data-theme='light'] {
+[data-theme="light"] {
   /* Base Colors */
   --background: 247 250 252; /* #F7FAFC - Clean white */
   --foreground: 26 32 44; /* #1A202C - Near black */
@@ -194,17 +192,15 @@
 
   .card-premium {
     @apply duration-normal relative border border-white/5 bg-gradient-to-br from-black/30 to-black/40 backdrop-blur-xl transition-all hover:translate-y-[-2px] hover:border-white/10;
-    box-shadow:
-      inset 0 1px 1px 0 rgb(0 0 0 / var(--opacity-10)),
-      inset 0 -1px 1px 0 rgb(0 0 0 / var(--opacity-10)),
-      0 4px 14px 0 rgb(0 0 0 / var(--opacity-10));
+    box-shadow: inset 0 1px 1px 0 rgb(0 0 0 / var(--opacity-10)), inset 0 -1px
+      1px 0 rgb(0 0 0 / var(--opacity-10)), 0 4px 14px 0
+      rgb(0 0 0 / var(--opacity-10));
   }
 
   .card-premium:hover {
-    box-shadow:
-      inset 0 1px 1px 0 rgb(0 0 0 / var(--opacity-15)),
-      inset 0 -1px 1px 0 rgb(0 0 0 / var(--opacity-15)),
-      0 12px 24px -4px rgb(0 0 0 / var(--opacity-20));
+    box-shadow: inset 0 1px 1px 0 rgb(0 0 0 / var(--opacity-15)), inset 0 -1px
+      1px 0 rgb(0 0 0 / var(--opacity-15)), 0 12px 24px -4px
+      rgb(0 0 0 / var(--opacity-20));
   }
 
   /* Layout Components */
