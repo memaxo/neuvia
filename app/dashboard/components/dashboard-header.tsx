@@ -14,14 +14,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
+import { useChatStore } from '@/stores/chat-store'
 
 import { NotificationCenter } from './notification-center'
 
 export function DashboardHeader() {
+  // Get workflow step to check if we need to show the indicator
+  const workflowStep = useChatStore(state => state.workflow.currentStep)
+  const isProcessing = workflowStep !== 'idle' && workflowStep !== 'complete'
+  
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center gap-2 border-b border-[rgb(var(--border))/var(--opacity-10)] bg-[rgb(var(--background))/var(--opacity-95)] backdrop-blur-xl">
       <div className="relative flex w-full items-center justify-between px-6">
-        <div className="flex-1" />
+        <div className="flex-1">
+          {isProcessing && (
+            <WorkflowIndicator className="ml-2" showProgress={false} />
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <NotificationCenter />
           <Button

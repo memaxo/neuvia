@@ -11,6 +11,9 @@ import { Progress } from '@/components/ui/progress'
 // Internal components
 import { useToast } from '@/components/ui/use-toast'
 import { useChatStore } from '@/stores/chat-store'
+import { WorkflowProgressTracker } from '@/components/chat/workflow/workflow-progress-tracker'
+import { WorkflowStatusDisplay } from '@/components/chat/workflow/workflow-status-display'
+import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
 import type {
   ChatMode,
   ChatState as ChatStateType,
@@ -291,41 +294,7 @@ export function ChatInterface({
     )
   }
 
-  // Render the workflow status indicator
-  const renderWorkflowStatus = () => {
-    if (
-      workflowStep === 'idle' ||
-      workflowStep === 'complete'
-    ) {
-      return null
-    }
-
-    return (
-      <div className="bg-muted/50 flex items-center gap-2 border-b px-4 py-2">
-        <Badge className="gap-1" variant="outline">
-          {verification.isInVerificationMode ? (
-            <>
-              <CheckCircle className="size-3" />
-              <span>Verification Mode</span>
-            </>
-          ) : (
-            <>
-              <FileText className="size-3" />
-              <span>Processing Document</span>
-            </>
-          )}
-        </Badge>
-        {docProgress > 0 && docProgress < 100 && (
-          <>
-            <Progress className="h-2 flex-1" value={docProgress} />
-            <span className="text-muted-foreground text-xs">
-              {processPhase}
-            </span>
-          </>
-        )}
-      </div>
-    )
-  }
+  // Old renderWorkflowStatus removed - replaced with WorkflowIndicator component
 
   // Process a confirmation message based on the chat input
   const handleMessageSubmit = async (message: string) => {
@@ -503,8 +472,12 @@ export function ChatInterface({
         />
       </div>
 
-      {/* Workflow status indicator */}
-      {renderWorkflowStatus()}
+      {/* Workflow status indicator - Replaced with new component */}
+      {workflowStep !== 'idle' && (
+        <div className="bg-muted/50 flex items-center gap-2 border-b px-4 py-2">
+          <WorkflowIndicator showProgress={true} />
+        </div>
+      )}
 
       {/* Error recovery UI */}
       {error && (
@@ -512,20 +485,15 @@ export function ChatInterface({
       )}
 
       {/* Workflow content based on current step */}
-      {workflowStep !== 'idle' &&
-        workflowStep !== 'complete' &&
-        !verification.isInVerificationMode && (
-          <div className="px-4 pt-4">
-            <WorkflowStatusDisplay
-              activeDocument={activeDocument}
-              currentPhase={processPhase as ProcessingPhase}
-              currentStep={workflowStep as WorkflowStep}
-              onContinueAction={handleContinueAfterVerification}
-              onGenerateReportAction={() => setShowReportPanel(true)}
-              onSkipReportAction={handleSkipReport}
-            />
-          </div>
-        )}
+      <div className="px-4 pt-4">
+        <WorkflowStatusDisplay
+          activeDocument={activeDocument}
+          onContinueAction={handleContinueAfterVerification}
+          onGenerateReportAction={() => setShowReportPanel(true)}
+          onSkipReportAction={handleSkipReport}
+          hideWhenIdle={true}
+        />
+      </div>
 
       {/* Report generation panel */}
       <ReportGenerationPanel
