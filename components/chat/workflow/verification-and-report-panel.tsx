@@ -2,7 +2,9 @@
 
 import { DocumentPreview } from '@/components/chat/document-preview'
 import { Button } from '@/components/ui/button'
+import { useChatStore } from '@/stores/chat-store'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
+import { useCallback } from 'react'
 
 interface ActiveDocument {
   id: string
@@ -12,22 +14,66 @@ interface ActiveDocument {
 }
 
 interface VerificationAndReportPanelProps {
-  currentStep: WorkflowStep
+  currentStep?: WorkflowStep
   currentPhase?: ProcessingPhase
   activeDocument?: ActiveDocument | null
-  onGenerateReport: () => void
-  onSkipReport: () => void
-  onContinue: () => void
+  onGenerateReport?: () => void
+  onSkipReport?: () => void
+  onContinue?: () => void
 }
 
 export function VerificationAndReportPanel({
-  currentStep,
-  currentPhase,
-  activeDocument,
-  onGenerateReport,
-  onSkipReport,
-  onContinue,
+  currentStep: propCurrentStep,
+  currentPhase: propCurrentPhase,
+  activeDocument: propActiveDocument,
+  onGenerateReport: propOnGenerateReport,
+  onSkipReport: propOnSkipReport,
+  onContinue: propOnContinue,
 }: VerificationAndReportPanelProps) {
+  // Get state from Zustand store
+  const storeWorkflowStep = useChatStore(state => state.workflow.currentStep)
+  const storeProcessingPhase = useChatStore(state => state.workflow.processingStatus.phase)
+  const extractedDocument = useChatStore(state => state.extractedDocument)
+  const generateReport = useChatStore(state => state.generateReport)
+  const formatReport = useChatStore(state => state.formatReport)
+  const beginReportGeneration = useChatStore(state => state.beginReportGeneration)
+  
+  // Use props if provided, otherwise use store values
+  const currentStep = propCurrentStep || storeWorkflowStep
+  const currentPhase = propCurrentPhase || storeProcessingPhase
+  
+  // Create active document from extracted document if not provided
+  const activeDocument = propActiveDocument || (extractedDocument ? {
+    id: extractedDocument.id || crypto.randomUUID(),
+    title: 'Extracted Document',
+    content: extractedDocument.extractedData?.rawText || 'Document content',
+    kind: 'text'
+  } : null)
+  
+  // Default handlers using store actions
+  const handleGenerateReport = useCallback(() => {
+    if (propOnGenerateReport) {
+      propOnGenerateReport()
+    } else {
+      generateReport()
+    }
+  }, [propOnGenerateReport, generateReport])
+  
+  const handleSkipReport = useCallback(() => {
+    if (propOnSkipReport) {
+      propOnSkipReport()
+    } else {
+      formatReport({ format: 'pdf' })
+    }
+  }, [propOnSkipReport, formatReport])
+  
+  const handleContinue = useCallback(() => {
+    if (propOnContinue) {
+      propOnContinue()
+    } else {
+      beginReportGeneration()
+    }
+  }, [propOnContinue, beginReportGeneration])
   return (
     <div className="mb-6">
       {currentStep === 'idle' && (
@@ -63,7 +109,7 @@ export function VerificationAndReportPanel({
             used to update patient summaries.
           </p>
           <div className="mt-4 flex justify-end">
-            <Button onClick={onContinue} variant="default">
+            <Button onClick={handleContinue} variant="default">
               Continue
             </Button>
           </div>
@@ -78,10 +124,10 @@ export function VerificationAndReportPanel({
             or skip.
           </p>
           <div className="mt-4 flex justify-end gap-2">
-            <Button onClick={onGenerateReport} variant="default">
+            <Button onClick={handleGenerateReport} variant="default">
               Generate Report
             </Button>
-            <Button onClick={onSkipReport} variant="outline">
+            <Button onClick={handleSkipReport} variant="outline">
               Skip
             </Button>
           </div>

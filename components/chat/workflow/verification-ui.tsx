@@ -14,11 +14,12 @@ import {
   ThumbsUp,
   X,
 } from 'lucide-react'
-import React from 'react'
-import { Badge } from './ui/badge'
-import { Button } from './ui/button'
-import { Progress } from './ui/progress'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
+import React, { useCallback } from 'react'
+import { useChatStore } from '@/stores/chat-store'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 /**
  * Verification status indicator component
@@ -82,7 +83,7 @@ export const VerificationStatus = ({
 }
 
 /**
- * Verification action buttons component
+ * Verification action buttons component with Zustand store integration
  */
 export const VerificationActions = ({
   onConfirm,
@@ -90,18 +91,39 @@ export const VerificationActions = ({
   onHistory,
   className,
 }: {
-  onConfirm: () => void
-  onEdit: () => void
+  onConfirm?: () => void
+  onEdit?: () => void
   onHistory?: () => void
   className?: string
 }) => {
+  // Get actions from Zustand store
+  const confirmVerification = useChatStore(state => state.completeVerification)
+  const currentSummary = useChatStore(state => state.verification.currentSummary)
+  
+  // Use provided callbacks or default to store actions
+  const handleConfirm = useCallback(() => {
+    if (onConfirm) {
+      onConfirm()
+    } else {
+      confirmVerification(true)
+    }
+  }, [onConfirm, confirmVerification])
+  
+  const handleEdit = useCallback(() => {
+    if (onEdit) {
+      onEdit()
+    } else {
+      // No default edit action in store, could focus input or similar
+      console.log('Edit action - implement in containing component')
+    }
+  }, [onEdit])
   return (
     <div className={cn('flex flex-wrap gap-2', className)}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             className="border-green-200 bg-green-100 text-green-800 hover:bg-green-200 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-800/50"
-            onClick={onConfirm}
+            onClick={handleConfirm}
             size="sm"
             variant="outline"
           >
@@ -116,7 +138,7 @@ export const VerificationActions = ({
         <TooltipTrigger asChild>
           <Button
             className="border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-800/50"
-            onClick={onEdit}
+            onClick={handleEdit}
             size="sm"
             variant="outline"
           >
@@ -180,17 +202,24 @@ export const SectionCorrectionButtons = ({
 }
 
 /**
- * Progress visualization for extraction and verification
+ * Progress visualization for extraction and verification with Zustand integration
  */
 export const ProgressIndicator = ({
-  value,
-  phase,
+  value: propValue,
+  phase: propPhase,
   className,
 }: {
-  value: number
-  phase: string
+  value?: number
+  phase?: string
   className?: string
 }) => {
+  // Get progress data from Zustand store if not provided
+  const storeProgress = useChatStore(state => state.workflow.processingStatus.progress)
+  const storePhase = useChatStore(state => state.workflow.processingStatus.phase)
+  
+  // Use props if provided, otherwise use store values
+  const value = propValue !== undefined ? propValue : storeProgress
+  const phase = propPhase || storePhase || 'Processing'
   return (
     <div className={cn('w-full space-y-1', className)}>
       <div className="text-muted-foreground flex justify-between text-xs">
@@ -203,17 +232,23 @@ export const ProgressIndicator = ({
 }
 
 /**
- * Version indicator component
+ * Version indicator component with Zustand integration
  */
 export const VersionIndicator = ({
-  version,
-  total,
+  version: propVersion,
+  total: propTotal,
   className,
 }: {
-  version: number
-  total: number
+  version?: number
+  total?: number
   className?: string
 }) => {
+  // Get version data from Zustand store if not provided
+  const summaryVersions = useChatStore(state => state.verification.summaryVersions)
+  
+  // Use props if provided, otherwise calculate from store
+  const total = propTotal !== undefined ? propTotal : summaryVersions.length
+  const version = propVersion !== undefined ? propVersion : total
   return (
     <Badge className={cn('text-xs', className)} variant="outline">
       Version {version}/{total}

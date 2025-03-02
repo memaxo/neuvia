@@ -130,6 +130,38 @@ export function useProcessingWorkflow() {
       setWorkflowStep('extracting')
 
       try {
+        // Create workflow state to track document processing
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        
+        // Only create workflow if we have a user ID
+        let workflowId: string | null = null
+        if (userId) {
+          const { data, error } = await supabase
+            .from('workflow_states')
+            .insert({
+              user_id: userId,
+              current_step: 'extracting',
+              workflow_type: 'document_processing',
+              metadata: {
+                patientId,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                documentType,
+                startedAt: new Date().toISOString()
+              }
+            })
+            .select('id')
+            .single()
+            
+          if (!error && data) {
+            workflowId = data.id
+            // Store workflow ID in localStorage for access across components
+            localStorage.setItem('current_workflow_id', workflowId)
+          }
+        }
+
         // Convert documentType string to DocumentType object if needed
         const docType: DocumentType | undefined = documentType
           ? { category: 'clinical', type: documentType } // Default to clinical category
@@ -142,7 +174,26 @@ export function useProcessingWorkflow() {
         )
 
         if (result) {
-          setWorkflowStep('report_generation')
+          // Update workflow state
+          if (workflowId) {
+            await supabase
+              .from('workflow_states')
+              .update({
+                current_step: 'verification',
+                metadata: {
+                  patientId,
+                  fileName: file.name,
+                  fileSize: file.size,
+                  fileType: file.type,
+                  documentType,
+                  documentId: result.id,
+                  completedAt: new Date().toISOString()
+                }
+              })
+              .eq('id', workflowId)
+          }
+          
+          setWorkflowStep('verification')
           return result
         } else {
           throw new Error('Document processing failed')
@@ -151,10 +202,26 @@ export function useProcessingWorkflow() {
         const errorMessage = err instanceof Error ? err.message : String(err)
         setError(errorMessage)
         setWorkflowStep('idle')
+        
+        // Update workflow state to error if we have a workflow ID
+        const workflowId = localStorage.getItem('current_workflow_id')
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: 'error',
+              metadata: {
+                errorMessage,
+                errorAt: new Date().toISOString()
+              }
+            })
+            .eq('id', workflowId)
+        }
+        
         return null
       }
     },
-    [documentProcessing]
+    [documentProcessing, supabase]
   )
 
   /**
@@ -183,17 +250,224 @@ export function useProcessingWorkflow() {
   )
 
   /**
+   * Initiate verification process for a document
+   */
+  const initiateVerification = useCallback(
+    async (extractedDocument: ExtractedDocument) => {
+      setError(null)
+      setWorkflowStep('verification')
+      
+      try {
+        const workflowId = localStorage.getItem('current_workflow_id')
+        
+        // If we have a workflow ID, update it to verification
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: 'verification',
+              metadata: {
+                verificationStartedAt: new Date().toISOString(),
+                documentId: extractedDocument.id,
+                patientId: extractedDocument.patientId,
+                documentType: extractedDocument.documentType
+              }
+            })
+            .eq('id', workflowId)
+        }
+        
+        // Use API client to initiate verification through the correct endpoint
+        const userId = (await supabase.auth.getUser()).data.user?.id
+        
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
+        
+        // Call patient-summary-service to generate summary if needed
+        const { data: patientSummary, error: summaryError } = await supabase
+          .rpc('generate_patient_summary', {
+            p_document_id: extractedDocument.id,
+            p_patient_id: extractedDocument.patientId,
+            p_user_id: userId
+          })
+          
+        if (summaryError) {
+          throw new Error(`Failed to generate patient summary: ${summaryError.message}`)
+        }
+        
+        return {
+          summaryId: patientSummary?.id || extractedDocument.id,
+          summary: patientSummary?.content || extractedDocument.extractedData.rawText,
+          structuredData: patientSummary?.structured_data || extractedDocument.extractedData
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        setError(errorMessage)
+        setWorkflowStep('error')
+        
+        // Update workflow state to error if we have a workflow ID
+        const workflowId = localStorage.getItem('current_workflow_id')
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: 'error',
+              metadata: {
+                errorMessage,
+                errorAt: new Date().toISOString(),
+                errorStage: 'verification'
+              }
+            })
+            .eq('id', workflowId)
+        }
+        
+        return null
+      }
+    },
+    [supabase]
+  )
+  
+  /**
+   * Process a user correction to the summary
+   */
+  const processCorrection = useCallback(
+    async (correctionText: string, currentSummary: string) => {
+      setError(null)
+      
+      try {
+        const workflowId = localStorage.getItem('current_workflow_id')
+        
+        // If we have a workflow ID, update it to verification_in_progress
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: 'verification_in_progress',
+              metadata: {
+                correction: correctionText,
+                correctionAt: new Date().toISOString()
+              }
+            })
+            .eq('id', workflowId)
+        }
+        
+        // Use API client to process the correction
+        const userId = (await supabase.auth.getUser()).data.user?.id
+        
+        if (!userId) {
+          throw new Error('User not authenticated')
+        }
+        
+        // Call patient-summary-service to process correction
+        const { data: updatedSummary, error: correctionError } = await supabase
+          .rpc('process_summary_correction', {
+            p_summary_id: workflowId || 'temp',
+            p_correction: correctionText,
+            p_current_content: currentSummary,
+            p_user_id: userId
+          })
+          
+        if (correctionError) {
+          throw new Error(`Failed to process correction: ${correctionError.message}`)
+        }
+        
+        return {
+          summaryId: updatedSummary?.id || workflowId || 'temp',
+          summary: updatedSummary?.content || `${currentSummary}\n\nCorrection: ${correctionText}`,
+          structuredData: updatedSummary?.structured_data || {}
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        setError(errorMessage)
+        
+        return null
+      }
+    },
+    [supabase]
+  )
+  
+  /**
+   * Complete verification process
+   */
+  const completeVerification = useCallback(
+    async (isApproved: boolean) => {
+      setError(null)
+      
+      try {
+        const workflowId = localStorage.getItem('current_workflow_id')
+        
+        // If we have a workflow ID, update it to verification_completed or verification_failed
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: isApproved ? 'verification_completed' : 'verification_failed',
+              metadata: {
+                verificationCompletedAt: new Date().toISOString(),
+                verificationApproved: isApproved
+              }
+            })
+            .eq('id', workflowId)
+        }
+        
+        return {
+          isCompleted: true,
+          isApproved,
+          completedAt: new Date().toISOString()
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        setError(errorMessage)
+        
+        return null
+      }
+    },
+    [supabase]
+  )
+  
+  /**
    * Generate a report
    */
   const generateReport = useCallback(
     async (options?: Omit<ReportOptions, 'onProgress'>) => {
       setError(null)
-
+      setWorkflowStep('report_generation')
+      
       try {
+        const workflowId = localStorage.getItem('current_workflow_id')
+        
+        // If we have a workflow ID, update it to report_generation
+        if (workflowId) {
+          await supabase
+            .from('workflow_states')
+            .update({
+              current_step: 'report_generation',
+              metadata: {
+                reportGenerationStartedAt: new Date().toISOString(),
+                reportOptions: options
+              }
+            })
+            .eq('id', workflowId)
+        }
+
         const result = await report.generateReport(options)
 
         if (result) {
-          setWorkflowStep('report_generation')
+          // Update workflow state to complete
+          if (workflowId) {
+            await supabase
+              .from('workflow_states')
+              .update({
+                current_step: 'complete',
+                metadata: {
+                  reportGenerationCompletedAt: new Date().toISOString(),
+                  reportId: result.id
+                }
+              })
+              .eq('id', workflowId)
+          }
+          
+          setWorkflowStep('complete')
           return result
         } else {
           throw new Error('Report generation failed')
@@ -276,6 +550,13 @@ export function useProcessingWorkflow() {
     // Workflow actions
     loadDocument,
     processDocument,
+    
+    // Verification actions
+    initiateVerification,
+    processCorrection,
+    completeVerification,
+    
+    // Research and report actions
     performResearch,
     generateReport,
     formatReport,

@@ -228,7 +228,7 @@ export function ChatInterface({
     }
   }, [currentUpload, handleProcessDocument, toast])
 
-  // Use context messages when they change
+  // Sync local state with Zustand store state
   useEffect(() => {
     if (messages && messages.length > 0) {
       setChatState((prev) => ({
@@ -238,13 +238,26 @@ export function ChatInterface({
     }
   }, [messages])
 
-  // Use context loading state
+  // Sync loading state from Zustand store
   useEffect(() => {
     setChatState((prev) => ({
       ...prev,
       isLoading,
     }))
   }, [isLoading])
+  
+  // Sync document processing progress from Zustand store
+  useEffect(() => {
+    setProcessProgress(docProgress)
+  }, [docProgress])
+  
+  // Sync workflow phase from Zustand store
+  useEffect(() => {
+    const processingPhase = useChatStore.getState().workflow.processingStatus.phase
+    if (processingPhase) {
+      setProcessPhase(processingPhase)
+    }
+  }, [useChatStore().workflow.processingStatus.phase])
 
   // Helper to render the error recovery UI
   const renderErrorRecovery = () => {
@@ -320,22 +333,22 @@ export function ChatInterface({
 
     // Handle verification confirmations
     if (
-      workflow.verification.isInVerificationMode &&
+      verification.isInVerificationMode &&
       (lowerMessage === 'confirm' || lowerMessage === 'approve')
     ) {
       await sendMessage(message)
-      workflow.completeVerification(true)
+      await completeVerification(true)
       return
     }
 
     // Handle report generation requests
-    if (workflow.workflowStep === 'report_generation') {
+    if (workflowStep === 'report_generation') {
       if (lowerMessage === 'yes' || lowerMessage.includes('generate report')) {
         await sendMessage(message)
         return
       } else if (lowerMessage === 'no' || lowerMessage.includes('skip')) {
         await sendMessage(message)
-        workflow.formatReport('pdf')
+        await formatReport({ format: 'pdf' })
         return
       }
     }
@@ -346,9 +359,9 @@ export function ChatInterface({
 
   // Get dynamic placeholder text based on current state
   const getDynamicPlaceholder = () => {
-    if (workflow.verification.isInVerificationMode) {
+    if (verification.isInVerificationMode) {
       return "Type 'confirm' to approve or enter corrections..."
-    } else if (workflow.workflowStep === 'report_generation') {
+    } else if (workflowStep === 'report_generation') {
       return "Type 'yes' to generate a report or 'no' to skip..."
     }
     return 'Type a message...'
@@ -381,14 +394,12 @@ export function ChatInterface({
       let progress = 0
       const progressInterval = setInterval(() => {
         progress += 10
-        updateProgressMessage(progressMsg.id, progress, 'Generating report')
-
         if (progress >= 100) {
           clearInterval(progressInterval)
 
           setTimeout(() => {
             // Format the report to complete the workflow
-            workflow.formatReport('pdf')
+            formatReport({ format: 'pdf' })
 
             // Add a report message to the chat
             const finalReportMarkdown = `**Final Report**\n\n- Diagnosis: Example Condition\n- Recommendations: Follow instructions\n${notes ? `\n**Additional Notes:** ${notes}` : ''}`
@@ -405,25 +416,31 @@ export function ChatInterface({
               },
             }
 
-            // Add the report message
-            workflow.addMessage(newMessage)
+            // Add the report message using Zustand store
+            useChatStore.getState().addMessage(newMessage)
           }, 500)
+        } else {
+          useChatStore.getState().updateMessageProgress(
+            progressMsg.id,
+            progress,
+            'Generating report'
+          )
         }
       }, 400)
 
       return () => clearInterval(progressInterval)
     },
-    [workflow, addSystemMessage, updateProgressMessage]
+    [formatReport, addSystemMessage]
   )
 
   // Skip report generation
   const handleSkipReport = useCallback(() => {
-    workflow.formatReport('pdf')
+    formatReport({ format: 'pdf' })
     addSystemMessage(
       'Report generation skipped. You can continue chatting or upload a new document.',
       'workflow_complete'
     )
-  }, [workflow, addSystemMessage])
+  }, [formatReport, addSystemMessage])
 
   // State for report panel visibility
   const [showReportPanel, setShowReportPanel] = useState(false)
@@ -490,7 +507,7 @@ export function ChatInterface({
       {renderWorkflowStatus()}
 
       {/* Error recovery UI */}
-      {workflow.error && (
+      {error && (
         <div className="px-4 pt-4">{renderErrorRecovery()}</div>
       )}
 
@@ -515,7 +532,7 @@ export function ChatInterface({
         isGenerating={
           processProgress > 0 &&
           processProgress < 100 &&
-          workflow.workflowStep === 'report_generation'
+          workflowStep === 'report_generation'
         }
         onCancel={() => setShowReportPanel(false)}
         onGenerateReport={handleGenerateReport}

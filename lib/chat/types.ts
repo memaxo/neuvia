@@ -1,4 +1,6 @@
+// Import from both workflow hooks and Zustand store
 import type { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
+import type { useChatStore } from '@/stores/chat-store'
 import type {
   VerificationOptions as BaseVerificationOptions,
   VerificationItem,
@@ -425,6 +427,18 @@ export function createUserMessage(
 export type UseProcessingWorkflowResult = ReturnType<
   typeof useProcessingWorkflow
 >
+
+/**
+ * Result type for the Zustand store
+ * 
+ * This provides type information for components using the Zustand store
+ */
+export type ChatStoreState = ReturnType<typeof useChatStore.getState>
+
+/**
+ * Zustand chat store selector type helper
+ */
+export type ChatStoreSelector<T> = (state: ChatStoreState) => T
 
 /**
  * Chat reducer state management

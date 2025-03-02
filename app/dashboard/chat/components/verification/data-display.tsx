@@ -1,6 +1,7 @@
 'use client'
 
-import type { VerificationItem } from '@/lib/processing/types'
+import { useChatStore } from '@/stores/chat-store'
+import type { VerificationItem } from '@/lib/processing/types/verification'
 
 interface DataItem {
   [key: string]: unknown
@@ -8,10 +9,13 @@ interface DataItem {
 
 interface DataDisplayProps {
   data: DataItem | DataItem[]
-  verificationItems: VerificationItem[]
+  verificationItems?: VerificationItem[]
 }
 
 export function DataDisplay({ data, verificationItems }: DataDisplayProps) {
+  // Get verification items from Zustand store if not provided
+  const storeVerificationItems = useChatStore(state => state.verification.verificationItems)
+  const itemsToUse = verificationItems || storeVerificationItems
   const renderValue = (value: unknown): JSX.Element => {
     if (Array.isArray(value)) {
       return (
@@ -56,7 +60,7 @@ export function DataDisplay({ data, verificationItems }: DataDisplayProps) {
     isVerified: boolean
     confidence: number
   } => {
-    const verificationItem = verificationItems.find(
+    const verificationItem = itemsToUse.find(
       (vi) => JSON.stringify(vi.value) === JSON.stringify(item)
     )
     return {

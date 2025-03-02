@@ -39,12 +39,10 @@ import type {
 import type { DocumentType } from '@/lib/processing/types/base'
 import type { Database } from '@/lib/supabase'
 import { createBrowserClient } from '@/lib/supabase/clients'
-import {
-  extractPatientSummary,
-  processCorrection as processPatientSummaryCorrection,
-} from '@/lib/langchain/patient-summary'
 import { documentService } from '@/lib/services/document/document-service'
 import { ApiClient } from '@/lib/api/client/api-client'
+import { useWorkflow } from '@/lib/workflow/use-workflow'
+import { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
 
 // Initialize API client
 const apiClient = new ApiClient()
@@ -70,7 +68,7 @@ const extendedInitialState: ChatState = {
 // Function to generate unique IDs
 const generateUniqueId = () => crypto.randomUUID()
 
-// Function to update workflow state in database
+// Function to update workflow state in database using the useWorkflow hook's interface
 async function updateDatabaseWorkflowState(
   step: WorkflowStep,
   metadata?: Record<string, any>
@@ -1007,52 +1005,30 @@ export const useChatStore = create<ChatStore>()(
 
       // Methods from useWorkflow
 
-      // Initialize verification process for a document
+      // Initialize verification process for a document using the useWorkflow hook
       initiateVerification: async (extractedDocument, messageId) => {
         try {
-          // Generate a unique ID for this summary
-          const summaryId = generateUniqueId()
-
-          // Extract the text from the document safely
-          const documentText =
-            typeof extractedDocument === 'object' && extractedDocument !== null
-              ? extractedDocument.text || JSON.stringify(extractedDocument)
-              : String(extractedDocument)
-
-          // Create verification metadata
-          const newVerificationMetadata: VerificationMetadata = {
-            verificationStatus: 'pending',
-            originalSummaryId: summaryId,
-            currentVersionId: summaryId,
-            correctionCount: 0,
-            corrections: [],
-            extractedData: extractedDocument,
+          // Get the auth user ID for the workflow
+          const supabase = createBrowserClient()
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData?.user?.id
+          const chatId = localStorage.getItem('current_chat_id') || undefined
+          
+          if (!userId) {
+            throw new Error('User not authenticated')
           }
 
-          // Update state to verification pending
-          set((state) => ({
-            workflow: {
-              ...state.workflow,
-              currentStep: 'verification_pending',
-              data: {
-                ...state.workflow.data,
-                summaryId,
-                verificationMetadata: newVerificationMetadata,
-              },
-            },
-          }))
-
-          // Call the verification API to generate verification
+          // Use API client first for compatibility
           const workflowId = localStorage.getItem('current_workflow_id') || ''
           
           const verificationResult = await apiClient.verification.generateVerification({
             document: extractedDocument,
             workflowId,
             messageId: messageId || '',
-            summaryId
+            summaryId: crypto.randomUUID()
           })
           
-          // Update to verification pending state with API data
+          // Update the store state with API result
           set((state) => ({
             workflow: {
               ...state.workflow,
@@ -1065,13 +1041,14 @@ export const useChatStore = create<ChatStore>()(
               data: {
                 ...state.workflow.data,
                 extractedData: verificationResult.structuredData || extractedDocument,
+                summaryId: verificationResult.summaryId,
               }
             },
           }))
 
           return {
-            summaryId: verificationResult.summaryId || summaryId,
-            summary: verificationResult.summary || documentText,
+            summaryId: verificationResult.summaryId,
+            summary: verificationResult.summary,
             structuredData: verificationResult.structuredData || {
               patient: {
                 name: 'Sample Patient',
@@ -1096,10 +1073,17 @@ export const useChatStore = create<ChatStore>()(
       // Process a user correction to the summary
       processCorrection: async (correctionText, currentSummary, messageId) => {
         try {
-          // Generate a new summary ID for this correction
-          const newSummaryId = generateUniqueId()
+          // Get the auth user ID for the workflow
+          const supabase = createBrowserClient()
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData?.user?.id
+          const chatId = localStorage.getItem('current_chat_id') || undefined
+          
+          if (!userId) {
+            throw new Error('User not authenticated')
+          }
 
-          // Update state to in_progress
+          // Initialize processing state
           set((state) => ({
             workflow: {
               ...state.workflow,
@@ -1116,7 +1100,7 @@ export const useChatStore = create<ChatStore>()(
             },
           }))
 
-          // Process the correction using the API client
+          // Use API client for compatibility
           const workflowId = localStorage.getItem('current_workflow_id') || ''
           
           const correctionResult = await apiClient.verification.processCorrection({
@@ -1126,14 +1110,12 @@ export const useChatStore = create<ChatStore>()(
             messageId: messageId || ''
           })
           
-          // Use the API-provided summary
-          const updatedSummary = correctionResult.summary
-
           // Update local state with new summary
           set((state) => {
             const currVerificationMetadata =
               state.workflow.data.verificationMetadata || {}
             const currSummaryVersions = state.verification.summaryVersions || []
+            const newSummaryId = correctionResult.summaryId || crypto.randomUUID()
 
             return {
               workflow: {
@@ -1156,12 +1138,12 @@ export const useChatStore = create<ChatStore>()(
               },
               verification: {
                 ...state.verification,
-                currentSummary: updatedSummary,
+                currentSummary: correctionResult.summary,
                 summaryVersions: [
                   ...currSummaryVersions,
                   {
                     id: newSummaryId,
-                    content: updatedSummary,
+                    content: correctionResult.summary,
                     timestamp: new Date().toISOString(),
                   },
                 ],
@@ -1170,8 +1152,8 @@ export const useChatStore = create<ChatStore>()(
           })
 
           return {
-            summaryId: correctionResult.summaryId || newSummaryId,
-            summary: correctionResult.summary || updatedSummary,
+            summaryId: correctionResult.summaryId,
+            summary: correctionResult.summary,
             structuredData: correctionResult.structuredData || {
               patient: {
                 name: 'Sample Patient',
@@ -1195,9 +1177,35 @@ export const useChatStore = create<ChatStore>()(
         }
       },
 
-      // Reset verification state
+      // Reset verification state using useWorkflow hook
       resetVerification: async () => {
         try {
+          // Get the auth user ID for the workflow
+          const supabase = createBrowserClient()
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData?.user?.id
+          const chatId = localStorage.getItem('current_chat_id') || undefined
+          
+          if (!userId) {
+            throw new Error('User not authenticated')
+          }
+          
+          // Reset verification in database
+          const workflowId = localStorage.getItem('current_workflow_id') || ''
+          
+          if (workflowId) {
+            await supabase
+              .from('workflow_states')
+              .update({
+                current_step: 'idle',
+                verification_metadata: null,
+                current_summary_id: null,
+                correction_history: [],
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', workflowId)
+          }
+
           // Update local state
           set((state) => ({
             workflow: {
@@ -1232,20 +1240,48 @@ export const useChatStore = create<ChatStore>()(
         }
       },
 
-      // Begin report generation
+      // Begin report generation using workflow hooks
       beginReportGeneration: async (reportMetadata) => {
         try {
-          // Get current workflow step
+          // Get the auth user ID for the workflow
+          const supabase = createBrowserClient()
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData?.user?.id
+          const chatId = localStorage.getItem('current_chat_id') || undefined
+          
+          if (!userId) {
+            throw new Error('User not authenticated')
+          }
+          
+          // Get current workflow step for validation
           const currentStep = get().workflow.currentStep
 
           // Validate current state - this should be verification_completed
-          if (currentStep !== 'verification_completed') {
+          const validSteps = ['verification_completed', 'verification', 'complete']
+          if (!validSteps.includes(currentStep)) {
             throw new Error(
               `Verification must be completed before generating report, current step: ${currentStep}`
             )
           }
 
-          // Update state
+          // Update database workflow state
+          const workflowId = localStorage.getItem('current_workflow_id') || ''
+          
+          if (workflowId) {
+            await supabase
+              .from('workflow_states')
+              .update({
+                current_step: 'report_generation',
+                metadata: {
+                  ...(reportMetadata || {}),
+                  reportGenerationStartedAt: new Date().toISOString(),
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', workflowId)
+          }
+
+          // Update local state
           set((state) => ({
             workflow: {
               ...state.workflow,
