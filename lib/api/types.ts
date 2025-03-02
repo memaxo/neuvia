@@ -485,3 +485,108 @@ export namespace EmailApi {
     timestamp: string
   }
 }
+
+/**
+ * Security API types
+ */
+export namespace SecurityApi {
+  /**
+   * CSP report request
+   */
+  export interface CspReportRequest {
+    /**
+     * CSP report data
+     */
+    'csp-report': {
+      /**
+       * URI that was blocked by the CSP
+       */
+      'blocked-uri'?: string
+      
+      /**
+       * CSP directive that was violated
+       */
+      'violated-directive'?: string
+      
+      /**
+       * URI of the document where the violation occurred
+       */
+      'document-uri'?: string
+      
+      /**
+       * Source file where the violation occurred
+       */
+      'source-file'?: string
+      
+      /**
+       * Line number in the source file where the violation occurred
+       */
+      'line-number'?: number | string
+      
+      /**
+       * Column number in the source file where the violation occurred
+       */
+      'column-number'?: number | string
+      
+      /**
+       * Effective directive that was violated
+       */
+      'effective-directive'?: string
+      
+      /**
+       * Original policy that was violated
+       */
+      'original-policy'?: string
+      
+      /**
+       * Disposition of the violation (enforce or report)
+       */
+      'disposition'?: string
+      
+      /**
+       * Referrer of the document where the violation occurred
+       */
+      'referrer'?: string
+      
+      /**
+       * HTTP status code of the response
+       */
+      'status-code'?: number | string
+    }
+  }
+  
+  /**
+   * CSP report response
+   */
+  export interface CspReportResponse {
+    /**
+     * Whether the report was successfully processed
+     */
+    reported: boolean
+    
+    /**
+     * Timestamp when the report was processed
+     */
+    timestamp: string
+  }
+}
+
+/**
+ * Auth API types
+ */
+export namespace AuthApi {
+  /**
+   * Auth callback request
+   */
+  export interface AuthCallbackRequest {
+    /**
+     * Query parameters
+     */
+    query: {
+      /**
+       * Authentication code to exchange for a session
+       */
+      code: string
+    }
+  }
+}

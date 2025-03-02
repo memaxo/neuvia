@@ -7,6 +7,304 @@ import { OpenAPIV3 } from 'openapi-types'
  * OpenAPI path definition for patient verification APIs
  */
 export const verificationPaths: Record<string, OpenAPIV3.PathItemObject> = {
+  '/verification/submit-correction': {
+    post: {
+      tags: ['verification'],
+      summary: 'Submit a correction to verified content',
+      description: 'Processes user correction on verified content like a patient summary',
+      operationId: 'submitCorrection',
+      security: [
+        { bearerAuth: [] }
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['correction', 'currentSummary'],
+              properties: {
+                correction: {
+                  type: 'string',
+                  description: 'The correction text provided by the user'
+                },
+                currentSummary: {
+                  type: 'string',
+                  description: 'The current summary content being corrected'
+                },
+                workflowId: {
+                  type: 'string',
+                  format: 'uuid',
+                  description: 'The workflow ID associated with this correction'
+                },
+                messageId: {
+                  type: 'string',
+                  description: 'Optional ID of the message associated with this correction'
+                }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        '200': {
+          description: 'Correction processed successfully',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['success', 'data', 'timestamp'],
+                properties: {
+                  success: {
+                    type: 'boolean',
+                    example: true
+                  },
+                  data: {
+                    type: 'object',
+                    required: ['summaryId', 'summary'],
+                    properties: {
+                      summaryId: {
+                        type: 'string',
+                        description: 'ID of the updated summary'
+                      },
+                      summary: {
+                        type: 'string', 
+                        description: 'Updated summary with correction applied'
+                      },
+                      structuredData: {
+                        type: 'object',
+                        additionalProperties: true,
+                        description: 'Structured data extracted from the summary'
+                      },
+                      correctionCount: {
+                        type: 'integer',
+                        minimum: 0,
+                        description: 'Total number of corrections applied'
+                      }
+                    }
+                  },
+                  timestamp: {
+                    type: 'string',
+                    format: 'date-time'
+                  }
+                }
+              }
+            }
+          }
+        },
+        '400': {
+          $ref: '#/components/responses/BadRequest'
+        },
+        '401': {
+          $ref: '#/components/responses/Unauthorized'
+        },
+        '422': {
+          $ref: '#/components/responses/ValidationError'
+        },
+        '500': {
+          $ref: '#/components/responses/ServerError'
+        }
+      }
+    }
+  },
+  
+  '/verification/process-correction': {
+    post: {
+      tags: ['verification'],
+      summary: 'Process a correction to verified content',
+      description: 'Processes a correction to verified content and returns updated content',
+      operationId: 'processCorrection',
+      security: [
+        { bearerAuth: [] }
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['correction', 'currentSummary'],
+              properties: {
+                correction: {
+                  type: 'string',
+                  description: 'The correction text'
+                },
+                currentSummary: {
+                  type: 'string',
+                  description: 'The current summary content'
+                },
+                workflowId: {
+                  type: 'string',
+                  format: 'uuid',
+                  description: 'The workflow ID associated with this correction'
+                },
+                messageId: {
+                  type: 'string',
+                  description: 'Optional ID of message associated with this correction'
+                }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        '200': {
+          description: 'Correction processed successfully',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['success', 'data', 'timestamp'],
+                properties: {
+                  success: {
+                    type: 'boolean',
+                    example: true
+                  },
+                  data: {
+                    type: 'object',
+                    required: ['summaryId', 'summary'],
+                    properties: {
+                      summaryId: {
+                        type: 'string',
+                        description: 'ID of the updated summary'
+                      },
+                      summary: {
+                        type: 'string', 
+                        description: 'Updated summary with correction applied'
+                      },
+                      structuredData: {
+                        type: 'object',
+                        additionalProperties: true,
+                        description: 'Structured data extracted from the summary'
+                      },
+                      correctionCount: {
+                        type: 'integer',
+                        minimum: 0,
+                        description: 'Total number of corrections applied'
+                      }
+                    }
+                  },
+                  timestamp: {
+                    type: 'string',
+                    format: 'date-time'
+                  }
+                }
+              }
+            }
+          }
+        },
+        '400': {
+          $ref: '#/components/responses/BadRequest'
+        },
+        '401': {
+          $ref: '#/components/responses/Unauthorized'
+        },
+        '422': {
+          $ref: '#/components/responses/ValidationError'
+        },
+        '500': {
+          $ref: '#/components/responses/ServerError'
+        }
+      }
+    }
+  },
+  
+  '/verification/generate': {
+    post: {
+      tags: ['verification'],
+      summary: 'Generate verification for a document',
+      description: 'Generates verification items and summary for a document',
+      operationId: 'generateVerification',
+      security: [
+        { bearerAuth: [] }
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['document'],
+              properties: {
+                document: {
+                  type: 'object',
+                  additionalProperties: true,
+                  description: 'The document to be verified'
+                },
+                workflowId: {
+                  type: 'string',
+                  format: 'uuid',
+                  description: 'The workflow ID for this verification'
+                },
+                messageId: {
+                  type: 'string',
+                  description: 'Optional ID of message associated with this verification'
+                },
+                summaryId: {
+                  type: 'string',
+                  description: 'Optional ID for the generated summary'
+                }
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        '200': {
+          description: 'Verification generated successfully',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['success', 'data', 'timestamp'],
+                properties: {
+                  success: {
+                    type: 'boolean',
+                    example: true
+                  },
+                  data: {
+                    type: 'object',
+                    required: ['summaryId', 'summary'],
+                    properties: {
+                      summaryId: {
+                        type: 'string',
+                        description: 'ID of the generated summary'
+                      },
+                      summary: {
+                        type: 'string',
+                        description: 'Summary content generated from the document'
+                      },
+                      structuredData: {
+                        type: 'object',
+                        additionalProperties: true,
+                        description: 'Structured data extracted from the document'
+                      }
+                    }
+                  },
+                  timestamp: {
+                    type: 'string',
+                    format: 'date-time'
+                  }
+                }
+              }
+            }
+          }
+        },
+        '400': {
+          $ref: '#/components/responses/BadRequest'
+        },
+        '401': {
+          $ref: '#/components/responses/Unauthorized'
+        },
+        '422': {
+          $ref: '#/components/responses/ValidationError'
+        },
+        '500': {
+          $ref: '#/components/responses/ServerError'
+        }
+      }
+    }
+  },
   '/patient/{patientId}/verify-summary': {
     get: {
       tags: ['verification', 'patients'],

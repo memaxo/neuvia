@@ -44,6 +44,10 @@ import {
   processCorrection as processPatientSummaryCorrection,
 } from '@/lib/langchain/patient-summary'
 import { documentService } from '@/lib/services/document/document-service'
+import { ApiClient } from '@/lib/api/client/api-client'
+
+// Initialize API client
+const apiClient = new ApiClient()
 
 // Define initial workflow state
 const initialWorkflowState = {
@@ -505,17 +509,18 @@ export const useChatStore = create<ChatStore>()(
           // Get the current summary from state
           const currentSummary = state.verification.currentSummary || ''
 
-          // In real implementation, call the actual API or service
-          // For now, simulate processing with a timeout
-          await new Promise((resolve) => setTimeout(resolve, 1500))
-
-          // Create a new summary ID
-          const newSummaryId = crypto.randomUUID()
+          // Call the verification API through the client
+          const result = await apiClient.verification.submitCorrection({
+            correction,
+            currentSummary,
+            workflowId: localStorage.getItem('current_workflow_id') || '',
+            messageId: progressMessageId
+          })
+          
+          // Get data from the API response
+          const newSummaryId = result.summaryId || crypto.randomUUID()
           const timestamp = new Date().toISOString()
-
-          // For demo purposes, just append the correction to the summary
-          // In a real app, this would be processed by AI
-          const newSummary = `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
+          const newSummary = result.summary || `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
 
           // Update the progress message
           get().updateMessageProgress(progressMessageId, 100, 'completed')
@@ -615,14 +620,26 @@ export const useChatStore = create<ChatStore>()(
         get().startReportGeneration()
 
         try {
-          // Simulate report generation with a timeout
-          await new Promise((resolve) => setTimeout(resolve, 2000))
+          // Get current workflow and patient data
+          const state = get()
+          const workflowId = localStorage.getItem('current_workflow_id') || ''
+          const patientId = state.workflow.data.patientId as string || ''
+          
+          // Call the reports API
+          const report = await apiClient.reports.generateReport({
+            workflowId,
+            patientId,
+            format: 'pdf',
+            includeVerificationData: true,
+            detailLevel: 'comprehensive'
+          })
 
           // Update workflow state to completion once report is done
           get().completeReportGeneration({
-            format: 'pdf',
-            content: 'Generated report content would be here',
-            generatedAt: new Date().toISOString(),
+            format: report.format || 'pdf',
+            content: report.content || 'Generated report content',
+            generatedAt: report.generatedAt || new Date().toISOString(),
+            reportId: report.id
           })
         } catch (error) {
           console.error('Error generating report:', error)
@@ -635,10 +652,27 @@ export const useChatStore = create<ChatStore>()(
       // Format a report
       formatReport: async (format) => {
         try {
+          // Get current report data
+          const state = get()
+          const reportId = state.reportGeneration?.reportId || ''
+          
+          if (!reportId) {
+            throw new Error('No report has been generated yet')
+          }
+          
+          // Call the reports API to update format
+          const formattedReport = await apiClient.reports.formatReport({
+            reportId,
+            format: format.format || 'pdf',
+            style: format.style || 'clinical',
+            metadataInFooter: format.metadataInFooter || false
+          })
+          
           get().completeReportGeneration({
             format,
-            content: 'Formatted report content',
+            content: formattedReport.content || 'Formatted report content',
             formattedAt: new Date().toISOString(),
+            reportId: formattedReport.id || reportId
           })
         } catch (error) {
           console.error('Error formatting report:', error)
@@ -694,11 +728,13 @@ export const useChatStore = create<ChatStore>()(
               } as DocumentType)
             : undefined
 
-          // Call the document service
-          const result = await documentService.processDocument(file, {
+          // Call the API client instead of document service directly
+          const result = await apiClient.documents.processDocument({
+            file,
             patientId,
-            documentType: docTypeObj,
-            onStatusUpdate,
+            documentType: docTypeObj?.type || 'clinical',
+            documentCategory: docTypeObj?.category || 'clinical',
+            onStatusUpdate: onStatusUpdate as any,
           })
 
           // Store the result
@@ -754,15 +790,13 @@ export const useChatStore = create<ChatStore>()(
             }
           }
 
-          // Call the document service to upload the document
-          const result = await documentService.uploadDocument(patientId, file, {
-            documentType: documentType
-              ? ({
-                  category: 'clinical',
-                  type: documentType,
-                } as DocumentType)
-              : undefined,
-            onStatusUpdate,
+          // Call the API client instead of document service directly
+          const result = await apiClient.documents.uploadDocument({
+            patientId,
+            file,
+            documentType: documentType || 'clinical',
+            documentCategory: 'clinical',
+            onStatusUpdate: onStatusUpdate as any,
           })
 
           // Update state after upload
@@ -1008,11 +1042,17 @@ export const useChatStore = create<ChatStore>()(
             },
           }))
 
-          // In a real app, call the actual extraction service
-          // For this demo, simulate processing with a delay
-          await new Promise((resolve) => setTimeout(resolve, 1500))
-
-          // Update to verification pending state
+          // Call the verification API to generate verification
+          const workflowId = localStorage.getItem('current_workflow_id') || ''
+          
+          const verificationResult = await apiClient.verification.generateVerification({
+            document: extractedDocument,
+            workflowId,
+            messageId: messageId || '',
+            summaryId
+          })
+          
+          // Update to verification pending state with API data
           set((state) => ({
             workflow: {
               ...state.workflow,
@@ -1022,18 +1062,21 @@ export const useChatStore = create<ChatStore>()(
                 progress: 100,
                 phase: 'verification',
               },
+              data: {
+                ...state.workflow.data,
+                extractedData: verificationResult.structuredData || extractedDocument,
+              }
             },
           }))
 
           return {
-            summaryId,
-            summary: 'This is a mock summary of the extracted document.',
-            structuredData: {
-              // Mock structured data for demo
+            summaryId: verificationResult.summaryId || summaryId,
+            summary: verificationResult.summary || documentText,
+            structuredData: verificationResult.structuredData || {
               patient: {
-                name: 'John Doe',
-                age: 45,
-                diagnosis: 'Example diagnosis',
+                name: 'Sample Patient',
+                age: 0,
+                diagnosis: 'Pending diagnosis',
               },
             },
           }
@@ -1073,12 +1116,18 @@ export const useChatStore = create<ChatStore>()(
             },
           }))
 
-          // In a real app, process the correction with API/AI
-          // For now, simulate processing
-          await new Promise((resolve) => setTimeout(resolve, 2000))
-
-          // Create updated summary (in a real app, this would be AI-generated)
-          const updatedSummary = `${currentSummary}\n\nUpdated based on correction: ${correctionText}`
+          // Process the correction using the API client
+          const workflowId = localStorage.getItem('current_workflow_id') || ''
+          
+          const correctionResult = await apiClient.verification.processCorrection({
+            correction: correctionText,
+            currentSummary,
+            workflowId,
+            messageId: messageId || ''
+          })
+          
+          // Use the API-provided summary
+          const updatedSummary = correctionResult.summary
 
           // Update local state with new summary
           set((state) => {
@@ -1121,19 +1170,17 @@ export const useChatStore = create<ChatStore>()(
           })
 
           return {
-            summaryId: newSummaryId,
-            summary: updatedSummary,
-            structuredData: {
-              // Mock structured data
+            summaryId: correctionResult.summaryId || newSummaryId,
+            summary: correctionResult.summary || updatedSummary,
+            structuredData: correctionResult.structuredData || {
               patient: {
-                name: 'John Doe',
+                name: 'Sample Patient',
                 age: 45,
                 diagnosis: 'Updated diagnosis based on correction',
               },
             },
-            correctionCount:
-              (get().workflow.data.verificationMetadata?.correctionCount || 0) +
-              1,
+            correctionCount: correctionResult.correctionCount || 
+              ((get().workflow.data.verificationMetadata?.correctionCount || 0) + 1),
           }
         } catch (error) {
           console.error('Error processing correction:', error)

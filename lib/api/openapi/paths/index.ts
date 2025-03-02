@@ -7,6 +7,9 @@ import { openAPISpec, registerPath } from '../index'
 import { sendEmailPath } from './send'
 import { verificationPaths } from './verification'
 import { researchPaths } from './research'
+import { authPaths } from './auth'
+import { securityPaths } from './security'
+import { reportPaths } from './reports'
 
 /**
  * Register all API paths with the OpenAPI schema
@@ -24,6 +27,18 @@ export function registerAllPaths(): void {
   Object.entries(researchPaths).forEach(([path, pathItem]) => {
     registerPath(path, pathItem)
   })
+  
+  Object.entries(authPaths).forEach(([path, pathItem]) => {
+    registerPath(path, pathItem)
+  })
+  
+  Object.entries(securityPaths).forEach(([path, pathItem]) => {
+    registerPath(path, pathItem)
+  })
+  
+  Object.entries(reportPaths).forEach(([path, pathItem]) => {
+    registerPath(path, pathItem)
+  })
 }
 
 // Register all paths when this module is imported
@@ -35,5 +50,8 @@ registerAllPaths()
 export const allPaths = {
   ...sendEmailPath,
   ...verificationPaths,
-  ...researchPaths
+  ...researchPaths,
+  ...authPaths,
+  ...securityPaths,
+  ...reportPaths
 }
