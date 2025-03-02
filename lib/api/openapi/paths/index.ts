@@ -10,6 +10,8 @@ import { researchPaths } from './research'
 import { authPaths } from './auth'
 import { securityPaths } from './security'
 import { reportPaths } from './reports'
+import { chatPaths } from './chat'
+import { patientPaths } from './patient'
 
 /**
  * Register all API paths with the OpenAPI schema
@@ -39,6 +41,14 @@ export function registerAllPaths(): void {
   Object.entries(reportPaths).forEach(([path, pathItem]) => {
     registerPath(path, pathItem)
   })
+  
+  Object.entries(chatPaths).forEach(([path, pathItem]) => {
+    registerPath(path, pathItem)
+  })
+  
+  Object.entries(patientPaths).forEach(([path, pathItem]) => {
+    registerPath(path, pathItem)
+  })
 }
 
 // Register all paths when this module is imported
@@ -53,5 +63,7 @@ export const allPaths = {
   ...researchPaths,
   ...authPaths,
   ...securityPaths,
-  ...reportPaths
+  ...reportPaths,
+  ...chatPaths,
+  ...patientPaths
 }
