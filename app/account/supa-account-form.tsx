@@ -1,6 +1,6 @@
 'use client'
 
-import { type User } from '@supabase/supabase-js'
+import type { User } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 

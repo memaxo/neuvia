@@ -1,25 +1,37 @@
 import { verificationService } from '@/lib/services/verification/verification-service'
 import { createServerClient } from '@/lib/supabase/clients'
 import type { NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { ValidationError, NotFoundError } from '@/lib/errors'
+import { apiSuccess, apiError, withErrorHandling, getRequestId } from '@/lib/api-response'
+import logger from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
-  try {
+  return withErrorHandling(async () => {
+    const requestId = getRequestId(req);
+    const moduleLogger = logger.withMetadata({ 
+      module: 'API',
+      endpoint: '/api/document-verification',
+      method: 'POST',
+      requestId
+    });
+    
+    moduleLogger.info('Processing document verification request');
+    
     const { documentId, workflowId } = await req.json()
 
     // Validate required fields
     if (!documentId) {
-      return NextResponse.json(
-        { error: 'Document ID is required' },
-        { status: 400 }
-      )
+      throw new ValidationError({
+        message: 'Document ID is required',
+        code: 'MISSING_DOCUMENT_ID'
+      });
     }
 
     if (!workflowId) {
-      return NextResponse.json(
-        { error: 'Workflow ID is required' },
-        { status: 400 }
-      )
+      throw new ValidationError({
+        message: 'Workflow ID is required',
+        code: 'MISSING_WORKFLOW_ID'
+      });
     }
 
     // Create Supabase client
@@ -33,11 +45,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (docError || !patientDocument) {
-      console.error('Error fetching patient document:', docError)
-      return NextResponse.json(
-        { error: 'Patient document not found' },
-        { status: 404 }
-      )
+      moduleLogger.error('Error fetching patient document', { documentId }, docError);
+      throw new NotFoundError({
+        message: 'Patient document not found',
+        resource: 'Document',
+        code: 'DOCUMENT_NOT_FOUND',
+        data: { documentId },
+        cause: docError
+      });
     }
 
     // Get workflow state
@@ -48,8 +63,14 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (workflowError || !workflow) {
-      console.error('Error fetching workflow:', workflowError)
-      return NextResponse.json({ error: 'Workflow not found' }, { status: 404 })
+      moduleLogger.error('Error fetching workflow', { workflowId }, workflowError);
+      throw new NotFoundError({
+        message: 'Workflow not found',
+        resource: 'Workflow',
+        code: 'WORKFLOW_NOT_FOUND',
+        data: { workflowId },
+        cause: workflowError
+      });
     }
 
     // Format the data to match the expected ExtractedDocument structure
@@ -79,23 +100,35 @@ export async function POST(req: NextRequest) {
     const verificationItems =
       verificationService.generateVerificationItems(extractedDocument)
 
-    // Prepare response with both document and verification items
-    return NextResponse.json({
+    // Log success and return standardized response
+    moduleLogger.info('Successfully generated verification items', { 
+      documentId, 
+      workflowId,
+      itemCount: verificationItems.length 
+    });
+    
+    return apiSuccess({
       document: extractedDocument,
       verificationItems,
       workflow,
-    })
-  } catch (error) {
-    console.error('Document verification API error:', error)
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
-      { status: 500 }
-    )
-  }
+    });
+  }, { 
+    logMetadata: { endpoint: '/api/document-verification', method: 'POST' }
+  });
 }
 
 export async function GET(request: NextRequest) {
-  try {
+  return withErrorHandling(async () => {
+    const requestId = getRequestId(request);
+    const moduleLogger = logger.withMetadata({ 
+      module: 'API',
+      endpoint: '/api/document-verification',
+      method: 'GET',
+      requestId
+    });
+    
+    moduleLogger.info('Processing document verification lookup request');
+    
     // Create Supabase client
     const supabase = await createServerClient()
 
@@ -106,10 +139,11 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      throw new ValidationError({
+        message: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+        statusCode: 401
+      });
     }
 
     // Get URL parameters
@@ -117,10 +151,10 @@ export async function GET(request: NextRequest) {
     const extractedDocumentId = searchParams.get('extractedDocumentId')
 
     if (!extractedDocumentId) {
-      return NextResponse.json(
-        { error: 'Missing extractedDocumentId parameter' },
-        { status: 400 }
-      )
+      throw new ValidationError({
+        message: 'Missing extractedDocumentId parameter',
+        code: 'MISSING_DOCUMENT_ID'
+      });
     }
 
     // Get patient document
@@ -131,10 +165,14 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (docError || !patientDocument) {
-      return NextResponse.json(
-        { error: 'Patient document not found' },
-        { status: 404 }
-      )
+      moduleLogger.error('Error fetching patient document', { extractedDocumentId }, docError);
+      throw new NotFoundError({
+        message: 'Patient document not found',
+        resource: 'Document',
+        code: 'DOCUMENT_NOT_FOUND',
+        data: { documentId: extractedDocumentId },
+        cause: docError
+      });
     }
 
     // Transform to expected format
@@ -156,21 +194,16 @@ export async function GET(request: NextRequest) {
     const verificationItems =
       verificationService.generateVerificationItems(extractedDocument)
 
-    // Return verification items
-    return NextResponse.json({
-      success: true,
-      verificationItems,
-    })
-  } catch (error) {
-    console.error('[API] Verification generation error:', error)
+    moduleLogger.info('Successfully generated verification items', { 
+      documentId: extractedDocumentId,
+      itemCount: verificationItems.length 
+    });
 
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : 'Unknown error occurred',
-        success: false,
-      },
-      { status: 500 }
-    )
-  }
+    // Return verification items with standardized format
+    return apiSuccess({
+      verificationItems,
+    });
+  }, { 
+    logMetadata: { endpoint: '/api/document-verification', method: 'GET' }
+  });
 }

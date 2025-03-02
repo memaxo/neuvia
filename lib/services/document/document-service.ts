@@ -1,4 +1,7 @@
 import { getDbCompatibleMetadata } from '@/lib/processing/types/verification'
+import logger from '@/lib/logger'
+import { ExternalServiceError, SystemError, ValidationError, NotFoundError, normalizeError } from '@/lib/errors'
+
 /**
  * Document Service Implementation
  *
@@ -84,27 +87,7 @@ interface UploadDocumentResult {
   extractionStatus?: string
 }
 
-/**
- * Error with detailed fields for better debugging and handling
- */
-class DocumentServiceError extends Error {
-  code: string
-  recoverable: boolean
-  context: Record<string, any>
-
-  constructor(
-    message: string,
-    code: string,
-    recoverable = false,
-    context = {}
-  ) {
-    super(message)
-    this.name = 'DocumentServiceError'
-    this.code = code
-    this.recoverable = recoverable
-    this.context = context
-  }
-}
+// Document service now uses the standard ApplicationError hierarchy from lib/errors.ts
 
 /**
  * Document Service with centralized functionality for
@@ -344,23 +327,21 @@ export class DocumentService {
             metadata.imageHeight = result.height
             metadata.ocrConfidence = result.confidence
           } else {
-            throw new DocumentServiceError(
-              'OCR is required for image processing but is disabled',
-              'OCR_DISABLED',
-              true,
-              { fileType }
-            )
+            throw new ValidationError({
+              message: 'OCR is required for image processing but is disabled',
+              code: 'OCR_DISABLED',
+              data: { fileType }
+            })
           }
           break
         }
 
         default:
-          throw new DocumentServiceError(
-            `Unsupported file type: ${fileType}`,
-            'UNSUPPORTED_FILE_TYPE',
-            false,
-            { fileType }
-          )
+          throw new ValidationError({
+            message: `Unsupported file type: ${fileType}`,
+            code: 'UNSUPPORTED_FILE_TYPE',
+            data: { fileType }
+          })
       }
 
       // Create the extracted data object
@@ -372,21 +353,31 @@ export class DocumentService {
 
       return extractedData
     } catch (error) {
-      // Enhanced error handling
-      if (error instanceof DocumentServiceError) {
-        throw error
+      // Enhanced error handling with structured logging
+      const moduleLogger = logger.withMetadata({ 
+        module: 'DocumentService',
+        method: 'extractText',
+        fileType: file.type,
+        fileName: file.name
+      });
+      
+      moduleLogger.error('Failed to extract text from document', {}, error);
+      
+      // If it's already a normalized error, rethrow it
+      if (error instanceof ValidationError || error instanceof SystemError) {
+        throw error;
       }
 
-      throw new DocumentServiceError(
-        'Failed to extract text from document',
-        'EXTRACTION_FAILED',
-        false,
-        {
-          originalError: error instanceof Error ? error.message : String(error),
+      // Otherwise, normalize the error with the appropriate context
+      throw new SystemError({
+        message: 'Failed to extract text from document',
+        code: 'EXTRACTION_FAILED',
+        data: {
           fileType: file.type,
           fileName: file.name,
-        }
-      )
+        },
+        cause: error
+      });
     }
   }
 
@@ -1030,23 +1021,32 @@ export class DocumentService {
     })
 
     try {
+      const moduleLogger = logger.withMetadata({ 
+        module: 'DocumentService', 
+        method: 'processDocument',
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        patientId: options?.patientId
+      });
+      
+      moduleLogger.info('Starting document processing');
+      
       // Validate file type and size
       if (!(await this.validateFileType(file))) {
-        throw new DocumentServiceError(
-          `Unsupported file type: ${file.type}`,
-          'UNSUPPORTED_FILE_TYPE',
-          false,
-          { fileType: file.type }
-        )
+        throw new ValidationError({
+          message: `Unsupported file type: ${file.type}`,
+          code: 'UNSUPPORTED_FILE_TYPE',
+          data: { fileType: file.type }
+        });
       }
 
       if (!(await this.validateFileSize(file))) {
-        throw new DocumentServiceError(
-          `File size exceeds maximum allowed size of ${this.maxFileSize / (1024 * 1024)}MB`,
-          'FILE_TOO_LARGE',
-          false,
-          { fileSize: file.size, maxSize: this.maxFileSize }
-        )
+        throw new ValidationError({
+          message: `File size exceeds maximum allowed size of ${this.maxFileSize / (1024 * 1024)}MB`,
+          code: 'FILE_TOO_LARGE',
+          data: { fileSize: file.size, maxSize: this.maxFileSize }
+        });
       }
 
       // Extract text with enhanced options
@@ -1139,24 +1139,24 @@ export class DocumentService {
 
       return extractedDocument
     } catch (error) {
-      // Enhanced error handling
-      let errorMessage: string
-      let errorCode: string
+      // Enhanced error handling with structured logging
+      const normalizedError = normalizeError(error);
+      const moduleLogger = logger.withMetadata({ 
+        module: 'DocumentService', 
+        method: 'processDocument',
+        fileName: file.name,
+        fileType: file.type,
+        patientId: options?.patientId,
+        errorCode: normalizedError.code
+      });
+      
+      moduleLogger.error('Error processing document', {}, normalizedError);
 
-      if (error instanceof DocumentServiceError) {
-        errorMessage = error.message
-        errorCode = error.code
-      } else {
-        errorMessage = error instanceof Error ? error.message : String(error)
-        errorCode = 'PROCESSING_FAILED'
-      }
-
-      console.error('Error processing document:', error)
-
+      // Update status for the caller
       onStatusUpdate({
         status: 'error',
         progress: 0,
-        error: errorMessage,
+        error: normalizedError.message,
         phase: 'extraction',
       })
 

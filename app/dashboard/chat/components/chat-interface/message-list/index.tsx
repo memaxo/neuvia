@@ -5,8 +5,12 @@ import { useEffect, useRef } from 'react'
 
 // Define a simple message component to handle display
 const ChatMessage = ({ message }: { message: Message }) => (
-  <div className={`p-4 ${message.role === 'user' ? 'bg-muted' : 'bg-card'} rounded-lg`}>
-    <p className="mb-1 font-medium">{message.role === 'user' ? 'You' : 'Assistant'}</p>
+  <div
+    className={`p-4 ${message.role === 'user' ? 'bg-muted' : 'bg-card'} rounded-lg`}
+  >
+    <p className="mb-1 font-medium">
+      {message.role === 'user' ? 'You' : 'Assistant'}
+    </p>
     <p>{message.content}</p>
   </div>
 )

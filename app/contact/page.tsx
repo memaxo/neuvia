@@ -1,4 +1,4 @@
-import { type User } from '@supabase/supabase-js'
+import type { User } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import React from 'react'

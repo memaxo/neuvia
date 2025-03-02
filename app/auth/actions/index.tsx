@@ -38,7 +38,7 @@ export async function signInWithGoogle() {
   })
 
   if (error) {
-    console.error('Error signing in with Google:', error.message)
+    // Authentication error with Google
     return JSON.stringify({ error })
   }
 
@@ -59,7 +59,7 @@ export async function signInWithGithub() {
   })
 
   if (error) {
-    console.error('Error signing in with Github:', error.message)
+    // Authentication error with Github
     return JSON.stringify({ error })
   }
 

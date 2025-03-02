@@ -1,5 +1,8 @@
 import type { ProcessingStatus } from '@/lib/processing/types/base'
 import type { Database } from '@/lib/supabase'
+import logger from '@/lib/logger'
+import { ExternalServiceError, NotFoundError, normalizeError } from '@/lib/errors'
+
 /**
  * Database Workflow Service
  *
@@ -24,16 +27,24 @@ export async function updateWorkflowState(
   step: WorkflowStep,
   metadata: Record<string, any> = {}
 ): Promise<void> {
-  if (!workflowId) return
+  if (!workflowId) return;
+
+  const moduleLogger = logger.withMetadata({
+    module: 'WorkflowService',
+    method: 'updateWorkflowState',
+    workflowId,
+    step
+  });
 
   try {
-    const supabase = createBrowserClient()
+    moduleLogger.info('Updating workflow state');
+    const supabase = createBrowserClient();
     
     // Check if the step is a valid database step
-    const isDbStep = isDbWorkflowStep(step)
+    const isDbStep = isDbWorkflowStep(step);
 
     if (isDbStep) {
-      await supabase
+      const { error } = await supabase
         .from('workflow_states')
         .update({
           current_step: step as DBWorkflowStep, // Cast to database enum type
@@ -42,13 +53,25 @@ export async function updateWorkflowState(
             updatedAt: new Date().toISOString(),
           },
         })
-        .eq('id', workflowId)
+        .eq('id', workflowId);
+        
+      if (error) {
+        throw new ExternalServiceError({
+          message: `Failed to update workflow state: ${error.message}`,
+          code: 'WORKFLOW_UPDATE_FAILED',
+          service: 'Database',
+          data: { workflowId, step },
+          cause: error
+        });
+      }
     } else {
-      console.warn(
-        `[WorkflowService] Step '${step}' cannot be stored in database. Recording in metadata only.`
-      )
+      moduleLogger.warn(
+        `Step '${step}' cannot be stored in database. Recording in metadata only.`,
+        { step }
+      );
+      
       // Use a default DB step (idle) and store the actual step in metadata
-      await supabase
+      const { error } = await supabase
         .from('workflow_states')
         .update({
           current_step: 'idle' as DBWorkflowStep, // Use a default
@@ -58,10 +81,24 @@ export async function updateWorkflowState(
             updatedAt: new Date().toISOString(),
           },
         })
-        .eq('id', workflowId)
+        .eq('id', workflowId);
+        
+      if (error) {
+        throw new ExternalServiceError({
+          message: `Failed to update workflow state: ${error.message}`,
+          code: 'WORKFLOW_UPDATE_FAILED',
+          service: 'Database',
+          data: { workflowId, step },
+          cause: error
+        });
+      }
     }
+    
+    moduleLogger.info('Workflow state updated successfully');
   } catch (error) {
-    console.error('[WorkflowService] Error updating workflow state:', error)
+    const normalizedError = normalizeError(error);
+    moduleLogger.error('Error updating workflow state', {}, normalizedError);
+    throw normalizedError;
   }
 }
 
@@ -96,14 +133,22 @@ export async function createWorkflow(
   userId: string,
   initialStep: WorkflowStep = 'idle',
   metadata: Record<string, any> = {}
-): Promise<string | null> {
+): Promise<string> {
+  const moduleLogger = logger.withMetadata({
+    module: 'WorkflowService',
+    method: 'createWorkflow',
+    userId,
+    initialStep
+  });
+
   try {
-    const supabase = createBrowserClient()
+    moduleLogger.info('Creating new workflow');
+    const supabase = createBrowserClient();
     
     // Determine if the step is valid for the database
     const step = isDbWorkflowStep(initialStep)
       ? initialStep as DBWorkflowStep
-      : 'idle' as DBWorkflowStep
+      : 'idle' as DBWorkflowStep;
       
     // Insert the workflow
     const { data, error } = await supabase
@@ -119,17 +164,34 @@ export async function createWorkflow(
         }
       })
       .select('id')
-      .single()
+      .single();
       
     if (error) {
-      console.error('[WorkflowService] Error creating workflow:', error)
-      return null
+      throw new ExternalServiceError({
+        message: `Failed to create workflow: ${error.message}`,
+        code: 'WORKFLOW_CREATE_FAILED',
+        service: 'Database',
+        data: { userId, initialStep },
+        cause: error
+      });
     }
     
-    return data?.id || null
+    if (!data?.id) {
+      throw new ExternalServiceError({
+        message: 'Workflow created but no ID returned',
+        code: 'WORKFLOW_ID_MISSING',
+        service: 'Database',
+        data: { userId, initialStep }
+      });
+    }
+    
+    moduleLogger.info('Workflow created successfully', { workflowId: data.id });
+    return data.id;
+    
   } catch (error) {
-    console.error('[WorkflowService] Error creating workflow:', error)
-    return null
+    const normalizedError = normalizeError(error);
+    moduleLogger.error('Error creating workflow', {}, normalizedError);
+    throw normalizedError;
   }
 }
 
@@ -141,31 +203,58 @@ export async function createWorkflow(
  */
 export async function getWorkflowState(
   workflowId: string
-): Promise<{ step: WorkflowStep; metadata: Record<string, any> } | null> {
+): Promise<{ step: WorkflowStep; metadata: Record<string, any> }> {
+  const moduleLogger = logger.withMetadata({
+    module: 'WorkflowService',
+    method: 'getWorkflowState',
+    workflowId
+  });
+
   try {
-    const supabase = createBrowserClient()
+    moduleLogger.info('Fetching workflow state');
+    const supabase = createBrowserClient();
     
     const { data, error } = await supabase
       .from('workflow_states')
       .select('current_step, metadata')
       .eq('id', workflowId)
-      .single()
+      .single();
       
-    if (error || !data) {
-      console.error('[WorkflowService] Error fetching workflow:', error)
-      return null
+    if (error) {
+      throw new ExternalServiceError({
+        message: `Failed to fetch workflow: ${error.message}`,
+        code: 'WORKFLOW_FETCH_FAILED',
+        service: 'Database',
+        data: { workflowId },
+        cause: error
+      });
+    }
+    
+    if (!data) {
+      throw new NotFoundError({
+        message: 'Workflow not found',
+        resource: 'Workflow',
+        code: 'WORKFLOW_NOT_FOUND',
+        data: { workflowId }
+      });
     }
     
     // Convert database step to app step if needed
-    const step = data.metadata?.appStep || data.current_step
+    const step = data.metadata?.appStep || data.current_step;
+    
+    moduleLogger.info('Workflow state retrieved successfully', { 
+      currentStep: step,
+      hasMetadata: !!data.metadata
+    });
     
     return {
       step: step as WorkflowStep,
       metadata: data.metadata || {}
-    }
+    };
   } catch (error) {
-    console.error('[WorkflowService] Error fetching workflow:', error)
-    return null
+    const normalizedError = normalizeError(error);
+    moduleLogger.error('Error fetching workflow state', {}, normalizedError);
+    throw normalizedError;
   }
 }
 

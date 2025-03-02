@@ -1,12 +1,12 @@
 'use client'
 
+import { type Attachment, ChatInput } from '@/components/chat/input/ChatInput'
 import { useChatStore } from '@/stores/chat-store'
 import { useState } from 'react'
-import { ChatInput, type Attachment } from '@/components/chat/input/ChatInput'
 
 export function MultimodalInput() {
-  const isLoading = useChatStore(state => state.isLoading)
-  const sendMessage = useChatStore(state => state.sendMessage)
+  const isLoading = useChatStore((state) => state.isLoading)
+  const sendMessage = useChatStore((state) => state.sendMessage)
   const [attachments, setAttachments] = useState<Attachment[]>([])
 
   const handleSendMessage = async (content: string, options?: any) => {
@@ -17,7 +17,7 @@ export function MultimodalInput() {
       await sendMessage(content)
       setAttachments([])
     } catch (error) {
-      console.error('Failed to send message:', error)
+      // Error handling for failed messages
     }
   }
 

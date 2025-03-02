@@ -1,4 +1,4 @@
-import type { UseChatProcessingWorkflowResult } from '@/lib/hooks/use-chat-processing-workflow'
+import type { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
 import type {
   VerificationOptions as BaseVerificationOptions,
   VerificationItem,
@@ -54,7 +54,7 @@ export interface Message extends AIMessage {
     reportFormat?: ReportFormat
     verificationStatus?: 'pending' | 'verified' | 'rejected'
     sourceDocuments?: string[]
-    [key: string]: any
+    [key: string]: unknown
   }
 }
 
@@ -279,7 +279,11 @@ export interface ExtendedChatContextType
   /**
    * Add a system message
    */
-  addSystemMessage: (content: string, type?: string, metadata?: any) => Message
+  addSystemMessage: (
+    content: string,
+    type?: string,
+    metadata?: MessageMetadata
+  ) => Message
 
   /**
    * Post a summary for verification
@@ -324,14 +328,14 @@ export interface ExtendedChatContextType
   /**
    * Format a report with specified format
    */
-  formatReport: (format: any) => Promise<void>
+  formatReport: (format: ReportFormat) => Promise<void>
 
   /**
    * Report generation state
    */
   reportGeneration?: {
     isComplete: boolean
-    format: any | null
+    format: ReportFormat | null
   }
 }
 
@@ -418,7 +422,9 @@ export function createUserMessage(
  * Extended to support verification-specific methods that can
  * be integrated with the chat context.
  */
-export type UseProcessingWorkflowResult = UseChatProcessingWorkflowResult
+export type UseProcessingWorkflowResult = ReturnType<
+  typeof useProcessingWorkflow
+>
 
 /**
  * Chat reducer state management
@@ -445,11 +451,11 @@ export interface ChatState {
       phase: ProcessingPhase
     }
     workflowError: string | null
-    data: Record<string, any>
+    data: Record<string, unknown>
   }
   reportGeneration?: {
     isComplete: boolean
-    format: any | null
+    format: ReportFormat | null
   }
 }
 
@@ -505,7 +511,10 @@ export type ChatAction =
       type: 'START_REPORT_GENERATION'
       payload: { reportOptions?: ReportOptions }
     }
-  | { type: 'COMPLETE_REPORT_GENERATION'; payload: { report: any } }
+  | {
+      type: 'COMPLETE_REPORT_GENERATION'
+      payload: { report: Record<string, unknown> }
+    }
   | {
       type: 'UPDATE_PROGRESS'
       payload: { messageId: string; progress: number; phase: string }
