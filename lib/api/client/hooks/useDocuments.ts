@@ -45,3 +45,28 @@ export const useDocumentIngest = () => {
       apiClient.retrieval.ingestDocument(params)
   )
 }
+
+/**
+ * Hook for processing documents
+ */
+export const useDocumentProcess = () => {
+  const queryClient = useQueryClient()
+  
+  return useMutation(
+    (params: { 
+      file: File, 
+      patientId: string,
+      documentType: any,
+      metadata?: Record<string, any>,
+      onStatusUpdate?: (status: any) => void
+    }) => 
+      apiClient.documents.processDocument(params),
+    {
+      onSuccess: () => {
+        // Invalidate relevant queries
+        queryClient.invalidateQueries(['documents'])
+        queryClient.invalidateQueries(['patients'])
+      }
+    }
+  )
+}

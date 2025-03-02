@@ -6,7 +6,8 @@ import { Loader, User } from 'lucide-react'
 import Image from 'next/image'
 import React, { useState, useEffect } from 'react'
 
-import { uploadService } from '@/lib/services/upload-service'
+// Import API client hook - we'll create this
+import { useAvatarUpload } from '@/lib/api/client/hooks/useProfile'
 
 interface AvatarUploaderProps {
   userId: string
@@ -39,8 +40,10 @@ export function AvatarUploader({
   }, [initialUrl])
 
   /**
-   * Handle avatar file selection and upload
+   * Handle avatar file selection and upload using API client
    */
+  const avatarUploadMutation = useAvatarUpload()
+  
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -51,14 +54,14 @@ export function AvatarUploader({
     setError(null)
 
     try {
-      // Upload the avatar using the uploadService
-      const filePath = await uploadService.uploadAvatar(
+      // Upload the avatar using the API client
+      const filePath = await avatarUploadMutation.mutateAsync({
         file,
         userId,
-        (progress, status) => {
+        onProgress: (progress, status) => {
           // Progress handling could be added here
         }
-      )
+      })
 
       // Get the avatar URL
       const avatarUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${filePath}`

@@ -46,7 +46,7 @@ import {
 } from 'lucide-react'
 
 import { DocumentUploader } from '@/components/upload/document-uploader'
-import { documentService } from '@/lib/services/document/document-service'
+import { useDocumentUpload, useDocumentProcess } from '@/lib/api/client/hooks'
 
 // Type definitions - since the imported types may not be available
 type DocumentCategory =
@@ -379,6 +379,9 @@ export default function DocumentUploadPage() {
     setTags(tags.filter((tag) => tag !== tagToRemove))
   }
 
+  // API Client hooks
+  const documentProcessMutation = useDocumentProcess ? useDocumentProcess() : null
+  
   const handleUpload = async () => {
     if (!selectedFile || !selectedCategory || !selectedType) {
       toast({
@@ -409,15 +412,21 @@ export default function DocumentUploadPage() {
         tags: tags.length > 0 ? JSON.stringify(tags) : null,
       }
 
-      // Initiate extraction using the centralized document service
+      // Initiate extraction using the API client
       toast({
         title: 'Extraction In Progress',
         description:
           'Please wait while we process the file. This may take a few minutes.',
       })
 
-      // Call the document service with the required parameters
-      await documentService.processDocument(selectedFile, {
+      // We need to ensure the hook is available
+      if (!documentProcessMutation) {
+        throw new Error('Document processing API client not available')
+      }
+
+      // Call the API client with the required parameters
+      await documentProcessMutation.mutateAsync({
+        file: selectedFile,
         patientId: params.id as string,
         documentType,
         metadata,

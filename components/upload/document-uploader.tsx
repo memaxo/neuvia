@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, CheckCircle2, FileText } from 'lucide-react'
 import React, { useState } from 'react'
 
-import { uploadService } from '@/lib/services/upload-service'
+import { useDocumentUpload } from '@/lib/api/client/hooks'
 import type {
   DocumentType,
   DocumentUploadStatus,
@@ -71,8 +71,10 @@ export function DocumentUploader({
   }
 
   /**
-   * Handle file upload using the UploadService
+   * Handle file upload using the API client
    */
+  const documentUploadMutation = useDocumentUpload()
+
   const handleFileUpload = async (
     files: File[],
     progressCallback: (progress: number, file: File) => void
@@ -91,14 +93,14 @@ export function DocumentUploader({
     })
 
     try {
-      // Use the uploadService to handle the file upload
-      const result = await uploadService.uploadPatientDocument(
-        fileToUpload,
+      // Use the API client to handle the file upload
+      const uploadRequest = {
+        file: fileToUpload,
         patientId,
         documentType,
         departmentId,
-        (progress, status) => {
-          // Update progress based on the service's progress reports
+        onProgress: (progress: number, status: string) => {
+          // Update progress based on the progress reports
           updateStatus({
             status: progress < 100 ? 'uploading' : 'processing',
             progress,
@@ -108,7 +110,9 @@ export function DocumentUploader({
           // Update the FileUploader's progress indicator
           progressCallback(progress, fileToUpload)
         }
-      )
+      }
+
+      const result = await documentUploadMutation.mutateAsync(uploadRequest)
 
       // Upload successful
       updateStatus({

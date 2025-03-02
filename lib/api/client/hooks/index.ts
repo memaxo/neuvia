@@ -4,7 +4,9 @@
  * Generated from OpenAPI specification
  */
 export * from './useAuthentication'
+export * from './useChat'
 export * from './useDocuments'
+export * from './useProfile'
 export * from './useVerification'
 export * from './usePatients'
 export * from './useReports'

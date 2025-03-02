@@ -7,7 +7,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { File, FileText, Image as ImageIcon, Paperclip, X } from 'lucide-react'
 import React, { useState } from 'react'
 
-import { uploadService } from '@/lib/services/upload-service'
+// Import API client hook - we'll create this
+import { useChatAttachmentUpload } from '@/lib/api/client/hooks/useChat'
 import type { FileUpload } from '@/lib/types/upload'
 
 interface ChatAttachmentUploaderProps {
@@ -41,8 +42,10 @@ export function ChatAttachmentUploader({
   const { toast } = useToast()
 
   /**
-   * Handle file attachment and upload
+   * Handle file attachment and upload using API client
    */
+  const attachmentUploadMutation = useChatAttachmentUpload()
+  
   const handleFileUpload = async (
     files: File[],
     progressCallback: (progress: number, file: File) => void
@@ -63,12 +66,12 @@ export function ChatAttachmentUploader({
     // Process each file
     for (const file of files) {
       try {
-        // Upload the file
-        const result = await uploadService.uploadChatAttachment(
+        // Upload the file using API client mutation
+        const result = await attachmentUploadMutation.mutateAsync({
           file,
           chatId,
           messageId,
-          (progress, status) => {
+          onProgress: (progress, status) => {
             // Update progress tracking
             setProgress((prev) => ({
               ...prev,
@@ -78,7 +81,7 @@ export function ChatAttachmentUploader({
             // Update the progress callback for the FileUploader
             progressCallback(progress, file)
           }
-        )
+        })
 
         // Add to results
         uploadResults.push(result)
