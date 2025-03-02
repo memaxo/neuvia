@@ -17,6 +17,8 @@ import type { VerifiedDocument } from '@/lib/processing/types/verification'
 import { createBrowserClient } from '@/lib/supabase/clients'
 import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
+import logger from '@/lib/logger'
+import { ExternalServiceError, ValidationError, NotFoundError, SystemError, normalizeError, AuthenticationError } from '@/lib/errors'
 
 /**
  * Unified Report Service
@@ -37,13 +39,26 @@ export class ReportService {
     documentInput: ResearchDocument | VerifiedDocument,
     options?: ReportOptions
   ): Promise<ReportData> {
+    // Create logger with context
+    const moduleLogger = logger.withMetadata({
+      module: 'ReportService',
+      method: 'generateReportFromDocument',
+      documentType: 'verifiedData' in documentInput 
+        ? (documentInput as VerifiedDocument).documentType?.type 
+        : (documentInput as ResearchDocument).documentType?.type,
+      patientId: documentInput.patientId
+    });
+    
     // Track status
     let statusCallback = options?.onProgress;
     const updateStatus = (phase: string, progress: number, currentStep?: string) => {
+      moduleLogger.debug(`Report generation progress: ${phase} - ${progress}%`, { currentStep });
       statusCallback?.(phase as any, progress);
     };
     
     try {
+      moduleLogger.info('Starting report generation');
+      
       // Update status
       updateStatus('initialization', 0, 'Starting report generation');
       
@@ -86,7 +101,15 @@ export class ReportService {
           !researchDocument.researchResults ||
           researchDocument.researchResults.length === 0
         ) {
-          throw new Error('Research document has no research results');
+          moduleLogger.error('Research document has no research results', {
+            documentId: researchDocument.id
+          });
+          
+          throw new ValidationError({
+            message: 'Research document has no research results',
+            code: 'MISSING_RESEARCH_RESULTS',
+            data: { documentId: researchDocument.id }
+          });
         }
         
         researchResult = researchDocument.researchResults[0];
@@ -127,6 +150,9 @@ export class ReportService {
       
       // Update status
       updateStatus('complete', 100, 'Report generated');
+      moduleLogger.info('Report generation completed successfully', {
+        reportType: result.metadata?.reportType
+      });
       
       // Create and return report document if needed
       if (options?.createReportDocument) {
@@ -149,15 +175,34 @@ export class ReportService {
       
       return result;
     } catch (error) {
-      // Handle errors
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      // Handle errors with structured error and logging
+      const normalizedError = normalizeError(error);
+      
+      moduleLogger.error('Failed to generate report', { 
+        errorCode: normalizedError.code 
+      }, normalizedError);
       
       // Call error callback if provided
+      const errorMessage = normalizedError.message;
       options?.onError?.(errorMessage);
       
-      console.error('Error generating report:', error);
-      throw error;
+      // Check if it's already our error type
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+      
+      // Otherwise normalize to a SystemError
+      throw new SystemError({
+        message: 'Failed to generate report',
+        code: 'REPORT_GENERATION_FAILED',
+        data: { 
+          documentId: 'id' in documentInput ? documentInput.id : undefined,
+          documentType: 'verifiedData' in documentInput 
+            ? (documentInput as VerifiedDocument).documentType?.type 
+            : (documentInput as ResearchDocument).documentType?.type
+        },
+        cause: error
+      });
     }
   }
 
@@ -172,7 +217,16 @@ export class ReportService {
     params: ReportGenerationParams,
     options?: ReportOptions
   ): Promise<ReportData> {
+    const moduleLogger = logger.withMetadata({
+      module: 'ReportService',
+      method: 'generateReport',
+      reportType: params.type,
+      patientId: params.patientId
+    });
+    
     try {
+      moduleLogger.info('Starting report generation');
+      
       // Track start time for performance measurement
       const startTime = Date.now();
       
@@ -182,7 +236,12 @@ export class ReportService {
       // IMPORTANT: This service now expects research data to be provided
       // and does not perform research itself
       if (!params.researchData) {
-        throw new Error('Research data must be provided to generate a report');
+        moduleLogger.error('Missing research data', { reportType: params.type });
+        throw new ValidationError({
+          message: 'Research data must be provided to generate a report',
+          code: 'MISSING_RESEARCH_DATA',
+          data: { reportType: params.type }
+        });
       }
       
       options?.onProgress?.('generation', 30);
@@ -225,17 +284,38 @@ export class ReportService {
       // Call success callback if provided
       options?.onSuccess?.(reportData);
       
+      moduleLogger.info('Report generation completed successfully', {
+        generationTime: Date.now() - startTime,
+        reportType: params.type
+      });
+      
       return reportData;
     } catch (error) {
-      // Handle errors
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      // Handle errors with normalized error handling
+      const normalizedError = normalizeError(error);
+      
+      moduleLogger.error('Failed to generate report', {
+        errorCode: normalizedError.code
+      }, normalizedError);
       
       // Call error callback if provided
-      options?.onError?.(errorMessage);
+      options?.onError?.(normalizedError.message);
       
-      console.error('Error generating report:', error);
-      throw error;
+      // If it's already our error type, rethrow it
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+      
+      // Otherwise normalize to a SystemError
+      throw new SystemError({
+        message: 'Failed to generate report',
+        code: 'REPORT_GENERATION_FAILED',
+        data: { 
+          reportType: params.type,
+          patientId: params.patientId
+        },
+        cause: error
+      });
     }
   }
 
@@ -278,10 +358,22 @@ export class ReportService {
     format: ReportFormat = 'markdown'
   ): Promise<string> {
     if (!reportData) {
-      throw new Error('No report data available for formatting');
+      throw new ValidationError({
+        message: 'No report data available for formatting',
+        code: 'MISSING_REPORT_DATA'
+      });
     }
     
+    const moduleLogger = logger.withMetadata({
+      module: 'ReportService',
+      method: 'formatReportOutput',
+      format,
+      patientId: reportData.patientId
+    });
+    
     try {
+      moduleLogger.info('Formatting report output', { format });
+      
       // Format report based on desired output format
       let formattedContent = reportData.content;
       
@@ -305,10 +397,23 @@ export class ReportService {
           break;
       }
       
+      moduleLogger.info('Report formatting completed', { format });
       return formattedContent;
     } catch (error) {
-      console.error('Error formatting report:', error);
-      throw new Error(`Failed to format report: ${error instanceof Error ? error.message : String(error)}`);
+      const normalizedError = normalizeError(error);
+      
+      moduleLogger.error('Failed to format report', {
+        format,
+        errorCode: normalizedError.code
+      }, normalizedError);
+      
+      throw new ExternalServiceError({
+        message: 'Failed to format report',
+        code: 'REPORT_FORMAT_FAILED',
+        service: 'FormatService',
+        data: { format },
+        cause: error
+      });
     }
   }
 
@@ -404,14 +509,33 @@ export class ReportService {
       return reportData;
     } catch (error) {
       // Handle errors
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const normalizedError = normalizeError(error);
+      
+      const errorLogger = logger.withMetadata({
+        module: 'ReportService',
+        method: 'generateReportWithLangchain',
+        patientId,
+        errorCode: normalizedError.code
+      });
+      
+      errorLogger.error('Failed to generate report with Langchain', {}, normalizedError);
       
       // Call error callback if provided
-      options?.onError?.(errorMessage);
+      options?.onError?.(normalizedError.message);
       
-      console.error('Error generating report with Langchain:', error);
-      throw error;
+      // If it's already our error type, rethrow it
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+      
+      // Otherwise normalize to an ExternalServiceError
+      throw new ExternalServiceError({
+        message: 'Failed to generate report with AI',
+        code: 'LANGCHAIN_REPORT_FAILED',
+        service: 'Langchain',
+        data: { patientId },
+        cause: error
+      });
     }
   }
 
@@ -582,7 +706,16 @@ export class ReportService {
    * @returns Saved report ID
    */
   private async saveReport(report: ReportData): Promise<string> {
+    const moduleLogger = logger.withMetadata({
+      module: 'ReportService',
+      method: 'saveReport',
+      patientId: report.patientId,
+      reportType: report.metadata?.reportType
+    });
+    
     try {
+      moduleLogger.info('Saving report to database');
+      
       // Get the current user ID from Supabase
       const {
         data: { user },
@@ -590,7 +723,11 @@ export class ReportService {
       const userId = user?.id;
       
       if (!userId) {
-        throw new Error('User must be authenticated to save reports');
+        moduleLogger.error('Authentication required to save report');
+        throw new AuthenticationError({
+          message: 'User must be authenticated to save reports',
+          code: 'AUTH_REQUIRED_FOR_REPORT'
+        });
       }
       
       // Prepare a valid report record that matches the database schema
@@ -664,15 +801,40 @@ export class ReportService {
         .single();
       
       if (error) {
-        throw new Error(`Failed to save report: ${error.message}`);
+        moduleLogger.error('Database error saving report', { error });
+        throw new ExternalServiceError({
+          message: `Failed to save report to database`,
+          code: 'DB_SAVE_FAILED',
+          service: 'Database',
+          data: {
+            dbError: error.message,
+            patientId: report.patientId
+          },
+          cause: error
+        });
       }
       
+      moduleLogger.info('Report saved successfully', { reportId: data.id });
       return data.id;
     } catch (error) {
-      console.error('[ReportService] Error saving report:', error);
-      throw new Error(
-        `Failed to save report: ${error instanceof Error ? error.message : String(error)}`
-      );
+      // If it's already one of our error types, just log and rethrow
+      if (error instanceof ApplicationError) {
+        moduleLogger.error('Failed to save report', {
+          errorCode: error.code
+        }, error);
+        throw error;
+      }
+      
+      // Otherwise create a new error
+      const normalizedError = normalizeError(error);
+      moduleLogger.error('Failed to save report', {}, normalizedError);
+      
+      throw new SystemError({
+        message: 'Failed to save report to database',
+        code: 'REPORT_SAVE_FAILED',
+        data: { patientId: report.patientId },
+        cause: error
+      });
     }
   }
 

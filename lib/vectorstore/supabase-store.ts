@@ -7,6 +7,8 @@ import {
 } from '@/lib/schemas/document-types'
 import type { Database } from '@/lib/supabase'
 import { createAdminClient } from '@/lib/supabase/clients'
+import { ApplicationError, ExternalServiceError, NotFoundError, SystemError, ValidationError } from '@/lib/errors'
+import logger from '@/lib/logger'
 /**
  * Supabase Vector Store Implementation
  *
@@ -54,45 +56,104 @@ export class EnhancedSupabaseVectorStore extends SupabaseVectorStore {
    * @returns ID of the added document or existing document
    */
   async addDocument(document: Document): Promise<string> {
-    // Validate metadata
-    const validatedMetadata = DocumentMetadataSchema.partial().parse(
-      document.metadata || {}
-    )
+    const moduleLogger = logger.withMetadata({
+      module: 'EnhancedSupabaseVectorStore',
+      method: 'addDocument'
+    })
 
-    // Generate a content hash for deduplication
-    const contentHash = crypto
-      .createHash('sha256')
-      .update(document.pageContent)
-      .digest('hex')
+    try {
+      if (!document.pageContent) {
+        moduleLogger.warn('Empty document content provided for vectorization')
+        throw new ValidationError({
+          message: 'Cannot vectorize document with empty content',
+          code: 'EMPTY_DOCUMENT'
+        })
+      }
 
-    // Check if document with this hash already exists
-    const { data: existingDoc } = await this.supabaseClient
-      .from('document_chunks')
-      .select('id')
-      .eq('metadata->content_hash', contentHash)
-      .limit(1)
+      // Validate metadata
+      try {
+        const validatedMetadata = DocumentMetadataSchema.partial().parse(
+          document.metadata || {}
+        )
+      
+        // Generate a content hash for deduplication
+        const contentHash = crypto
+          .createHash('sha256')
+          .update(document.pageContent)
+          .digest('hex')
+  
+        moduleLogger.info('Adding document to vector store', {
+          contentHashPrefix: contentHash.substring(0, 8),
+          contentLength: document.pageContent.length,
+          hasMetadata: Object.keys(document.metadata || {}).length > 0
+        })
+  
+        // Check if document with this hash already exists
+        const { data: existingDoc, error: fetchError } = await this.supabaseClient
+          .from('document_chunks')
+          .select('id')
+          .eq('metadata->content_hash', contentHash)
+          .limit(1)
+  
+        if (fetchError) {
+          moduleLogger.error('Error checking for existing document', {}, fetchError)
+          throw new SystemError({
+            message: 'Failed to check for document duplicates',
+            code: 'DB_FETCH_ERROR',
+            cause: fetchError
+          })
+        }
+  
+        if (existingDoc && existingDoc.length > 0) {
+          // Document already exists, return its ID
+          moduleLogger.info('Document already exists, returning existing ID', {
+            existingId: existingDoc[0].id
+          })
+          return existingDoc[0].id as string
+        }
+  
+        // Generate a unique ID for the document
+        const docId = crypto.randomUUID()
+  
+        // Add the document through the parent class method
+        await super.addDocuments([
+          new Document({
+            pageContent: document.pageContent,
+            metadata: {
+              ...validatedMetadata,
+              content_hash: contentHash,
+              created_at: new Date().toISOString(),
+            },
+          }),
+        ])
+  
+        moduleLogger.info('Successfully added document to vector store', { docId })
+        return docId
+      } catch (parseError) {
+        moduleLogger.error('Metadata validation error', { 
+          metadataKeys: Object.keys(document.metadata || {})
+        }, parseError)
+        
+        throw new ValidationError({
+          message: 'Invalid document metadata',
+          code: 'INVALID_METADATA',
+          cause: parseError
+        })
+      }
+    } catch (error) {
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
 
-    if (existingDoc && existingDoc.length > 0) {
-      // Document already exists, return its ID
-      return existingDoc[0].id as string
+      moduleLogger.error('Failed to add document to vector store', {}, error)
+      
+      throw new SystemError({
+        message: 'Failed to add document to vector store',
+        code: 'VECTORIZATION_FAILED',
+        cause: error
+      })
     }
-
-    // Generate a unique ID for the document
-    const docId = crypto.randomUUID()
-
-    // Add the document through the parent class method
-    await super.addDocuments([
-      new Document({
-        pageContent: document.pageContent,
-        metadata: {
-          ...validatedMetadata,
-          content_hash: contentHash,
-          created_at: new Date().toISOString(),
-        },
-      }),
-    ])
-
-    return docId
   }
 
   /**
@@ -185,42 +246,107 @@ export class EnhancedSupabaseVectorStore extends SupabaseVectorStore {
     k = 5,
     filter?: Record<string, any>
   ): Promise<DocumentSearchResult[]> {
-    // Generate embedding for the query
-    const embeddings = await this.embeddingModel.embedQuery(query)
+    const moduleLogger = logger.withMetadata({
+      module: 'EnhancedSupabaseVectorStore',
+      method: 'similaritySearchWithMetadata',
+      limit: k,
+      hasFilter: !!filter
+    })
 
-    // Convert embedding array to string for Postgres vector type
-    const embeddingString = `[${embeddings.join(',')}]`
+    try {
+      if (!query || query.trim() === '') {
+        moduleLogger.warn('Empty query provided for similarity search')
+        throw new ValidationError({
+          message: 'Cannot perform similarity search with empty query',
+          code: 'EMPTY_QUERY',
+          data: { filter }
+        })
+      }
 
-    // Create params object for the RPC call
-    const params: MatchDocumentsParams = {
-      query_embedding: embeddingString,
-      match_count: k,
-      match_threshold: 0.5,
+      moduleLogger.info('Performing vector similarity search', {
+        queryLength: query.length,
+        filterKeys: filter ? Object.keys(filter) : []
+      })
+
+      // Generate embedding for the query
+      try {
+        const embeddings = await this.embeddingModel.embedQuery(query)
+
+        // Convert embedding array to string for Postgres vector type
+        const embeddingString = `[${embeddings.join(',')}]`
+
+        // Create params object for the RPC call
+        const params: MatchDocumentsParams = {
+          query_embedding: embeddingString,
+          match_count: k,
+          match_threshold: 0.5,
+        }
+
+        // If we have a patient_id filter, add it to the params
+        if (filter && 'patient_id' in filter) {
+          params.patient_id = filter.patient_id
+        }
+
+        // Call the match_documents RPC function
+        const { data: documents, error } = await this.supabaseClient.rpc(
+          this.config.queryName as 'match_documents',
+          params
+        )
+
+        if (error) {
+          moduleLogger.error('Error in database RPC call', { rpcFunction: this.config.queryName }, error)
+          throw new SystemError({
+            message: 'Failed to perform similarity search',
+            code: 'RPC_ERROR',
+            data: { 
+              function: this.config.queryName, 
+              filter: filter ? JSON.stringify(filter) : undefined 
+            },
+            cause: error
+          })
+        }
+
+        if (!documents || !Array.isArray(documents) || documents.length === 0) {
+          moduleLogger.info('No matching documents found', { queryLength: query.length })
+          return []
+        }
+
+        moduleLogger.info('Successfully completed similarity search', {
+          resultCount: documents.length
+        })
+
+        // Format results as DocumentSearchResult[]
+        return (documents as any[]).map((doc: any) => ({
+          id: doc.id,
+          document_id: doc.document_id,
+          content: doc.content,
+          metadata: doc.metadata || {},
+          similarity: doc.similarity,
+        }))
+      } catch (embeddingError) {
+        moduleLogger.error('Error generating query embedding', {}, embeddingError)
+        throw new ExternalServiceError({
+          message: 'Failed to generate embeddings for query',
+          service: 'OpenAI Embeddings',
+          code: 'EMBEDDING_FAILED',
+          data: { queryLength: query.length },
+          cause: embeddingError
+        })
+      }
+    } catch (error) {
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+
+      moduleLogger.error('Failed to perform similarity search', {}, error)
+      
+      throw new SystemError({
+        message: 'Failed to perform similarity search',
+        code: 'SEARCH_FAILED',
+        cause: error
+      })
     }
-
-    // If we have a patient_id filter, add it to the params
-    if (filter && 'patient_id' in filter) {
-      params.patient_id = filter.patient_id
-    }
-
-    // Call the match_documents RPC function
-    const { data: documents, error } = await this.supabaseClient.rpc(
-      this.config.queryName as 'match_documents',
-      params
-    )
-
-    if (error) {
-      throw new Error(`Error in similaritySearchWithMetadata: ${error.message}`)
-    }
-
-    // Format results as DocumentSearchResult[]
-    return (documents as any[]).map((doc: any) => ({
-      id: doc.id,
-      document_id: doc.document_id,
-      content: doc.content,
-      metadata: doc.metadata || {},
-      similarity: doc.similarity,
-    }))
   }
 
   /**

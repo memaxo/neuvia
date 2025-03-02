@@ -18,22 +18,64 @@ export async function processMessage(
   mode: ChatMode,
   dispatch: Dispatch<ChatAction>
 ): Promise<void> {
-  const normalizedContent = content.toLowerCase().trim()
+  const moduleLogger = logger.withMetadata({
+    module: 'MessageProcessor',
+    method: 'processMessage',
+    mode
+  });
+  
+  try {
+    if (!content || content.trim() === '') {
+      moduleLogger.warn('Empty message received');
+      throw new ValidationError({
+        message: 'Message content cannot be empty',
+        code: 'EMPTY_MESSAGE'
+      });
+    }
+    
+    const normalizedContent = content.toLowerCase().trim();
+    
+    moduleLogger.info('Processing message', { 
+      contentLength: content.length,
+      mode
+    });
 
-  // Handle verification mode
-  if (mode === 'verification') {
-    await handleVerificationMessage(normalizedContent, content, dispatch)
-    return
+    // Handle verification mode
+    if (mode === 'verification') {
+      await handleVerificationMessage(normalizedContent, content, dispatch);
+      return;
+    }
+
+    // Default chat handling - simulate a basic response
+    dispatch(
+      chatActions.addMessage({
+        role: 'assistant',
+        content: `I received your message: "${content}".`,
+        createdAt: new Date(),
+      })
+    );
+    
+    moduleLogger.info('Message processed successfully');
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    moduleLogger.error('Failed to process message', {}, normalizedError);
+    
+    dispatch(chatActions.setError(normalizedError.message));
+    
+    // Add error message to the chat
+    dispatch(
+      chatActions.addMessage({
+        role: 'system',
+        content: `Error: ${normalizedError.message}`,
+        createdAt: new Date(),
+        metadata: {
+          type: 'error',
+          isError: true,
+          errorCode: normalizedError.code
+        },
+      })
+    );
   }
-
-  // Default chat handling - simulate a basic response
-  dispatch(
-    chatActions.addMessage({
-      role: 'assistant',
-      content: `I received your message: "${content}".`,
-      createdAt: new Date(),
-    })
-  )
 }
 
 /**
@@ -425,28 +467,65 @@ async function handleDefaultChatMessage(
   dispatch: Dispatch<ChatAction>,
   workflow: UseProcessingWorkflowResult
 ): Promise<void> {
-  // Check current workflow step
-  const currentWorkflowStep = workflow.workflowStep
+  const moduleLogger = logger.withMetadata({
+    module: 'MessageProcessor',
+    method: 'handleDefaultChatMessage',
+    workflowStep: workflow.workflowStep
+  });
+  
+  try {
+    moduleLogger.info('Handling default chat message', { 
+      contentLength: content.length
+    });
+    
+    // Check current workflow step
+    const currentWorkflowStep = workflow.workflowStep
 
-  // In extraction or other processing steps
-  if (currentWorkflowStep === 'extracting') {
+    // In extraction or other processing steps
+    if (currentWorkflowStep === 'extracting') {
+      moduleLogger.info('Document extraction in progress, informing user to wait');
+      
+      dispatch(
+        chatActions.addMessage({
+          role: 'assistant',
+          content:
+            "I'm currently processing a document. Please wait for the extraction to complete.",
+          createdAt: new Date(),
+        })
+      )
+      return
+    }
+
+    // Default chat handling - simulate a basic response
+    moduleLogger.info('Processing default chat response');
+    
     dispatch(
       chatActions.addMessage({
         role: 'assistant',
-        content:
-          "I'm currently processing a document. Please wait for the extraction to complete.",
+        content: `I received your message: "${content}".`,
         createdAt: new Date(),
       })
     )
-    return
+    
+    moduleLogger.info('Default chat message handled successfully');
+  } catch (error) {
+    const normalizedError = normalizeError(error);
+    moduleLogger.error('Error handling default chat message', {}, normalizedError);
+    
+    dispatch(chatActions.setError(normalizedError.message));
+    
+    // Show user-friendly error
+    dispatch(
+      chatActions.addMessage({
+        role: 'system',
+        content: `There was an error processing your message: ${normalizedError.message}`,
+        createdAt: new Date(),
+        metadata: {
+          type: 'error',
+          isError: true,
+          errorCode: normalizedError.code
+        },
+      })
+    );
   }
-
-  // Default chat handling - simulate a basic response
-  dispatch(
-    chatActions.addMessage({
-      role: 'assistant',
-      content: `I received your message: "${content}".`,
-      createdAt: new Date(),
-    })
-  )
 }

@@ -11,6 +11,8 @@ import type {
 } from '@/lib/processing/types/research'
 import type { WorkflowStep } from '@/lib/processing/types/workflow'
 import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
+import logger from '@/lib/logger'
+import { ExternalServiceError, ValidationError, SystemError, normalizeError } from '@/lib/errors'
 /**
  * Unified Perplexity Service
  *
@@ -264,20 +266,19 @@ export class PerplexityService {
     error: unknown,
     text: string
   ): ParsedResearchOutput {
-    // Log detailed error information
-    console.warn('[PerplexityService] Structured parsing failed:')
-    console.warn('[PerplexityService] Error:', error)
-
-    // Extract error message for logging
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    console.warn(`[PerplexityService] Error message: ${errorMessage}`)
-
-    // Log a preview of the text that failed to parse
-    const textPreview =
-      text.length > 200 ? `${text.substring(0, 200)}...` : text
-    console.warn(
-      `[PerplexityService] Failed to parse text (preview): ${textPreview}`
-    )
+    // Create a logger with context metadata
+    const moduleLogger = logger.withMetadata({
+      module: 'PerplexityService',
+      method: 'handleParsingError',
+      textLength: text.length,
+      errorType: error instanceof Error ? error.name : typeof error
+    });
+    
+    // Log detailed error information with structured logging
+    moduleLogger.warn('Structured parsing failed', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      textPreview: text.length > 200 ? `${text.substring(0, 200)}...` : text
+    }, error);
 
     // Determine if this is likely a medical diagnosis text
     const isMedicalDiagnosis =
@@ -417,9 +418,19 @@ export class PerplexityService {
     options?: EnhancedResearchOptions,
     debug: boolean = DEFAULT_DEBUG
   ): Promise<ResearchResult> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PerplexityService',
+      method: 'performDeepResearch',
+      isMedicalDiagnosis: !!options?.isMedicalDiagnosis,
+      model: options?.model || researchConfig.providers.perplexity.model,
+      depth: options?.depth || 'standard'
+    });
+    
     if (debug) {
-      console.log('[PerplexityService] Performing deep research:', query)
-      console.log('[PerplexityService] Options:', options)
+      moduleLogger.debug('Performing deep research', {
+        query,
+        options
+      });
     }
 
     try {
@@ -485,10 +496,23 @@ export class PerplexityService {
 
       return result
     } catch (error) {
-      console.error('[PerplexityService] Error:', error)
-      throw new Error(
-        `Research failed: ${error instanceof Error ? error.message : String(error)}`
-      )
+      const normalizedError = normalizeError(error);
+      moduleLogger.error('Research failed', {
+        query,
+        errorCode: normalizedError.code
+      }, normalizedError);
+      
+      throw new ExternalServiceError({
+        message: 'Research failed',
+        code: 'PERPLEXITY_RESEARCH_FAILED',
+        service: 'Perplexity API',
+        data: { 
+          query,
+          model: options?.model || researchConfig.providers.perplexity.model,
+          isMedicalDiagnosis: !!options?.isMedicalDiagnosis
+        },
+        cause: error
+      });
     }
   }
 
@@ -772,7 +796,13 @@ export class PerplexityService {
       {
         onProgress: options?.onProgress,
         onError: (error: unknown) => {
-          console.error('Research error:', error)
+          const normalizedError = normalizeError(error);
+          logger.withMetadata({
+            module: 'PerplexityService',
+            method: 'performResearchWithLangchain',
+            query,
+            errorCode: normalizedError.code
+          }).error('Langchain research error', {}, normalizedError);
         },
       }
     )

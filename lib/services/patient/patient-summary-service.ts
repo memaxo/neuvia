@@ -3,6 +3,8 @@ import type { Json } from '@/lib/supabase'
 import { createServerClient } from '@/lib/supabase/clients'
 import { google } from '@ai-sdk/google'
 import { openai } from '@ai-sdk/openai'
+import { ApplicationError, ExternalServiceError, NotFoundError, SystemError } from '@/lib/errors'
+import logger from '@/lib/logger'
 /**
  * Patient Summary Service
  *
@@ -175,7 +177,19 @@ export class PatientSummaryService {
     documentType: DocumentType,
     documentDate: string
   ): Promise<DocumentExtraction> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'extractDocumentEssentials',
+      documentId,
+      documentType: documentType.type
+    })
+
     try {
+      moduleLogger.info('Extracting essential information from document', {
+        documentCategory: documentType.category,
+        documentLength: documentContent.length
+      })
+      
       // Use Gemini model from the AI SDK
       const model = google('gemini-2.0-flash-exp')
 
@@ -201,8 +215,18 @@ export class PatientSummaryService {
       try {
         extraction = JSON.parse(response.text)
       } catch (parseError) {
-        console.error('Error parsing Gemini response:', parseError)
-        throw new Error('Failed to parse extraction response')
+        moduleLogger.error('Failed to parse Gemini extraction response', 
+          { responseLength: response.text.length }, 
+          parseError
+        )
+        
+        throw new ExternalServiceError({
+          message: 'Failed to parse document extraction response',
+          service: 'Gemini',
+          code: 'PARSE_ERROR',
+          data: { documentId, responseLength: response.text.length },
+          cause: parseError
+        })
       }
 
       // Format the extraction with proper typing
@@ -218,15 +242,31 @@ export class PatientSummaryService {
         },
       }
 
+      moduleLogger.info('Document extraction successful', {
+        sectionCount: Object.keys(extraction.sections || {}).length,
+        confidence: extraction.metadata?.extractionConfidence || 0.7
+      })
+
       return result
     } catch (error) {
-      console.error(
-        `Error extracting essentials from document ${documentId}:`,
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+      
+      moduleLogger.error(
+        `Failed to extract essentials from document`,
+        { documentId, documentType: documentType.type },
         error
       )
-      throw new Error(
-        `Failed to extract essentials from document: ${error instanceof Error ? error.message : String(error)}`
-      )
+      
+      throw new ExternalServiceError({
+        message: 'Failed to extract document information',
+        service: 'Gemini',
+        code: 'EXTRACTION_FAILED',
+        data: { documentId, documentType: documentType.type },
+        cause: error
+      })
     }
   }
 
@@ -241,7 +281,18 @@ export class PatientSummaryService {
     patientId: string,
     extractions: DocumentExtraction[]
   ): Promise<PatientSummary> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'compilePatientSummary',
+      patientId,
+      documentCount: extractions.length
+    })
+
     try {
+      moduleLogger.info('Compiling patient summary from document extractions', {
+        documentIds: extractions.map(e => e.documentId)
+      })
+
       // Use OpenAI model from the AI SDK
       const model = openai('o3-mini')
 
@@ -263,6 +314,12 @@ export class PatientSummaryService {
 
       // Parse the responses into sections
       const sections = this.parseSummaryResponse(response.text)
+
+      if (Object.keys(sections).length === 0) {
+        moduleLogger.warn('No valid sections found in summary response', {
+          responseLength: response.text.length
+        })
+      }
 
       // Create the patient summary
       const summary: PatientSummary = {
@@ -299,15 +356,29 @@ export class PatientSummaryService {
         },
       }
 
+      moduleLogger.info('Successfully compiled patient summary', {
+        sectionCount: Object.keys(sections).length
+      })
+
       // Store the summary in Supabase
       await this.storeSummary(patientId, summary)
 
       return summary
     } catch (error) {
-      console.error(`Error compiling patient summary for ${patientId}:`, error)
-      throw new Error(
-        `Failed to compile patient summary: ${error instanceof Error ? error.message : String(error)}`
-      )
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+
+      moduleLogger.error('Failed to compile patient summary', {}, error)
+      
+      throw new ExternalServiceError({
+        message: 'Failed to compile patient summary',
+        service: 'OpenAI',
+        code: 'COMPILATION_FAILED',
+        data: { patientId, documentCount: extractions.length },
+        cause: error
+      })
     }
   }
 
@@ -391,12 +462,28 @@ export class PatientSummaryService {
     patientId: string,
     documents: PatientDocument[]
   ): Promise<PatientSummary> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'generatePatientSummary',
+      patientId,
+      documentCount: documents.length
+    })
+
     try {
-      console.log(
-        `Generating summary for patient ${patientId} with ${documents.length} documents`
-      )
+      moduleLogger.info('Starting patient summary generation')
+
+      if (documents.length === 0) {
+        moduleLogger.warn('No documents provided for summary generation')
+        throw new ValidationError({
+          message: 'Cannot generate summary: no documents provided',
+          code: 'NO_DOCUMENTS',
+          data: { patientId }
+        })
+      }
 
       // Stage 1: Extract essential information from each document in parallel
+      moduleLogger.info('Extracting essential information from documents')
+      
       const extractions = await Promise.all(
         documents.map(async (document) => {
           return this.extractDocumentEssentials(
@@ -411,12 +498,25 @@ export class PatientSummaryService {
       )
 
       // Stage 2: Compile the extractions into a comprehensive summary
+      moduleLogger.info('Compiling extractions into patient summary', {
+        extractionCount: extractions.length
+      })
+      
       return this.compilePatientSummary(patientId, extractions)
     } catch (error) {
-      console.error(`Error generating patient summary for ${patientId}:`, error)
-      throw new Error(
-        `Failed to generate patient summary: ${error instanceof Error ? error.message : String(error)}`
-      )
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+
+      moduleLogger.error('Failed to generate patient summary', {}, error)
+      
+      throw new SystemError({
+        message: 'Failed to generate patient summary',
+        code: 'SUMMARY_GENERATION_FAILED',
+        data: { patientId, documentCount: documents.length },
+        cause: error
+      })
     }
   }
 
@@ -430,7 +530,15 @@ export class PatientSummaryService {
     patientId: string,
     summary: PatientSummary
   ): Promise<void> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'storeSummary',
+      patientId
+    })
+
     try {
+      moduleLogger.info('Storing patient summary in database')
+
       // Create Supabase client and then use it
       const supabase = await createServerClient()
 
@@ -441,11 +549,21 @@ export class PatientSummaryService {
       const userId = user?.id || 'system'
 
       // Check if a verified summary already exists for this patient
-      const { data: existingSummary } = await supabase
+      const { data: existingSummary, error: fetchError } = await supabase
         .from('patient_summaries')
         .select('summary, verified_at, verified_by')
         .eq('patient_id', patientId)
         .maybeSingle()
+
+      if (fetchError) {
+        moduleLogger.error('Error fetching existing patient summary', {}, fetchError)
+        throw new SystemError({
+          message: 'Failed to fetch existing patient summary',
+          code: 'DB_FETCH_ERROR',
+          data: { patientId },
+          cause: fetchError
+        })
+      }
 
       // Preserve verification data if it exists
       const summaryData = summary as unknown as Json
@@ -456,9 +574,10 @@ export class PatientSummaryService {
         // Careful not to overwrite verification data
         verifiedAt = existingSummary.verified_at
         verifiedBy = existingSummary.verified_by
+        moduleLogger.info('Preserving existing verification data', { verifiedBy, hasVerifiedAt: !!verifiedAt })
       }
 
-      const { error } = await supabase.from('patient_summaries').upsert(
+      const { error: upsertError } = await supabase.from('patient_summaries').upsert(
         {
           patient_id: patientId,
           summary: summaryData,
@@ -475,14 +594,31 @@ export class PatientSummaryService {
         }
       )
 
-      if (error) throw error
+      if (upsertError) {
+        moduleLogger.error('Error upserting patient summary', {}, upsertError)
+        throw new SystemError({
+          message: 'Failed to store patient summary in database',
+          code: 'DB_UPSERT_ERROR',
+          data: { patientId },
+          cause: upsertError
+        })
+      }
 
-      console.log(`Successfully stored summary for patient ${patientId}`)
+      moduleLogger.info('Successfully stored patient summary in database')
     } catch (error) {
-      console.error('Error storing patient summary:', error)
-      throw new Error(
-        `Failed to store patient summary: ${error instanceof Error ? error.message : String(error)}`
-      )
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+
+      moduleLogger.error('Error storing patient summary', {}, error)
+      
+      throw new SystemError({
+        message: 'Failed to store patient summary',
+        code: 'STORAGE_FAILED',
+        data: { patientId },
+        cause: error
+      })
     }
   }
 
@@ -687,7 +823,15 @@ export class PatientSummaryService {
    * @returns Patient summary or null if not found
    */
   async getPatientSummary(patientId: string): Promise<PatientSummary | null> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'getPatientSummary',
+      patientId
+    })
+
     try {
+      moduleLogger.info('Retrieving patient summary from database')
+      
       // Get the Supabase client
       const supabase = await createServerClient()
 
@@ -698,15 +842,45 @@ export class PatientSummaryService {
         .eq('patient_id', patientId)
         .single()
 
-      if (error || !data) {
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Not found error
+          moduleLogger.info('Patient summary not found in database')
+          return null
+        }
+        
+        moduleLogger.error('Error fetching patient summary from database', {}, error)
+        throw new SystemError({
+          message: 'Failed to retrieve patient summary',
+          code: 'DB_FETCH_ERROR',
+          data: { patientId },
+          cause: error
+        })
+      }
+
+      if (!data || !data.summary) {
+        moduleLogger.info('Patient summary not found or empty')
         return null
       }
 
+      moduleLogger.info('Successfully retrieved patient summary')
+      
       // Parse the summary
       return data.summary as unknown as PatientSummary
     } catch (error) {
-      console.error(`Error retrieving patient summary for ${patientId}:`, error)
-      return null
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error
+      }
+
+      moduleLogger.error('Failed to retrieve patient summary', {}, error)
+      
+      throw new SystemError({
+        message: 'Failed to retrieve patient summary',
+        code: 'RETRIEVAL_FAILED',
+        data: { patientId },
+        cause: error
+      })
     }
   }
 

@@ -5,6 +5,8 @@ import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 import type { BaseCallbackHandler } from '@langchain/core/callbacks'
 import { StringOutputParser } from '@langchain/core/output_parsers'
+import { ApplicationError, ExternalServiceError, SystemError } from '@/lib/errors'
+import logger from '@/lib/logger'
 /**
  * Patient Summary LangChain Integration
  *
@@ -363,7 +365,36 @@ export async function extractPatientSummary(
   onProgress?: ProgressCallback,
   onStatus?: StatusCallback
 ): Promise<PatientSummaryResult> {
+  const moduleLogger = logger.withMetadata({
+    module: 'PatientSummary',
+    method: 'extractPatientSummary',
+    workflowId: workflowId || undefined,
+    documentLength: documentText?.length
+  })
+
   try {
+    if (!documentText || documentText.trim() === '') {
+      moduleLogger.warn('Empty document text provided for extraction')
+      
+      onStatus?.({
+        status: 'error',
+        progress: 0,
+        error: 'Empty document text provided',
+        phase: 'validation',
+      })
+      
+      return {
+        success: false,
+        summary: '',
+        error: 'Cannot extract summary from empty document',
+      }
+    }
+
+    moduleLogger.info('Starting patient summary extraction', {
+      useGemini: options.useGemini ?? true,
+      temperature: options.temperature ?? 0.1
+    })
+
     // Update status if callback provided
     onStatus?.({
       status: 'processing',
@@ -392,6 +423,7 @@ export async function extractPatientSummary(
     const result = await runWithWorkflow<string>(
       'extraction' as WorkflowStep,
       async () => {
+        moduleLogger.info('Invoking extraction sequence')
         // Call the sequence with the document text
         return extractionSequence.invoke(
           { documentText: documentText.slice(0, 32000) }, // Limit text to avoid token limits
@@ -405,8 +437,18 @@ export async function extractPatientSummary(
     )
 
     if (!result) {
-      throw new Error('Failed to extract patient summary')
+      moduleLogger.error('Extraction sequence returned empty result')
+      throw new ExternalServiceError({
+        message: 'Failed to extract patient summary - empty result returned',
+        service: options.useGemini ? 'Gemini' : 'OpenAI',
+        code: 'EMPTY_EXTRACTION_RESULT',
+        data: { workflowId: workflowId || undefined }
+      })
     }
+
+    moduleLogger.info('Patient summary extraction completed successfully', {
+      summaryLength: result.length
+    })
 
     // Report completion
     onProgress?.(100, 'Extraction complete')
@@ -424,9 +466,34 @@ export async function extractPatientSummary(
     }
   } catch (error) {
     // Handle extraction errors
-    console.error('Error extracting patient summary:', error)
+    if (error instanceof ApplicationError) {
+      // Log but don't rewrap if it's already an ApplicationError
+      moduleLogger.error('Patient summary extraction failed', {}, error)
+      
+      const errorMessage = error.message
+      
+      // Report error
+      onStatus?.({
+        status: 'error',
+        progress: 0,
+        error: errorMessage,
+        phase: 'error',
+      })
+      
+      return {
+        success: false,
+        summary: '',
+        error: errorMessage,
+      }
+    }
 
+    // For other types of errors, log and wrap in a SystemError
     const errorMessage = error instanceof Error ? error.message : String(error)
+    
+    moduleLogger.error('Error extracting patient summary', 
+      { workflowId: workflowId || undefined },
+      error
+    )
 
     // Report error
     onStatus?.({
@@ -696,19 +763,51 @@ export async function* streamPatientSummary(
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   retries: number = 3,
-  delay: number = 1000
+  delay: number = 1000,
+  loggerMetadata?: Record<string, any>
 ): Promise<T> {
+  const moduleLogger = logger.withMetadata({
+    module: 'PatientSummary',
+    method: 'retryWithBackoff',
+    maxRetries: retries,
+    initialDelay: delay,
+    ...loggerMetadata
+  })
+
   try {
     return await fn()
   } catch (error) {
     // Check if we should retry
-    if (retries <= 0) throw error
+    if (retries <= 0) {
+      moduleLogger.error('Retry attempts exhausted', {
+        remainingRetries: 0
+      }, error)
+      
+      if (error instanceof ApplicationError) {
+        throw error
+      } else {
+        throw new SystemError({
+          message: 'Operation failed after multiple retry attempts',
+          code: 'RETRY_EXHAUSTED',
+          cause: error,
+          data: { maxRetries: retries }
+        })
+      }
+    }
+
+    // Log the retry attempt
+    moduleLogger.warn('Operation failed, retrying with backoff', {
+      remainingRetries: retries - 1,
+      currentDelay: delay,
+      nextDelay: delay * 2,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    })
 
     // Wait with exponential backoff
     await new Promise((resolve) => setTimeout(resolve, delay))
 
     // Retry with increased delay
-    return retryWithBackoff(fn, retries - 1, delay * 2)
+    return retryWithBackoff(fn, retries - 1, delay * 2, loggerMetadata)
   }
 }
 
