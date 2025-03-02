@@ -11,7 +11,7 @@
 import fs from 'fs'
 import path from 'path'
 import { generateApi } from 'swagger-typescript-api'
-import { openAPISpec, getOpenAPISpecAsJSON } from '../lib/api/openapi'
+import { getOpenAPISpecAsJSON } from '../lib/api/openapi'
 
 // Make sure API paths are registered
 import '../lib/api/openapi/paths'
@@ -20,7 +20,6 @@ import '../lib/api/openapi/paths'
  * Configuration
  */
 const OUTPUT_DIR = path.resolve(__dirname, '../lib/api/client')
-const API_CLIENT_PATH = path.join(OUTPUT_DIR, 'api-client.ts')
 const HOOKS_PATH = path.join(OUTPUT_DIR, 'hooks')
 const MODELS_PATH = path.join(OUTPUT_DIR, 'models')
 const TEMP_SPEC_PATH = path.join(__dirname, 'temp-openapi.json')
@@ -47,7 +46,7 @@ async function generateApiClient() {
     fs.writeFileSync(TEMP_SPEC_PATH, getOpenAPISpecAsJSON())
     
     // Generate API client
-    const result = await generateApi({
+    await generateApi({
       name: 'ApiClient',
       output: OUTPUT_DIR,
       input: TEMP_SPEC_PATH,
@@ -80,7 +79,7 @@ async function generateApiClient() {
           // Customize route generation if needed
           return routeData
         },
-        onFormatTypeName: (typeName, rawTypeName) => {
+        onFormatTypeName: (typeName) => {
           // Format type names if needed
           return typeName
         },
@@ -139,6 +138,9 @@ export * from './useResearch'
   
   // Generate research hooks
   generateResearchHooks()
+  
+  // Generate report hooks
+  generateReportHooks()
 }
 
 /**
