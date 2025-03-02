@@ -2,7 +2,7 @@
 
 import { DocumentPreview } from '@/components/chat/document-preview'
 import { Button } from '@/components/ui/button'
-import type { WorkflowStep } from '@/lib/workflow/types'
+import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 
 interface ActiveDocument {
   id: string
@@ -11,21 +11,23 @@ interface ActiveDocument {
   kind: 'text' | 'code' | 'spreadsheet'
 }
 
-interface WorkflowStatusDisplayProps {
+interface VerificationAndReportPanelProps {
   currentStep: WorkflowStep
+  currentPhase?: ProcessingPhase
   activeDocument?: ActiveDocument | null
   onGenerateReport: () => void
   onSkipReport: () => void
   onContinue: () => void
 }
 
-export function WorkflowStatusDisplay({
+export function VerificationAndReportPanel({
   currentStep,
+  currentPhase,
   activeDocument,
   onGenerateReport,
   onSkipReport,
   onContinue,
-}: WorkflowStatusDisplayProps) {
+}: VerificationAndReportPanelProps) {
   return (
     <div className="mb-6">
       {currentStep === 'idle' && (
@@ -37,7 +39,8 @@ export function WorkflowStatusDisplay({
         </div>
       )}
 
-      {currentStep === 'extraction' && (
+      {(currentStep === 'extracting' || currentStep === 'extraction' ||
+        currentPhase === 'extraction') && (
         <div className="bg-secondary/10 rounded border p-4">
           <h2 className="font-semibold">Extraction In Progress...</h2>
           <p className="mt-2 text-sm">

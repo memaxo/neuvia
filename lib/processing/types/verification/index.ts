@@ -205,6 +205,11 @@ export interface VerificationOptions {
    * Additional metadata
    */
   metadata?: Record<string, any>
+
+  /**
+   * Optional verification items to include
+   */
+  items?: VerificationItem[]
 }
 
 /**

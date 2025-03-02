@@ -1,11 +1,10 @@
 import { getDbCompatibleMetadata } from '@/lib/processing/types/verification'
 /**
- * Enhanced Document Service Implementation
+ * Document Service Implementation
  *
- * This file provides improvement examples for the DocumentService class
+ * Centralized service for document processing, extraction, and storage
  */
 import { createBrowserClient } from '@/lib/supabase/clients'
-import { workflowManager } from '@/lib/workflow/workflow-manager'
 import { DocxLoader } from '@langchain/community/document_loaders/fs/docx'
 import { WebPDFLoader } from '@langchain/community/document_loaders/web/pdf'
 import { Document } from 'langchain/document'
@@ -24,7 +23,6 @@ import type {
   ExtractedDocument,
 } from '@/lib/processing/types/extraction'
 import type { Json } from '@/lib/supabase'
-import type { WorkflowOptions, WorkflowStep } from '@/lib/workflow/types'
 
 /**
  * Document processing options with enhanced metadata
@@ -78,6 +76,15 @@ interface DocumentTypeDetectionResult {
 }
 
 /**
+ * Upload document result
+ */
+interface UploadDocumentResult {
+  documentId: string
+  fileName: string
+  extractionStatus?: string
+}
+
+/**
  * Error with detailed fields for better debugging and handling
  */
 class DocumentServiceError extends Error {
@@ -100,9 +107,10 @@ class DocumentServiceError extends Error {
 }
 
 /**
- * Enhanced Document Service with improved functionality
+ * Document Service with centralized functionality for
+ * document uploading, extraction, and storage
  */
-export class EnhancedDocumentService {
+export class DocumentService {
   private supabase = createBrowserClient()
 
   /**
@@ -835,7 +843,7 @@ export class EnhancedDocumentService {
   }
 
   /**
-   * Enhanced document type detection using content analysis
+   * Document type detection using content analysis
    *
    * @param content Document content
    * @returns Detected document type with confidence
@@ -981,7 +989,7 @@ export class EnhancedDocumentService {
       // Process each file in the batch in parallel
       const results = await Promise.allSettled(
         batch.map((file) =>
-          this.processDocumentWithOptions(file, {
+          this.processDocument(file, {
             ...options,
             patientId,
           })
@@ -1002,13 +1010,13 @@ export class EnhancedDocumentService {
   }
 
   /**
-   * Enhanced processDocumentWithOptions with improved extraction and error handling
+   * Process a document with extraction and analysis
    *
    * @param file Document file to process
    * @param options Document processing options
    * @returns ExtractedDocument
    */
-  async processDocumentWithOptions(
+  async processDocument(
     file: File,
     options?: DocumentProcessingOptions
   ): Promise<ExtractedDocument> {
@@ -1196,7 +1204,7 @@ export class EnhancedDocumentService {
   }
 
   /**
-   * Enhanced saveDocument with improved metadata handling and PHI safeguards
+   * Save document to database with improved metadata handling
    *
    * @param extractedDocument Extracted document
    * @param departmentId Optional department ID
@@ -1322,204 +1330,211 @@ export class EnhancedDocumentService {
   }
 
   /**
-   * Upload a document with enhanced workflow and progress tracking
+   * Upload a document to storage and prepare for processing
    *
    * @param patientId Patient ID
    * @param file File to upload
    * @param options Upload options
-   * @returns Upload result with document ID and workflow ID
+   * @returns Upload result with document ID
    */
   async uploadDocument(
     patientId: string,
     file: File,
-    options?: WorkflowOptions & {
+    options?: {
       documentType?: DocumentType
       departmentId?: string
       priority?: 'low' | 'normal' | 'high'
       tags?: string[]
+      onStatusUpdate?: (status: ProcessingStatus) => void
     }
-  ): Promise<{
-    documentId: string
-    fileName: string
-    workflowId?: string
-    extractionStatus?: string
-  }> {
-    // Create a workflow ID if not provided
-    const workflowId = crypto.randomUUID()
+  ): Promise<UploadDocumentResult> {
+    // Provide default status callback if none supplied
+    const onStatusUpdate = options?.onStatusUpdate ?? (() => {})
+    
+    try {
+      // Update status to start of upload
+      onStatusUpdate({
+        status: 'processing',
+        progress: 0,
+        currentStep: 'Starting document upload',
+        phase: 'uploading',
+      })
 
-    // Use workflow manager to handle the operation with proper state tracking
-    return workflowManager.handleWorkflowOperation(
-      workflowId,
-      'extraction' as WorkflowStep,
-      async () => {
-        // Cast options to any to avoid type issues - this is a temporary fix
-        // A proper fix would involve aligning the types with workflowManager
-        const progressOptions = options as any
-        workflowManager.reportProgress(progressOptions, 'upload', 0)
+      // Validate file
+      if (!(await this.validateFileType(file))) {
+        throw new DocumentServiceError(
+          `Unsupported file type: ${file.type}`,
+          'UNSUPPORTED_FILE_TYPE',
+          false,
+          { fileType: file.type }
+        )
+      }
 
-        try {
-          // Upload file to Supabase storage
-          const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-          const filePath = `patient-documents/${patientId}/${fileName}`
+      if (!(await this.validateFileSize(file))) {
+        throw new DocumentServiceError(
+          `File size exceeds maximum allowed size of ${this.maxFileSize / (1024 * 1024)}MB`,
+          'FILE_TOO_LARGE',
+          false,
+          { fileSize: file.size, maxSize: this.maxFileSize }
+        )
+      }
 
-          // Log the beginning of upload
-          console.log(`Starting upload of ${fileName} for patient ${patientId}`)
+      // Upload file to Supabase storage
+      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+      const filePath = `patient-documents/${patientId}/${fileName}`
 
-          const { error: uploadError } = await this.supabase.storage
-            .from('documents')
-            .upload(filePath, file, {
-              cacheControl: '3600',
-              upsert: true,
-              contentType: file.type,
-            })
+      onStatusUpdate({
+        status: 'processing',
+        progress: 10,
+        currentStep: 'Uploading file to storage',
+        phase: 'uploading',
+      })
 
-          if (uploadError) {
-            throw new DocumentServiceError(
-              `Upload failed: ${uploadError.message}`,
-              'STORAGE_ERROR',
-              true,
-              { uploadError }
-            )
-          }
+      // Log the beginning of upload
+      console.log(`Starting upload of ${fileName} for patient ${patientId}`)
 
-          workflowManager.reportProgress(progressOptions, 'upload', 30)
+      const { error: uploadError } = await this.supabase.storage
+        .from('documents')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: file.type,
+        })
 
-          // Create a signed URL
-          const { data: urlData } = await this.supabase.storage
-            .from('documents')
-            .createSignedUrl(filePath, 60 * 60)
+      if (uploadError) {
+        throw new DocumentServiceError(
+          `Upload failed: ${uploadError.message}`,
+          'STORAGE_ERROR',
+          true,
+          { uploadError }
+        )
+      }
 
-          if (!urlData?.signedUrl) {
-            throw new DocumentServiceError(
-              'Failed to generate signed URL',
-              'SIGNED_URL_ERROR',
-              true
-            )
-          }
+      onStatusUpdate({
+        status: 'processing',
+        progress: 50,
+        currentStep: 'Creating document record',
+        phase: 'uploading',
+      })
 
-          workflowManager.reportProgress(progressOptions, 'upload', 50)
+      // Create a signed URL for later processing
+      const { data: urlData } = await this.supabase.storage
+        .from('documents')
+        .createSignedUrl(filePath, 60 * 60)
 
-          // Insert a new record in patient_documents
-          const documentType = options?.documentType || {
-            category: 'clinical',
-            type: 'note',
-          }
+      if (!urlData?.signedUrl) {
+        throw new DocumentServiceError(
+          'Failed to generate signed URL',
+          'SIGNED_URL_ERROR',
+          true
+        )
+      }
 
-          const { data: docData, error: docError } = await this.supabase
-            .from('patient_documents')
-            .insert({
-              patient_id: patientId,
-              file_name: file.name,
-              file_type: file.type,
-              file_size: file.size,
-              storage_path: filePath,
-              title: file.name,
-              category:
-                (documentType.category as
-                  | 'clinical'
-                  | 'lab'
-                  | 'imaging'
-                  | 'prescription'
-                  | 'administrative') || 'clinical',
-              document_type: documentType as unknown as Json,
-              file_path: filePath,
-              document_date: new Date().toISOString().split('T')[0],
-              checksum: 'auto-generated',
-              processing_status: 'uploaded',
-              department: options?.departmentId,
-              metadata: getDbCompatibleMetadata({
-                workflowId,
-                uploadedAt: new Date().toISOString(),
+      // Insert a new record in patient_documents
+      const documentType = options?.documentType || {
+        category: 'clinical',
+        type: 'note',
+      }
+
+      const { data: docData, error: docError } = await this.supabase
+        .from('patient_documents')
+        .insert({
+          patient_id: patientId,
+          file_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          storage_path: filePath,
+          title: file.name,
+          category:
+            (documentType.category as
+              | 'clinical'
+              | 'lab'
+              | 'imaging'
+              | 'prescription'
+              | 'administrative') || 'clinical',
+          document_type: documentType as unknown as Json,
+          file_path: filePath,
+          document_date: new Date().toISOString().split('T')[0],
+          checksum: 'auto-generated',
+          processing_status: 'uploaded',
+          department: options?.departmentId,
+          metadata: getDbCompatibleMetadata({
+            uploadedAt: new Date().toISOString(),
+            priority: options?.priority || 'normal',
+            tags: options?.tags || [],
+          }) as Json,
+        })
+        .select('id')
+        .single()
+
+      if (docError || !docData) {
+        throw new DocumentServiceError(
+          `Document record creation failed: ${docError?.message || 'Unknown error'}`,
+          'DATABASE_ERROR',
+          true,
+          { docError }
+        )
+      }
+
+      onStatusUpdate({
+        status: 'processing',
+        progress: 80,
+        currentStep: 'Starting document extraction',
+        phase: 'uploading',
+      })
+
+      // Start extraction process asynchronously via serverless function
+      try {
+        await this.supabase.functions.invoke(
+          'document-extraction',
+          {
+            body: {
+              documentId: docData.id,
+              fileUrl: urlData.signedUrl,
+              fileName: file.name,
+              fileType: file.type,
+              options: {
+                documentType: options?.documentType,
+                departmentId: options?.departmentId,
                 priority: options?.priority || 'normal',
                 tags: options?.tags || [],
-              }) as Json,
-            })
-            .select('id')
-            .single()
-
-          if (docError || !docData) {
-            throw new DocumentServiceError(
-              `Document record creation failed: ${docError?.message || 'Unknown error'}`,
-              'DATABASE_ERROR',
-              true,
-              { docError }
-            )
-          }
-
-          workflowManager.reportProgress(progressOptions, 'upload', 70)
-
-          // Update workflow state
-          await workflowManager.updateWorkflowState(
-            workflowId,
-            'extraction' as WorkflowStep,
-            {
-              documentId: docData.id,
-              patientId,
-              fileInfo: {
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                path: filePath,
               },
-            }
-          )
-
-          workflowManager.reportProgress(progressOptions, 'upload', 80)
-
-          // Start extraction process asynchronously via serverless function
-          const { error: fnError } = await this.supabase.functions.invoke(
-            'document-extraction',
-            {
-              body: {
-                documentId: docData.id,
-                fileUrl: urlData.signedUrl,
-                fileName: file.name,
-                fileType: file.type,
-                workflowId,
-                options: {
-                  documentType: options?.documentType,
-                  departmentId: options?.departmentId,
-                  priority: options?.priority || 'normal',
-                  tags: options?.tags || [],
-                },
-              },
-            }
-          )
-
-          if (fnError) {
-            // Log error but don't fail - extraction will be retried
-            console.warn(
-              `Extraction function invocation had an error: ${fnError.message}. Will be retried.`
-            )
+            },
           }
+        )
+      } catch (fnError) {
+        // Log error but don't fail - extraction will be retried later
+        console.warn(
+          `Extraction function invocation had an error. Will be retried.`,
+          fnError
+        )
+      }
 
-          workflowManager.reportProgress(progressOptions, 'upload', 100)
+      onStatusUpdate({
+        status: 'success',
+        progress: 100,
+        currentStep: 'Document upload completed',
+        phase: 'uploading',
+      })
 
-          return {
-            documentId: docData.id,
-            fileName: file.name,
-            workflowId,
-            extractionStatus: 'started',
-          }
-        } catch (error) {
-          // Enhanced error handling with recovery options
-          console.error('Document upload error:', error)
+      return {
+        documentId: docData.id,
+        fileName: file.name,
+        extractionStatus: 'started',
+      }
+    } catch (error) {
+      // Enhanced error handling
+      console.error('Document upload error:', error)
 
-          // Update workflow with error state
-          await workflowManager.updateWorkflowState(workflowId, 'error', {
-            error: error instanceof Error ? error.message : String(error),
-            errorCode:
-              error instanceof DocumentServiceError
-                ? error.code
-                : 'UNKNOWN_ERROR',
-            errorTime: new Date().toISOString(),
-          })
+      onStatusUpdate({
+        status: 'error',
+        progress: 0,
+        error: error instanceof Error ? error.message : String(error),
+        phase: 'uploading',
+      })
 
-          throw error
-        }
-      },
-      options as any // Temporary fix to make the types align
-    )
+      throw error
+    }
   }
 
   /**
@@ -1538,7 +1553,6 @@ export class EnhancedDocumentService {
   ): Promise<{
     success: boolean
     documentId: string
-    workflowId?: string
   }> {
     try {
       // Fetch the document record
@@ -1583,9 +1597,6 @@ export class EnhancedDocumentService {
         )
       }
 
-      // Create a new workflow ID
-      const workflowId = crypto.randomUUID()
-
       // Update the document status with safe metadata handling
       await this.supabase
         .from('patient_documents')
@@ -1597,7 +1608,6 @@ export class EnhancedDocumentService {
               : {}),
             reprocessing: true,
             reprocessingTime: new Date().toISOString(),
-            workflowId,
             extractionLevel: options?.extractionLevel || 'comprehensive',
           }) as Json,
         })
@@ -1610,7 +1620,6 @@ export class EnhancedDocumentService {
           fileUrl: urlData.signedUrl,
           fileName: document.title || 'unknown',
           fileType: document.file_type,
-          workflowId,
           options: {
             documentType: document.document_type,
             departmentId: document.department,
@@ -1623,7 +1632,6 @@ export class EnhancedDocumentService {
       return {
         success: true,
         documentId,
-        workflowId,
       }
     } catch (error) {
       console.error('Error retrying extraction:', error)
@@ -1661,253 +1669,4 @@ export class EnhancedDocumentService {
 }
 
 // Export singleton instance
-export const enhancedDocumentService = new EnhancedDocumentService()
-
-/**
- * Example 1: Enhanced Extraction of Complex PDFs
- *
- * This example shows how to use the enhanced document service
- * for better PDF extraction with section awareness
- */
-async function extractComplexMedicalPDF(file: File, patientId: string) {
-  try {
-    // Use enhanced extraction options
-    const extractionOptions: DocumentProcessingOptions = {
-      patientId,
-      extractionLevel: 'comprehensive', // Use the most thorough extraction
-      preserveSections: true, // Keep document sections intact
-      extractMetadata: true, // Extract document metadata
-      prioritizeFields: [
-        'patient_name',
-        'medical_record_number',
-        'date_of_service',
-      ],
-    }
-
-    // Process the document
-    const result = await enhancedDocumentService.processDocumentWithOptions(
-      file,
-      extractionOptions
-    )
-
-    console.log(`Document processed successfully: ${result.id}`)
-    console.log(
-      `Detected document type: ${result.documentType.type} (${result.documentType.category})`
-    )
-    console.log(
-      `Detected sections: ${result.extractedData.metadata.detectedSections?.join(', ')}`
-    )
-
-    return result
-  } catch (error) {
-    if (error instanceof DocumentServiceError) {
-      console.error(
-        `Error extracting document: ${error.message} (${error.code})`
-      )
-      // Handle specific error codes
-      if (error.code === 'FILE_TOO_LARGE') {
-        // Offer to split the file or use a different upload method
-      } else if (error.code === 'EXTRACTION_FAILED' && error.recoverable) {
-        // Offer to retry with different options
-      }
-    } else {
-      console.error('Unexpected error:', error)
-    }
-    throw error
-  }
-}
-
-/**
- * Example 2: Batch Processing Multiple Documents
- *
- * This example demonstrates how to efficiently process
- * multiple documents in one operation
- */
-async function processBatchOfDocuments(files: File[], patientId: string) {
-  // Set up progress tracking
-  const progressBar = {
-    update: (progress: number) => console.log(`Processing: ${progress}%`),
-  }
-
-  try {
-    // Process all files in batch
-    const result = await enhancedDocumentService.batchProcessDocuments(
-      files,
-      patientId,
-      {
-        extractionLevel: 'enhanced',
-        onStatusUpdate: (status) => {
-          progressBar.update(status.progress)
-        },
-      }
-    )
-
-    console.log(`Successfully processed ${result.successful.length} documents`)
-
-    if (result.failed.length > 0) {
-      console.warn(`Failed to process ${result.failed.length} documents`)
-
-      // Offer retry options for failed documents
-      const retryPrompt = `Would you like to retry processing ${result.failed.length} failed documents with more comprehensive extraction?`
-
-      // Show retry UI...
-    }
-
-    return result.successful
-  } catch (error) {
-    console.error('Batch processing error:', error)
-    throw error
-  }
-}
-
-/**
- * Example 3: Medical Document Verification and Integration
- *
- * This example shows how to use extracted data for verification and
- * integration with the patient summary
- */
-async function processAndVerifyDocument(file: File, patientId: string) {
-  // First, process the document
-  const extractedDocument =
-    await enhancedDocumentService.processDocumentWithOptions(file, {
-      patientId,
-      extractionLevel: 'comprehensive',
-    })
-
-  // Check if document extraction was successful
-  if (!extractedDocument.isSuccessful) {
-    throw new Error(
-      `Document extraction failed: ${extractedDocument.errorMessage}`
-    )
-  }
-
-  // Start the verification workflow
-  const workflowId = crypto.randomUUID()
-  await workflowManager.updateWorkflowState(
-    workflowId,
-    'verification' as WorkflowStep,
-    {
-      documentId: extractedDocument.id,
-      patientId,
-      extractedAt: new Date().toISOString(),
-    }
-  )
-
-  // Create a separate Supabase client for the example
-  const supabase = createBrowserClient()
-
-  // Fetch the patient information from the database
-  const { data: patient } = await supabase
-    .from('patients')
-    .select('*')
-    .eq('id', patientId)
-    .single()
-
-  if (!patient) {
-    throw new Error(`Patient not found: ${patientId}`)
-  }
-
-  // Prepare verification context with patient information
-  const verificationContext = {
-    patientName: `${patient.first_name} ${patient.last_name}`,
-    patientId: patient.id,
-    dateOfBirth: patient.date_of_birth,
-    documentId: extractedDocument.id,
-    documentType: extractedDocument.documentType,
-  }
-
-  // Return the data needed for the verification UI
-  return {
-    extractedDocument,
-    verificationContext,
-    workflowId,
-  }
-}
-
-/**
- * Example 4: Building a Patient Timeline from Documents
- *
- * This example shows how to extract dates from documents
- * to build a comprehensive patient timeline
- */
-async function buildPatientTimeline(patientId: string) {
-  // Use a properly encapsulated method to parse dates
-  function parseDate(dateString: string): string {
-    // Simple implementation - would be more robust in production
-    try {
-      return new Date(dateString).toISOString().split('T')[0]
-    } catch (e) {
-      return new Date().toISOString().split('T')[0] // fallback
-    }
-  }
-
-  // Create a separate client for examples instead of using private property
-  const supabase = createBrowserClient()
-
-  // Fetch all patient documents
-  const { data: documents, error } = await supabase
-    .from('patient_documents')
-    .select('*')
-    .eq('patient_id', patientId)
-    .order('document_date', { ascending: false })
-
-  if (error) {
-    throw new Error(`Failed to fetch patient documents: ${error.message}`)
-  }
-
-  // Extract key dates and events
-  const timelineEvents = []
-
-  for (const doc of documents) {
-    // Extract document type and date
-    const documentType = doc.document_type
-    const documentDate = doc.document_date
-
-    // Add document as timeline event
-    timelineEvents.push({
-      date: documentDate,
-      type: 'document',
-      title: doc.title,
-      category: doc.category,
-      documentId: doc.id,
-    })
-
-    // If content is available, extract additional events
-    if (doc.content_text) {
-      // Extract dates from content using regex
-      const dateRegex =
-        /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4}|\d{2})|(\w+ \d{1,2}, \d{4})/g
-      const matches = doc.content_text.match(dateRegex)
-
-      if (matches) {
-        // Process each date found
-        for (const match of matches) {
-          // Extract context around the date (30 chars before and after)
-          const index = doc.content_text.indexOf(match)
-          const start = Math.max(0, index - 30)
-          const end = Math.min(
-            doc.content_text.length,
-            index + match.length + 30
-          )
-          const context = doc.content_text.substring(start, end)
-
-          // Create a timeline event
-          timelineEvents.push({
-            date: parseDate(match),
-            type: 'extracted_date',
-            context,
-            documentId: doc.id,
-            confidence: 0.7, // Confidence score for regex extraction
-          })
-        }
-      }
-    }
-  }
-
-  // Sort timeline events by date
-  timelineEvents.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  )
-
-  return timelineEvents
-}
+export const documentService = new DocumentService()

@@ -8,6 +8,7 @@ import type {
   VerificationMetadata,
   MessageMetadata as WorkflowMessageMetadata,
   WorkflowStep,
+  ProcessingPhase,
 } from '@/lib/workflow/types'
 import type { Message as AIMessage } from 'ai'
 
@@ -252,7 +253,7 @@ export interface ExtendedChatContextType
     /**
      * Current verification status
      */
-    verificationStatus: 'pending' | 'in_progress' | 'completed'
+    verificationStatus: 'pending' | 'in_progress' | 'completed' | 'failed'
 
     /**
      * Items that require verification
@@ -314,6 +315,24 @@ export interface ExtendedChatContextType
    * Access to the workflow context
    */
   workflow: UseProcessingWorkflowResult
+
+  /**
+   * Generate a report
+   */
+  generateReport: () => Promise<void>
+
+  /**
+   * Format a report with specified format
+   */
+  formatReport: (format: any) => Promise<void>
+
+  /**
+   * Report generation state
+   */
+  reportGeneration?: {
+    isComplete: boolean
+    format: any | null
+  }
 }
 
 /**
@@ -418,6 +437,20 @@ export interface ChatState {
     verificationStatus: 'pending' | 'in_progress' | 'completed' | 'failed'
     verificationItems: VerificationItem[]
   }
+  workflow: {
+    currentStep: WorkflowStep
+    processingStatus: {
+      status: 'idle' | 'processing' | 'success' | 'error'
+      progress: number
+      phase: ProcessingPhase
+    }
+    workflowError: string | null
+    data: Record<string, any>
+  }
+  reportGeneration?: {
+    isComplete: boolean
+    format: any | null
+  }
 }
 
 export const initialChatState: ChatState = {
@@ -432,6 +465,16 @@ export const initialChatState: ChatState = {
     summaryVersions: [],
     verificationStatus: 'pending',
     verificationItems: [],
+  },
+  workflow: {
+    currentStep: 'idle',
+    processingStatus: {
+      status: 'idle',
+      progress: 0,
+      phase: 'initialization',
+    },
+    workflowError: null,
+    data: {},
   },
 }
 

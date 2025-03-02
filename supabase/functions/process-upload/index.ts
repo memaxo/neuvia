@@ -11,15 +11,21 @@ interface ProcessUploadRequest {
   fileSize: number
   fileType: string
   userId: string
-  metadata?: {
-    patientId?: string
-    documentType?: string
-    studyDate?: string
-  }
+  patientId?: string
+  documentType?: string
+  departmentId?: string
 }
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/dicom', '.nii']
-const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+// File upload configuration
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png'
+]
+const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
 
 // Create a Supabase client with the service role key
 const supabaseAdmin = createClient(
@@ -33,6 +39,12 @@ const supabaseAdmin = createClient(
   }
 )
 
+/**
+ * Process Upload Function
+ *
+ * Simplified Edge Function that validates file requests and generates upload URLs.
+ * No workflow state or document processing logic is included here.
+ */
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -46,60 +58,57 @@ Deno.serve(async (req) => {
       throw new Error('No authorization header')
     }
 
+    // Parse request
     const {
       fileName,
       fileSize,
       fileType,
       userId,
-      metadata,
+      patientId,
+      documentType,
+      departmentId,
     }: ProcessUploadRequest = await req.json()
 
     // Validate file type
-    if (!ALLOWED_TYPES.some((type) => fileType.toLowerCase().includes(type))) {
+    if (!ALLOWED_TYPES.includes(fileType.toLowerCase())) {
       throw new Error(
-        'Invalid file type. Allowed types: JPEG, PNG, DICOM, NIfTI'
+        'Invalid file type. Allowed types: PDF, plain text, Word documents, JPEG, PNG'
       )
     }
 
     // Validate file size
     if (fileSize > MAX_FILE_SIZE) {
-      throw new Error('File too large. Maximum size: 100MB')
+      throw new Error('File too large. Maximum size: 20MB')
     }
 
-    // Generate a unique file path with metadata
+    // Generate a unique file path
     const timestamp = new Date().toISOString()
     const fileExt = fileName.split('.').pop()
     const uniqueFileName = `${timestamp}-${crypto.randomUUID()}.${fileExt}`
-    const filePath = metadata?.patientId
-      ? `uploads/${userId}/${metadata.patientId}/${uniqueFileName}`
+    
+    // Structure file path based on patient ID if provided
+    const filePath = patientId
+      ? `patient-documents/${patientId}/${uniqueFileName}`
       : `uploads/${userId}/${uniqueFileName}`
 
     // Generate presigned URL for upload
     const { data, error } = await supabaseAdmin.storage
-      .from('scans')
+      .from('documents')
       .createSignedUploadUrl(filePath)
 
     if (error) {
       throw error
     }
 
-    // Log the upload attempt
-    await supabaseAdmin.from('upload_logs').insert({
-      user_id: userId,
-      file_name: fileName,
-      file_size: fileSize,
-      file_type: fileType,
-      patient_id: metadata?.patientId,
-      document_type: metadata?.documentType,
-      study_date: metadata?.studyDate,
-      status: 'pending',
-      path: filePath,
-    })
-
     return new Response(
       JSON.stringify({
         uploadUrl: data.signedUrl,
         path: filePath,
+        fileName,
+        fileType,
+        patientId,
+        documentType,
+        departmentId
       }),
       {
         headers: {
@@ -128,6 +137,6 @@ Deno.serve(async (req) => {
   curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/process-upload' \
     --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
     --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
+    --data '{"fileName":"example.pdf","fileSize":1024,"fileType":"application/pdf","userId":"user-123"}'
 
 */

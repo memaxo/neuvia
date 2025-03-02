@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 // Internal components
 import { useToast } from '@/components/ui/use-toast'
-import { useChatContext } from '@/contexts/chat-context'
+import { useChatStore } from '@/stores/chat-store'
 import type {
   ChatMode,
   ChatState as ChatStateType,
@@ -21,7 +21,7 @@ import type { ExtractedData } from '@/lib/processing/types/extraction'
 import type { VerificationItem } from '@/lib/processing/types/verification'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 
-import { MessageInput } from '@/components/chat/input/text-input'
+import { ChatInput } from '@/components/chat/input/ChatInput'
 import { ChatMessageList } from '@/components/chat/message/message-list'
 import { ReportGenerationPanel } from '@/components/chat/workflow/report-panel'
 // Import existing components from the codebase with correct paths
@@ -42,9 +42,23 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const { toast } = useToast()
 
-  // Chat context / methods
-  const { messages, isLoading, workflow, sendMessage, addSystemMessage } =
-    useChatContext()
+  // Chat state and methods from Zustand store
+  const messages = useChatStore(state => state.messages)
+  const isLoading = useChatStore(state => state.isLoading)
+  const sendMessage = useChatStore(state => state.sendMessage)
+  const addSystemMessage = useChatStore(state => state.addSystemMessage)
+  const processDocument = useChatStore(state => state.processDocument)
+  const docProgress = useChatStore(state => state.docProgress)
+  const isDocProcessing = useChatStore(state => state.isDocProcessing)
+  const extractedDocument = useChatStore(state => state.extractedDocument)
+  const startVerification = useChatStore(state => state.startVerification)
+  const updateWorkflowStep = useChatStore(state => state.updateWorkflowStep)
+  const completeVerification = useChatStore(state => state.completeVerification)
+  const generateReport = useChatStore(state => state.generateReport)
+  const formatReport = useChatStore(state => state.formatReport)
+  const workflowStep = useChatStore(state => state.workflow?.currentStep || 'idle')
+  const verification = useChatStore(state => state.verification)
+  const error = useChatStore(state => state.error)
 
   // Local UI state
   const [chatState, setChatState] = useState<ChatStateType>({
@@ -88,25 +102,9 @@ export function ChatInterface({
             metadata: {
               ...messages[msgIndex].metadata,
               progressValue: progress,
-              progressPhase: phase,
-            },
-          }
-        }
-
-        return {
-          ...prev,
-          messages,
-        }
-      })
-    },
-    []
-  )
-
-  // Process document with progress tracking
-  const processDocument = useCallback(
+        // Process document with the Zustand store
+  const handleProcessDocument = useCallback(
     async (file: File) => {
-      setProcessProgress(0)
-      setProcessPhase('Preparing document')
       setCurrentUpload(file)
 
       // Create AbortController for cancellation
@@ -119,59 +117,23 @@ export function ChatInterface({
         { isProgress: true, progressValue: 0, progressPhase: 'extraction' }
       )
 
-      // Set up a progress simulation interval
-      const progressInterval = setInterval(() => {
-        setProcessProgress((prev) => {
-          const newProgress = prev + 5
-          let currentPhase = processPhase
-
-          // Update phases based on progress
-          if (newProgress <= 25) {
-            currentPhase = 'Preparing document'
-          } else if (newProgress <= 50) {
-            currentPhase = 'Extracting content'
-          } else if (newProgress <= 75) {
-            currentPhase = 'Analyzing document'
-          } else if (newProgress < 100) {
-            currentPhase = 'Preparing for verification'
-          } else {
-            currentPhase = 'Processing complete'
-          }
-
-          // Update the processing phase
-          setProcessPhase(currentPhase)
-
-          // Update progress message
-          if (processingMsg && processingMsg.id) {
-            updateProgressMessage(processingMsg.id, newProgress, currentPhase)
-          }
-
-          return newProgress >= 100 ? 100 : newProgress
-        })
-      }, 300)
-
       try {
-        // Use the unified workflow to process the document
-        await workflow.processDocument(file, patientId, abortController.signal)
+        // Process the document using the store action
+        await processDocument(file, patientId, undefined, abortController.signal)
 
         // Set document info when processing completes
-        setActiveDocument({
-          id: crypto.randomUUID(),
-          title: file.name,
-          content:
-            workflow.extractedDocument?.extractedData?.rawText ||
-            'Document processed',
-          kind: 'text',
-        })
-
-        // Clear interval when done
-        clearInterval(progressInterval)
-        setProcessProgress(100)
-        setProcessPhase('Processing complete')
+        if (extractedDocument) {
+          setActiveDocument({
+            id: crypto.randomUUID(),
+            title: file.name,
+            content: extractedDocument.extractedData?.rawText || 'Document processed',
+            kind: 'text',
+          })
+        }
 
         // Add document completion message and start verification if appropriate
         setTimeout(() => {
-          if (workflow.workflowStep === 'verification') {
+          if (workflowStep === 'verification') {
             addSystemMessage(
               "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
               'verification_prompt'
@@ -201,13 +163,10 @@ export function ChatInterface({
 `
 
             // Start verification with the extracted summary
-            workflow.startVerification(extractedSummary)
+            startVerification(extractedSummary)
           }
         }, 1000)
       } catch (error) {
-        // Handle processing errors
-        clearInterval(progressInterval)
-
         const errorMsg =
           error instanceof Error ? error.message : 'An unknown error occurred'
 
@@ -232,6 +191,21 @@ export function ChatInterface({
       }
     },
     [
+      patientId,
+      processDocument,
+      extractedDocument,
+      workflowStep,
+      addSystemMessage,
+      startVerification,
+      toast,
+    ]
+  )
+          'error',
+          { isError: true }
+        )
+      }
+    },
+    [
       workflow,
       patientId,
       addSystemMessage,
@@ -244,7 +218,7 @@ export function ChatInterface({
   // Retry document processing with the current upload
   const retryProcessing = useCallback(() => {
     if (currentUpload) {
-      void processDocument(currentUpload)
+      void handleProcessDocument(currentUpload)
     } else {
       toast({
         title: 'No document to retry',
@@ -252,7 +226,7 @@ export function ChatInterface({
         variant: 'destructive',
       })
     }
-  }, [currentUpload, processDocument, toast])
+  }, [currentUpload, handleProcessDocument, toast])
 
   // Use context messages when they change
   useEffect(() => {
@@ -274,14 +248,14 @@ export function ChatInterface({
 
   // Helper to render the error recovery UI
   const renderErrorRecovery = () => {
-    if (!workflow.error) return null
+    if (!error) return null
 
     return (
       <Alert className="mb-4">
         <AlertCircle className="size-4" />
         <AlertTitle>Document Processing Failed</AlertTitle>
         <AlertDescription>
-          {workflow.error}
+          {error}
           <div className="mt-2 flex gap-2">
             <Button
               className="gap-1"
@@ -307,8 +281,8 @@ export function ChatInterface({
   // Render the workflow status indicator
   const renderWorkflowStatus = () => {
     if (
-      workflow.workflowStep === 'idle' ||
-      workflow.workflowStep === 'complete'
+      workflowStep === 'idle' ||
+      workflowStep === 'complete'
     ) {
       return null
     }
@@ -316,7 +290,7 @@ export function ChatInterface({
     return (
       <div className="bg-muted/50 flex items-center gap-2 border-b px-4 py-2">
         <Badge className="gap-1" variant="outline">
-          {workflow.verification.isInVerificationMode ? (
+          {verification.isInVerificationMode ? (
             <>
               <CheckCircle className="size-3" />
               <span>Verification Mode</span>
@@ -328,9 +302,9 @@ export function ChatInterface({
             </>
           )}
         </Badge>
-        {processProgress > 0 && processProgress < 100 && (
+        {docProgress > 0 && docProgress < 100 && (
           <>
-            <Progress className="h-2 flex-1" value={processProgress} />
+            <Progress className="h-2 flex-1" value={docProgress} />
             <span className="text-muted-foreground text-xs">
               {processPhase}
             </span>
@@ -382,12 +356,12 @@ export function ChatInterface({
 
   // Continue after verification is complete
   const handleContinueAfterVerification = useCallback(() => {
-    workflow.generateReport()
+    generateReport()
     addSystemMessage(
       'Would you like to generate a report based on the verified information?',
       'verification_complete'
     )
-  }, [workflow, addSystemMessage])
+  }, [generateReport, addSystemMessage])
 
   // Generate a report with the provided notes
   const handleGenerateReport = useCallback(
@@ -456,8 +430,8 @@ export function ChatInterface({
 
   // Toggle report panel based on workflow state
   useEffect(() => {
-    setShowReportPanel(workflow.workflowStep === 'report_generation')
-  }, [workflow.workflowStep])
+    setShowReportPanel(workflowStep === 'report_generation')
+  }, [workflowStep])
 
   return (
     <div className="flex h-full flex-col">
@@ -483,7 +457,7 @@ export function ChatInterface({
                   fileUpload.metadata?.originalFilename ?? 'document',
                   { type: fileUpload.contentType ?? '' }
                 )
-                return processDocument(file)
+                return handleProcessDocument(file)
               })
               .catch((error) => {
                 toast({
@@ -521,14 +495,14 @@ export function ChatInterface({
       )}
 
       {/* Workflow content based on current step */}
-      {workflow.workflowStep !== 'idle' &&
-        workflow.workflowStep !== 'complete' &&
-        !workflow.verification.isInVerificationMode && (
+      {workflowStep !== 'idle' &&
+        workflowStep !== 'complete' &&
+        !verification.isInVerificationMode && (
           <div className="px-4 pt-4">
             <WorkflowStatusDisplay
               activeDocument={activeDocument}
               currentPhase={processPhase as ProcessingPhase}
-              currentStep={workflow.workflowStep as WorkflowStep}
+              currentStep={workflowStep as WorkflowStep}
               onContinueAction={handleContinueAfterVerification}
               onGenerateReportAction={() => setShowReportPanel(true)}
               onSkipReportAction={handleSkipReport}

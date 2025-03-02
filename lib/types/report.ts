@@ -1,9 +1,18 @@
-import type { DocumentBase } from './base'
-import type {
-  ResearchDocument,
-  ResearchResult,
-  ResearchSource,
-} from './research'
+import type { DocumentBase, DocumentType } from '@/lib/processing/types/base'
+import type { ResearchDocument, ResearchResult, ResearchSource } from '@/lib/processing/types/research'
+import type { Database } from '@/lib/supabase'
+
+/**
+ * Database types from Supabase
+ */
+export type Report = Database['public']['Tables']['reports']['Row']
+export type ReportInsert = Database['public']['Tables']['reports']['Insert']
+export type ReportUpdate = Database['public']['Tables']['reports']['Update']
+export type ReportAuditLog = Database['public']['Tables']['report_audit_logs']['Row']
+export type ReportAuditLogInsert = Database['public']['Tables']['report_audit_logs']['Insert']
+export type ReportAuditLogUpdate = Database['public']['Tables']['report_audit_logs']['Update']
+export type ReportStatus = Report['status'] // 'processing' | 'completed' | 'failed'
+export type ReportType = Report['type'] // 'diagnostic' | 'progress' | 'analytics'
 
 /**
  * Report data format
@@ -65,7 +74,7 @@ export interface ReportMetadata {
   confidence: number
 
   /**
-   * Time taken to generate the report (in seconds)
+   * Time taken to generate the report (in seconds or milliseconds)
    */
   generationTime: number
 
@@ -260,6 +269,21 @@ export interface ReportOptions {
    * Whether to save the report to the database
    */
   saveToDatabase?: boolean
+  
+  /**
+   * Whether to create a ReportDocument object
+   */
+  createReportDocument?: boolean
+  
+  /**
+   * Format to use for the report
+   */
+  reportFormat?: ReportFormat
+  
+  /**
+   * Additional context data
+   */
+  contextData?: Record<string, any>
 }
 
 /**
