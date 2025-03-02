@@ -12,32 +12,68 @@ import { ValidationError, ExternalServiceError, SystemError, normalizeError } fr
 
 /**
  * Centralized service for handling all file uploads in the application
+ * 
+ * This service provides a unified interface for uploading files of different types
+ * to various storage buckets. It handles validation, metadata configuration,
+ * error handling, and post-upload processing.
  */
 export class UploadService {
   private supabase = createBrowserClient()
   private DEFAULT_MAX_SIZE = 10 * 1024 * 1024 // 10MB
+  private RETRY_ATTEMPTS = 3
+  private RETRY_DELAY = 1000 // ms
 
   /**
    * Main method to upload a file with type-specific handling
+   * 
+   * @param file The file to upload
+   * @param options Upload configuration options
+   * @returns The uploaded file information
+   * @throws {ValidationError} For invalid files or options
+   * @throws {ExternalServiceError} For storage service failures
+   * @throws {SystemError} For unexpected system errors
    */
   async uploadFile(file: File, options: UploadOptions): Promise<FileUpload> {
+    const moduleLogger = logger.withMetadata({
+      module: 'UploadService',
+      method: 'uploadFile',
+      uploadType: options.type,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type
+    });
+
+    // Validate file exists
     if (!file) {
+      moduleLogger.error('No file provided');
       throw new ValidationError({
         message: 'No file provided',
-        code: 'INVALID_FILE'
+        code: 'MISSING_FILE',
+        data: { providedOptions: Object.keys(options) }
+      });
+    }
+
+    // Validate file is not empty
+    if (file.size === 0) {
+      moduleLogger.error('Empty file provided');
+      throw new ValidationError({
+        message: 'Cannot upload empty file',
+        code: 'EMPTY_FILE',
+        data: { fileName: file.name, fileType: file.type }
+      });
+    }
+
+    // Validate options has required upload type
+    if (!options.type) {
+      moduleLogger.error('Missing upload type');
+      throw new ValidationError({
+        message: 'Upload type is required',
+        code: 'MISSING_UPLOAD_TYPE',
+        data: { fileName: file.name, providedOptions: Object.keys(options) }
       });
     }
 
     try {
-      const moduleLogger = logger.withMetadata({
-        module: 'UploadService',
-        method: 'uploadFile',
-        uploadType: options.type,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type
-      });
-      
       moduleLogger.info('Starting file upload');
       
       // Start progress tracking
@@ -54,6 +90,9 @@ export class UploadService {
 
       // Determine the appropriate storage bucket
       const bucketName = this.getBucketForType(options.type, options.bucketName)
+      
+      // Validate bucket exists (this would be a nice enhancement but we'll
+      // need to get bucket list from storage client first in a real implementation)
 
       // Create a unique file path
       const filePath = this.generateFilePath(file, options)
@@ -61,106 +100,326 @@ export class UploadService {
       // Update progress
       options.onProgress?.(10, 'Uploading file...')
 
-      // Upload to Supabase Storage
-      const { error: uploadError } = await this.supabase.storage
-        .from(bucketName)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType: file.type,
-        })
-
+      // Retry logic for transient storage errors
+      let uploadError: StorageError | null = null;
+      let attemptCount = 0;
+      
+      while (attemptCount < this.RETRY_ATTEMPTS) {
+        try {
+          // Upload to Supabase Storage
+          const uploadResult = await this.supabase.storage
+            .from(bucketName)
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: true,
+              contentType: file.type,
+            });
+            
+          uploadError = uploadResult.error;
+          
+          // If upload succeeded, break retry loop
+          if (!uploadError) break;
+          
+          // If error is not retryable, don't retry
+          const storageError = this.handleStorageError(uploadError);
+          if (!storageError.data.retryable) {
+            moduleLogger.warn('Non-retryable storage error, aborting retry', {
+              errorCode: storageError.code,
+              attempt: attemptCount + 1
+            });
+            throw storageError;
+          }
+          
+          // Log retry attempt
+          attemptCount++;
+          if (attemptCount < this.RETRY_ATTEMPTS) {
+            const backoffTime = this.RETRY_DELAY * Math.pow(2, attemptCount - 1);
+            moduleLogger.warn('Retrying upload after error', {
+              attempt: attemptCount,
+              maxAttempts: this.RETRY_ATTEMPTS,
+              backoffTime,
+              errorCode: uploadError.statusCode,
+              errorMessage: uploadError.message
+            });
+            
+            // Notify user of retry
+            options.onProgress?.(10, `Retry attempt ${attemptCount}...`);
+            
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, backoffTime));
+          }
+        } catch (retryError) {
+          // If this is an ApplicationError thrown from inside our retry logic
+          // (like a non-retryable storage error), propagate it
+          if (retryError instanceof ApplicationError) {
+            throw retryError;
+          }
+          
+          // Otherwise treat as a generic upload failure and retry if possible
+          uploadError = retryError as StorageError;
+          attemptCount++;
+          
+          if (attemptCount < this.RETRY_ATTEMPTS) {
+            const backoffTime = this.RETRY_DELAY * Math.pow(2, attemptCount - 1);
+            moduleLogger.warn('Unexpected error during upload, retrying', {
+              attempt: attemptCount,
+              maxAttempts: this.RETRY_ATTEMPTS,
+              backoffTime,
+              error: retryError instanceof Error ? retryError.message : String(retryError)
+            });
+            
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, backoffTime));
+          }
+        }
+      }
+      
+      // If we exhausted all retries and still have an error, throw it
       if (uploadError) {
-        moduleLogger.error('Storage upload failed', { bucketName, filePath }, uploadError);
+        moduleLogger.error('Storage upload failed after retries', { 
+          bucketName, 
+          filePath,
+          attempts: attemptCount
+        }, uploadError);
         throw this.handleStorageError(uploadError);
       }
+      
+      moduleLogger.info('File uploaded to storage successfully', { 
+        bucketName, 
+        filePath,
+        attempts: attemptCount > 0 ? attemptCount : 1
+      });
 
-      moduleLogger.info('File uploaded to storage successfully', { bucketName, filePath });
       options.onProgress?.(80, 'Processing upload...')
 
       // Get public URL for the file
-      const {
-        data: { publicUrl },
-      } = this.supabase.storage.from(bucketName).getPublicUrl(filePath)
+      try {
+        const { data: urlData, error: urlError } = this.supabase.storage
+          .from(bucketName)
+          .getPublicUrl(filePath);
+          
+        if (urlError) {
+          moduleLogger.error('Failed to get public URL', { bucketName, filePath }, urlError);
+          throw new ExternalServiceError({
+            message: 'Failed to get public URL for uploaded file',
+            code: 'URL_RETRIEVAL_FAILED',
+            service: 'Storage',
+            data: { bucketName, filePath },
+            cause: urlError
+          });
+        }
+        
+        if (!urlData || !urlData.publicUrl) {
+          moduleLogger.error('No public URL returned', { bucketName, filePath });
+          throw new ExternalServiceError({
+            message: 'No public URL returned for uploaded file',
+            code: 'MISSING_PUBLIC_URL',
+            service: 'Storage',
+            data: { bucketName, filePath }
+          });
+        }
+        
+        const publicUrl = urlData.publicUrl;
+        
+        // If needed, trigger processing based on file type
+        if (!options.skipProcessing) {
+          try {
+            moduleLogger.debug('Starting file processing');
+            await this.processUploadedFile(file, filePath, bucketName, options);
+            moduleLogger.debug('File processing completed');
+          } catch (processingError) {
+            // Log processing error but don't fail the upload
+            moduleLogger.error('File processing failed', { 
+              filePath, 
+              fileType: file.type 
+            }, processingError);
+            
+            // We include processing error in metadata but still consider the upload successful
+            metadata.processingError = processingError instanceof Error 
+              ? processingError.message 
+              : String(processingError);
+              
+            options.onProgress?.(95, 'Processing failed, but upload succeeded');
+          }
+        }
 
-      // If needed, trigger processing based on file type
-      if (!options.skipProcessing) {
-        moduleLogger.debug('Starting file processing');
-        await this.processUploadedFile(file, filePath, bucketName, options);
-        moduleLogger.debug('File processing completed');
-      }
+        options.onProgress?.(100, 'Upload complete');
+        
+        // Create ID from path or generate a random one if needed
+        const fileId = filePath.split('/').pop() || crypto.randomUUID();
+        
+        // Add tracking information to metadata
+        const enhancedMetadata = {
+          ...metadata,
+          uploadedAt: new Date().toISOString(),
+          uploadAttempts: attemptCount > 0 ? attemptCount : 1
+        };
+        
+        moduleLogger.info('File upload and processing completed successfully', { 
+          fileId,
+          publicUrl,
+          processingSkipped: !!options.skipProcessing
+        });
 
-      options.onProgress?.(100, 'Upload complete');
-      moduleLogger.info('File upload and processing completed successfully', { publicUrl });
-
-      // Return the complete file upload info
-      return {
-        id: filePath.split('/').pop() || '',
-        path: filePath,
-        url: publicUrl,
-        size: file.size,
-        contentType: file.type,
-        metadata,
-        createdAt: new Date(),
+        // Return the complete file upload info
+        return {
+          id: fileId,
+          path: filePath,
+          url: publicUrl,
+          size: file.size,
+          contentType: file.type,
+          metadata: enhancedMetadata,
+          createdAt: new Date(),
+        };
+      } catch (urlError) {
+        moduleLogger.error('Error in final upload steps', {}, urlError);
+        throw normalizeError(urlError);
       }
     } catch (error) {
-      // Create appropriate error type based on existing error
-      const moduleLogger = logger.withMetadata({
+      // If error occurred, ensure progress callback gets notified
+      options.onProgress?.(0, 'Upload failed');
+      
+      // Get logger with metadata if not already created
+      const errorLogger = moduleLogger || logger.withMetadata({
         module: 'UploadService',
         method: 'uploadFile',
         uploadType: options.type,
-        fileName: file.name
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
       });
       
       // If it's already one of our error types, just use it directly
-      if (error instanceof ValidationError || 
-          error instanceof ExternalServiceError || 
-          error instanceof SystemError) {
-        moduleLogger.error('Upload failed', {}, error);
+      if (error instanceof ApplicationError) {
+        errorLogger.error('Upload failed', {
+          errorCode: error.code,
+          errorType: error.name
+        }, error);
         throw error;
       }
       
-      // Otherwise normalize it
+      // Check for common error patterns we can better identify
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      let errorCode = 'UPLOAD_FAILED';
+      
+      // Identify common error patterns and assign better codes/messages
+      if (errorMessage.includes('quota') || errorMessage.includes('limit')) {
+        errorCode = 'STORAGE_QUOTA_EXCEEDED';
+        errorMessage = 'Storage quota exceeded';
+      } else if (errorMessage.includes('network') || errorMessage.includes('connection')) {
+        errorCode = 'NETWORK_ERROR';
+        errorMessage = 'Network error during upload';
+      } else if (errorMessage.includes('timeout')) {
+        errorCode = 'UPLOAD_TIMEOUT';
+        errorMessage = 'Upload timed out';
+      } else if (errorMessage.includes('permission') || errorMessage.includes('access denied')) {
+        errorCode = 'STORAGE_PERMISSION_DENIED';
+        errorMessage = 'Permission denied to storage bucket';
+      }
+      
+      // Create a normalized error with enhanced context
       const normalizedError = new ExternalServiceError({
-        message: error instanceof Error ? error.message : 'Failed to upload file',
-        code: 'UPLOAD_FAILED',
+        message: errorMessage,
+        code: errorCode,
         service: 'Storage',
         data: { 
           fileName: file.name, 
           fileType: file.type,
           fileSize: file.size,
-          uploadType: options.type
+          uploadType: options.type,
+          bucket: options.bucketName || this.getBucketForType(options.type)
         },
         cause: error
       });
       
-      moduleLogger.error('Upload failed with unexpected error', {}, normalizedError);
+      errorLogger.error('Upload failed with unexpected error', {
+        errorCode: normalizedError.code,
+        errorType: normalizedError.name
+      }, normalizedError);
+      
       throw normalizedError;
     }
   }
 
   /**
    * Upload an avatar image
+   * 
+   * @param file The image file to upload
+   * @param userId The ID of the user this avatar belongs to
+   * @param onProgress Optional callback for progress updates
+   * @returns The path to the uploaded avatar
+   * @throws {ValidationError} If the file is invalid or too large
+   * @throws {ExternalServiceError} If the upload fails
    */
   async uploadAvatar(
     file: File,
     userId: string,
     onProgress?: (progress: number, status: string) => void
   ): Promise<string> {
-    const result = await this.uploadFile(file, {
-      type: 'avatar',
-      metadata: { userId },
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-      maxSize: 5 * 1024 * 1024, // 5MB
-      onProgress,
-      skipProcessing: true,
-    })
-
-    return result.path
+    if (!userId) {
+      throw new ValidationError({
+        message: 'User ID is required for avatar upload',
+        code: 'MISSING_USER_ID',
+        data: { fileName: file?.name }
+      });
+    }
+    
+    const moduleLogger = logger.withMetadata({
+      module: 'UploadService',
+      method: 'uploadAvatar',
+      userId,
+      fileName: file?.name,
+      fileSize: file?.size
+    });
+    
+    moduleLogger.info('Starting avatar upload');
+    
+    try {
+      const result = await this.uploadFile(file, {
+        type: 'avatar',
+        metadata: { userId },
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+        maxSize: 5 * 1024 * 1024, // 5MB
+        onProgress,
+        skipProcessing: true,
+        userId
+      });
+      
+      moduleLogger.info('Avatar upload completed successfully', {
+        path: result.path,
+        url: result.url
+      });
+      
+      return result.path;
+    } catch (error) {
+      // Error already properly handled in uploadFile
+      // Just add context specific to avatar uploads
+      moduleLogger.error('Avatar upload failed', {}, error);
+      
+      if (error instanceof ApplicationError) {
+        // Add userId to error data if not already present
+        if (!error.data.userId) {
+          error.data.userId = userId;
+        }
+        throw error;
+      }
+      
+      // Shouldn't reach here but just in case
+      throw normalizeError(error);
+    }
   }
 
   /**
    * Upload a patient document
+   * 
+   * @param file The document file to upload
+   * @param patientId The ID of the patient this document belongs to
+   * @param documentType The type of medical document
+   * @param departmentId Optional department ID
+   * @param onProgress Optional callback for progress updates
+   * @returns The uploaded file information
+   * @throws {ValidationError} If the file or patient data is invalid
+   * @throws {ExternalServiceError} If the upload fails
    */
   async uploadPatientDocument(
     file: File,
@@ -169,21 +428,64 @@ export class UploadService {
     departmentId?: string,
     onProgress?: (progress: number, status: string) => void
   ): Promise<FileUpload> {
-    return this.uploadFile(file, {
-      type: 'patient-document',
-      metadata: {
-        documentType,
+    if (!patientId) {
+      throw new ValidationError({
+        message: 'Patient ID is required for document upload',
+        code: 'MISSING_PATIENT_ID',
+        data: { fileName: file?.name }
+      });
+    }
+    
+    if (!documentType || !documentType.type) {
+      throw new ValidationError({
+        message: 'Document type is required for patient document upload',
+        code: 'MISSING_DOCUMENT_TYPE',
+        data: { fileName: file?.name, patientId }
+      });
+    }
+    
+    const moduleLogger = logger.withMetadata({
+      module: 'UploadService',
+      method: 'uploadPatientDocument',
+      patientId,
+      documentType: `${documentType.category}/${documentType.type}`,
+      departmentId,
+      fileName: file?.name,
+      fileSize: file?.size
+    });
+    
+    moduleLogger.info('Starting patient document upload');
+    
+    try {
+      return await this.uploadFile(file, {
+        type: 'patient-document',
+        metadata: {
+          documentType,
+          patientId,
+          departmentId,
+        },
         patientId,
         departmentId,
-      },
-      patientId,
-      departmentId,
-      onProgress,
-    })
+        onProgress,
+      });
+    } catch (error) {
+      // Error already properly handled in uploadFile
+      // Just add context specific to patient document uploads
+      moduleLogger.error('Patient document upload failed', {}, error);
+      throw error; // Already normalized in uploadFile
+    }
   }
 
   /**
    * Upload a chat attachment
+   * 
+   * @param file The file to attach to a chat
+   * @param chatId The ID of the chat this attachment belongs to
+   * @param messageId Optional message ID this attachment belongs to
+   * @param onProgress Optional callback for progress updates
+   * @returns The uploaded file information
+   * @throws {ValidationError} If the file or chat data is invalid
+   * @throws {ExternalServiceError} If the upload fails
    */
   async uploadChatAttachment(
     file: File,
@@ -191,14 +493,40 @@ export class UploadService {
     messageId?: string,
     onProgress?: (progress: number, status: string) => void
   ): Promise<FileUpload> {
-    return this.uploadFile(file, {
-      type: 'chat-attachment',
-      metadata: {
-        chatId,
-        messageId,
-      },
-      onProgress,
-    })
+    if (!chatId) {
+      throw new ValidationError({
+        message: 'Chat ID is required for attachment upload',
+        code: 'MISSING_CHAT_ID',
+        data: { fileName: file?.name }
+      });
+    }
+    
+    const moduleLogger = logger.withMetadata({
+      module: 'UploadService',
+      method: 'uploadChatAttachment',
+      chatId,
+      messageId,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type
+    });
+    
+    moduleLogger.info('Starting chat attachment upload');
+    
+    try {
+      return await this.uploadFile(file, {
+        type: 'chat-attachment',
+        metadata: {
+          chatId,
+          messageId,
+        },
+        onProgress,
+      });
+    } catch (error) {
+      // Error already properly handled in uploadFile
+      moduleLogger.error('Chat attachment upload failed', {}, error);
+      throw error; // Already normalized in uploadFile
+    }
   }
 
   /**
@@ -480,28 +808,90 @@ export class UploadService {
   }
 
   /**
-   * Handle Supabase storage errors
+   * Handle Supabase storage errors with comprehensive classification
+   * 
+   * @param error The storage error from Supabase
+   * @returns A properly classified ExternalServiceError with retry information
    */
   private handleStorageError(error: StorageError): ExternalServiceError {
     let code = 'STORAGE_ERROR';
     let message = error.message || 'Storage error occurred';
-    let isOperational = false;
-    let statusCode = 500;
+    let isOperational = false; // Default to not retryable
+    let statusCode = error.statusCode || 500;
 
+    const moduleLogger = logger.withMetadata({
+      module: 'UploadService',
+      method: 'handleStorageError',
+      errorStatus: error.statusCode,
+      errorName: error.name,
+      errorMessage: error.message
+    });
+
+    moduleLogger.debug('Classifying storage error');
+
+    // Classify based on status code
     if (error.statusCode) {
-      statusCode = error.statusCode;
-      
       if (error.statusCode >= 500) {
+        // Server errors are generally retryable
         code = 'STORAGE_SERVER_ERROR';
-        isOperational = true; // Server errors are generally retryable
+        isOperational = true;
+        message = 'Storage service encountered an error, please try again';
+      } else if (error.statusCode === 429) {
+        // Rate limiting is retryable after a delay
+        code = 'STORAGE_RATE_LIMITED';
+        isOperational = true;
+        message = 'Upload rate limit exceeded, please try again later';
       } else if (error.statusCode === 413) {
+        // File too large is not retryable (user must reduce file size)
         code = 'FILE_TOO_LARGE';
-        statusCode = 413;
+        isOperational = false;
+        message = 'File size exceeds storage service limits';
+      } else if (error.statusCode === 415) {
+        // Unsupported media type is not retryable (user must choose different file)
+        code = 'UNSUPPORTED_FILE_TYPE';
+        isOperational = false;
+        message = 'File type not supported by storage service';
       } else if (error.statusCode === 401 || error.statusCode === 403) {
+        // Authorization errors are not retryable without user intervention
         code = 'STORAGE_UNAUTHORIZED';
-        statusCode = error.statusCode;
+        isOperational = false;
+        message = 'Not authorized to upload to this storage location';
+      } else if (error.statusCode === 404) {
+        // Bucket not found
+        code = 'STORAGE_BUCKET_NOT_FOUND';
+        isOperational = false;
+        message = 'Storage bucket does not exist';
+      } else if (error.statusCode === 409) {
+        // Conflict (already exists)
+        code = 'STORAGE_FILE_CONFLICT';
+        isOperational = false;
+        message = 'File already exists with conflicting content';
       }
     }
+
+    // Additional classification based on error message patterns
+    if (error.message) {
+      if (error.message.toLowerCase().includes('network') || 
+          error.message.toLowerCase().includes('connection')) {
+        code = 'STORAGE_NETWORK_ERROR';
+        isOperational = true; // Network errors are generally retryable
+        message = 'Network error during file upload';
+      } else if (error.message.toLowerCase().includes('timeout')) {
+        code = 'STORAGE_TIMEOUT';
+        isOperational = true; // Timeouts are generally retryable
+        message = 'Upload timed out, please try again';
+      } else if (error.message.toLowerCase().includes('quota')) {
+        code = 'STORAGE_QUOTA_EXCEEDED';
+        isOperational = false; // Quota issues require user intervention
+        message = 'Storage quota exceeded';
+      }
+    }
+
+    moduleLogger.debug('Classified storage error', { 
+      originalStatus: error.statusCode, 
+      classifiedCode: code,
+      isRetryable: isOperational
+    });
 
     return new ExternalServiceError({
       message,
@@ -510,7 +900,9 @@ export class UploadService {
       statusCode,
       data: { 
         retryable: isOperational,
-        originalError: error
+        originalError: error,
+        originalMessage: error.message,
+        originalStatus: error.statusCode
       },
       cause: error
     });

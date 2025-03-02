@@ -5,7 +5,13 @@ import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 import type { BaseCallbackHandler } from '@langchain/core/callbacks'
 import { StringOutputParser } from '@langchain/core/output_parsers'
-import { ApplicationError, ExternalServiceError, SystemError } from '@/lib/errors'
+import { 
+  ApplicationError, 
+  ExternalServiceError, 
+  SystemError, 
+  ValidationError, 
+  normalizeError 
+} from '@/lib/errors'
 import logger from '@/lib/logger'
 /**
  * Patient Summary LangChain Integration
@@ -530,7 +536,38 @@ export async function processCorrection(
   onProgress?: ProgressCallback,
   onStatus?: StatusCallback
 ): Promise<PatientSummaryResult> {
+  const moduleLogger = logger.withMetadata({
+    module: 'PatientSummary',
+    method: 'processCorrection',
+    workflowId: workflowId || undefined,
+    correctionLength: userCorrection?.length
+  })
+
   try {
+    // Input validation
+    if (!currentSummary || currentSummary.trim() === '') {
+      moduleLogger.warn('Empty current summary provided for correction')
+      throw new ValidationError({
+        message: 'Current summary is required for correction processing',
+        code: 'EMPTY_SUMMARY',
+        data: { workflowId: workflowId || undefined }
+      })
+    }
+
+    if (!userCorrection || userCorrection.trim() === '') {
+      moduleLogger.warn('Empty correction provided')
+      throw new ValidationError({
+        message: 'User correction is required',
+        code: 'EMPTY_CORRECTION',
+        data: { workflowId: workflowId || undefined }
+      })
+    }
+
+    moduleLogger.info('Starting patient summary correction processing', {
+      useGemini: options.useGemini ?? false,
+      temperature: options.temperature ?? 0.1
+    })
+
     // Update status if callback provided
     onStatus?.({
       status: 'processing',
@@ -562,6 +599,7 @@ export async function processCorrection(
     const result = await runWithWorkflow<string>(
       'verification' as WorkflowStep,
       async () => {
+        moduleLogger.info('Invoking correction sequence')
         return correctionSequence.invoke(
           {
             currentSummary,
@@ -578,8 +616,18 @@ export async function processCorrection(
     )
 
     if (!result) {
-      throw new Error('Failed to process correction')
+      moduleLogger.error('Correction sequence returned empty result')
+      throw new ExternalServiceError({
+        message: 'Failed to process correction - empty result returned',
+        service: options.useGemini ? 'Gemini' : 'OpenAI',
+        code: 'EMPTY_CORRECTION_RESULT',
+        data: { workflowId: workflowId || undefined }
+      })
     }
+
+    moduleLogger.info('Patient summary correction completed successfully', {
+      summaryLength: result.length
+    })
 
     // Report completion
     onProgress?.(100, 'Correction processed')
@@ -597,9 +645,34 @@ export async function processCorrection(
     }
   } catch (error) {
     // Handle correction errors
-    console.error('Error processing correction:', error)
+    if (error instanceof ApplicationError) {
+      // Log but don't rewrap if it's already an ApplicationError
+      moduleLogger.error('Patient summary correction failed', {}, error)
+      
+      const errorMessage = error.message
+      
+      // Report error
+      onStatus?.({
+        status: 'error',
+        progress: 0,
+        error: errorMessage,
+        phase: 'error',
+      })
+      
+      return {
+        success: false,
+        summary: currentSummary,
+        error: errorMessage,
+      }
+    }
 
+    // For other types of errors, log and wrap in a SystemError
     const errorMessage = error instanceof Error ? error.message : String(error)
+    
+    moduleLogger.error('Error processing patient summary correction', 
+      { workflowId: workflowId || undefined },
+      error
+    )
 
     // Report error
     onStatus?.({
@@ -609,7 +682,6 @@ export async function processCorrection(
       phase: 'error',
     })
 
-    // Return original summary on error
     return {
       success: false,
       summary: currentSummary,
@@ -629,7 +701,26 @@ export async function checkVerificationCompletion(
   userMessage: string,
   workflowId: string | null = null
 ): Promise<'VERIFIED' | 'NEEDS_CORRECTION' | 'UNCLEAR'> {
+  const moduleLogger = logger.withMetadata({
+    module: 'PatientSummary',
+    method: 'checkVerificationCompletion',
+    workflowId: workflowId || undefined,
+    messageLength: userMessage?.length
+  })
+
   try {
+    // Input validation
+    if (!userMessage || userMessage.trim() === '') {
+      moduleLogger.warn('Empty user message provided for verification check')
+      throw new ValidationError({
+        message: 'User message is required for verification check',
+        code: 'EMPTY_MESSAGE',
+        data: { workflowId: workflowId || undefined }
+      })
+    }
+
+    moduleLogger.info('Starting verification completion check')
+
     // Create verification completion sequence
     const completionSequence = createVerificationCompletionSequence(workflowId)
 
@@ -645,18 +736,46 @@ export async function checkVerificationCompletion(
       runnableConfig
     )
 
+    if (!result) {
+      moduleLogger.error('Verification check returned empty result')
+      throw new ExternalServiceError({
+        message: 'Failed to check verification completion - empty result returned',
+        service: 'OpenAI',
+        code: 'EMPTY_VERIFICATION_RESULT',
+        data: { workflowId: workflowId || undefined }
+      })
+    }
+
     // Parse the result
     const decision = result.trim().toUpperCase()
 
     // Validate the decision
     if (['VERIFIED', 'NEEDS_CORRECTION', 'UNCLEAR'].includes(decision)) {
+      moduleLogger.info('Verification check completed', { decision })
       return decision as 'VERIFIED' | 'NEEDS_CORRECTION' | 'UNCLEAR'
     }
+
+    // Log unexpected model response
+    moduleLogger.warn('Model returned unexpected verification status', { 
+      actualResponse: decision,
+      defaultingTo: 'UNCLEAR'
+    })
 
     // Default to unclear if the model returned something unexpected
     return 'UNCLEAR'
   } catch (error) {
-    console.error('Error checking verification completion:', error)
+    if (error instanceof ApplicationError) {
+      // Log but don't rewrap if it's already an ApplicationError
+      moduleLogger.error('Verification check failed', {}, error)
+      return 'UNCLEAR'
+    }
+
+    // For other types of errors, log and normalize
+    moduleLogger.error('Error checking verification completion', 
+      { workflowId: workflowId || undefined },
+      error
+    )
+    
     return 'UNCLEAR'
   }
 }
@@ -674,7 +793,29 @@ export async function* streamPatientSummary(
   workflowId: string | null = null,
   options: ModelOptions = {}
 ): AsyncGenerator<string> {
+  const moduleLogger = logger.withMetadata({
+    module: 'PatientSummary',
+    method: 'streamPatientSummary',
+    workflowId: workflowId || undefined,
+    documentLength: documentText?.length
+  })
+
   try {
+    // Input validation
+    if (!documentText || documentText.trim() === '') {
+      moduleLogger.warn('Empty document text provided for streaming extraction')
+      throw new ValidationError({
+        message: 'Cannot stream summary from empty document',
+        code: 'EMPTY_DOCUMENT',
+        data: { workflowId: workflowId || undefined }
+      })
+    }
+
+    moduleLogger.info('Starting patient summary streaming', {
+      useGemini: options.useGemini ?? true,
+      temperature: options.temperature ?? 0.1
+    })
+
     // Default to Gemini Flash with streaming enabled
     const useGemini = options.useGemini ?? true
 
@@ -737,6 +878,7 @@ export async function* streamPatientSummary(
     }
 
     // Stream the generation
+    moduleLogger.info('Starting streaming extraction sequence')
     const stream = await streamingSequence.stream(
       { documentText: documentText.slice(0, 32000) }, // Limit text to avoid token limits
       runnableConfig
@@ -746,9 +888,24 @@ export async function* streamPatientSummary(
     for await (const chunk of stream) {
       yield chunk
     }
+
+    moduleLogger.info('Streaming extraction completed successfully')
   } catch (error) {
-    console.error('Error streaming patient summary:', error)
-    yield `Error: ${error instanceof Error ? error.message : String(error)}`
+    if (error instanceof ApplicationError) {
+      // Log but don't rewrap if it's already an ApplicationError
+      moduleLogger.error('Patient summary streaming failed', {}, error)
+      yield `Error: ${error.message}`
+    } else {
+      // For other types of errors, log and normalize
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      moduleLogger.error('Error streaming patient summary', 
+        { workflowId: workflowId || undefined },
+        error
+      )
+      
+      yield `Error: ${errorMessage}`
+    }
   }
 }
 
@@ -758,7 +915,9 @@ export async function* streamPatientSummary(
  * @param fn Function to retry
  * @param retries Maximum number of retries
  * @param delay Initial delay in milliseconds
+ * @param loggerMetadata Additional logger metadata
  * @returns Promise that resolves with the function result
+ * @throws ApplicationError if all retries are exhausted
  */
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -775,6 +934,21 @@ export async function retryWithBackoff<T>(
   })
 
   try {
+    if (typeof fn !== 'function') {
+      moduleLogger.error('Invalid retry function provided', { 
+        fnType: typeof fn
+      })
+      throw new ValidationError({
+        message: 'Invalid function provided for retry operation',
+        code: 'INVALID_RETRY_FUNCTION',
+        data: { fnType: typeof fn }
+      })
+    }
+
+    moduleLogger.debug('Executing function with retry capability', {
+      remainingRetries: retries
+    })
+    
     return await fn()
   } catch (error) {
     // Check if we should retry
@@ -783,16 +957,29 @@ export async function retryWithBackoff<T>(
         remainingRetries: 0
       }, error)
       
-      if (error instanceof ApplicationError) {
-        throw error
-      } else {
-        throw new SystemError({
-          message: 'Operation failed after multiple retry attempts',
-          code: 'RETRY_EXHAUSTED',
-          cause: error,
-          data: { maxRetries: retries }
-        })
+      // Use normalizeError to ensure we're returning an ApplicationError
+      const normalizedError = normalizeError(error)
+      
+      // Add retry metadata to the error
+      normalizedError.data = {
+        ...normalizedError.data,
+        retryExhausted: true,
+        maxRetries: retries
       }
+      
+      throw normalizedError
+    }
+
+    // Determine if we should retry based on error type
+    const normalizedError = normalizeError(error)
+    const shouldRetry = determineRetryability(normalizedError)
+    
+    if (!shouldRetry) {
+      moduleLogger.info('Error not retriable, failing immediately', {
+        errorCode: normalizedError.code,
+        errorType: normalizedError.name
+      })
+      throw normalizedError
     }
 
     // Log the retry attempt
@@ -800,7 +987,8 @@ export async function retryWithBackoff<T>(
       remainingRetries: retries - 1,
       currentDelay: delay,
       nextDelay: delay * 2,
-      errorMessage: error instanceof Error ? error.message : String(error)
+      errorMessage: normalizedError.message,
+      errorCode: normalizedError.code
     })
 
     // Wait with exponential backoff
@@ -809,6 +997,41 @@ export async function retryWithBackoff<T>(
     // Retry with increased delay
     return retryWithBackoff(fn, retries - 1, delay * 2, loggerMetadata)
   }
+}
+
+/**
+ * Determine if an error should be retried
+ * 
+ * @param error The normalized application error
+ * @returns boolean indicating if retry should be attempted
+ */
+function determineRetryability(error: ApplicationError): boolean {
+  // Don't retry validation errors
+  if (error instanceof ValidationError) {
+    return false
+  }
+  
+  // Don't retry 4xx errors (except specific retriable ones)
+  if (error.statusCode >= 400 && error.statusCode < 500) {
+    // Some 4xx errors might be retriable (like 429 Too Many Requests)
+    const retriable4xxCodes = ['TOO_MANY_REQUESTS', 'RATE_LIMITED']
+    return retriable4xxCodes.includes(error.code || '')
+  }
+  
+  // Server errors (5xx) are generally retriable
+  if (error.statusCode >= 500) {
+    return true
+  }
+  
+  // ExternalServiceErrors are generally retriable
+  if (error instanceof ExternalServiceError) {
+    // Unless they have specific non-retriable codes
+    const nonRetriableServiceCodes = ['SERVICE_UNAVAILABLE', 'UNAUTHORIZED_SERVICE']
+    return !nonRetriableServiceCodes.includes(error.code || '')
+  }
+  
+  // Default to allowing retry for other error types
+  return true
 }
 
 /**
