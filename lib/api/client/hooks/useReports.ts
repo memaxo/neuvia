@@ -4,7 +4,7 @@
  * Generated from OpenAPI specification
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiClient } from '../api-client'
+import { ApiClient } from "../api-client"
 import { GenerateReportRequest, UpdateReportRequest } from '../models'
 
 // Initialize API client

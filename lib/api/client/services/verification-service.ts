@@ -17,7 +17,7 @@ import {
   VerificationStatusType,
   VerifiedDocument,
 } from './data-contracts';
-import { ContentType, HttpClient, RequestParams } from './http-client';
+import { ContentType, HttpClient, RequestParams } from "../models/http-client"
 
 export class Verification<SecurityDataType = unknown> {
   http: HttpClient<SecurityDataType>;

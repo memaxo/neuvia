@@ -9,7 +9,7 @@
  * ---------------------------------------------------------------
  */
 
-import { ContentType, HttpClient, RequestParams } from './http-client';
+import { ContentType, HttpClient, RequestParams } from "../models/http-client"
 
 export class Email<SecurityDataType = unknown> {
   http: HttpClient<SecurityDataType>;

@@ -10,7 +10,7 @@
  */
 
 import { Report } from './data-contracts';
-import { ContentType, HttpClient, RequestParams } from './http-client';
+import { ContentType, HttpClient, RequestParams } from "../models/http-client"
 
 export class Reports<SecurityDataType = unknown> {
   http: HttpClient<SecurityDataType>;

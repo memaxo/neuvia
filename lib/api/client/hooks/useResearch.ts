@@ -4,7 +4,7 @@
  * Generated from OpenAPI specification
  */
 import { useMutation } from '@tanstack/react-query'
-import { ApiClient } from '../api-client'
+import { ApiClient } from "../api-client"
 import { PerformResearchRequest } from '../models'
 
 // Initialize API client
