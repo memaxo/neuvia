@@ -7,6 +7,8 @@ import type {
 } from '../chat/types'
 import type { Dispatch } from 'react'
 import { chatActions } from '../../contexts/reducers/chat-reducer'
+import logger from '@/lib/logger'
+import { SystemError, ValidationError, normalizeError } from '@/lib/errors'
 
 /**
  * Process a message based on the current chat mode
@@ -92,10 +94,19 @@ async function handleVerificationMessage(
       dispatch(chatActions.startReportGeneration())
       return
     } catch (error) {
-      console.error('Error during verification confirmation:', error)
-      // Handle errors appropriately
-      dispatch(chatActions.setError(String(error)))
-      return
+      const normalizedError = normalizeError(error);
+      const errorLogger = logger.withMetadata({
+        module: 'MessageProcessor', 
+        method: 'handleVerificationMessage',
+        phase: 'verification',
+        errorCode: normalizedError.code
+      });
+      
+      errorLogger.error('Error during verification confirmation', {}, normalizedError);
+      
+      // Handle errors appropriately with improved error message
+      dispatch(chatActions.setError(normalizedError.message));
+      return;
     }
   }
 
@@ -190,9 +201,33 @@ async function handleVerificationMessage(
 
       return
     } catch (error) {
-      console.error('Error processing correction:', error)
-      dispatch(chatActions.setError(String(error)))
-      return
+      const normalizedError = normalizeError(error);
+      const errorLogger = logger.withMetadata({
+        module: 'MessageProcessor', 
+        method: 'handleVerificationMessage',
+        phase: 'correction',
+        correctionText,
+        errorCode: normalizedError.code
+      });
+      
+      errorLogger.error('Error processing correction', {}, normalizedError);
+      
+      // Better error handling with clear message
+      dispatch(chatActions.setError(normalizedError.message));
+      
+      dispatch(
+        chatActions.addMessage({
+          role: 'system',
+          content: `There was an error processing your correction: ${normalizedError.message}. Please try again.`,
+          createdAt: new Date(),
+          metadata: {
+            type: 'error',
+            isError: true,
+          },
+        })
+      );
+      
+      return;
     }
   }
 
@@ -297,24 +332,32 @@ async function handleReportGenerationMessage(
           })
         )
       } catch (error) {
-        console.error('Error generating report:', error)
+        const normalizedError = normalizeError(error);
+        const errorLogger = logger.withMetadata({
+          module: 'MessageProcessor', 
+          method: 'handleReportGenerationMessage',
+          phase: 'report_generation',
+          format,
+          errorCode: normalizedError.code
+        });
+        
+        errorLogger.error('Error generating report', {}, normalizedError);
 
+        // Set the error with improved error details
         dispatch(
-          chatActions.setError(
-            error instanceof Error ? error.message : 'Error generating report'
-          )
-        )
+          chatActions.setError(normalizedError.message)
+        );
 
+        // Show user-friendly error message
         dispatch(
           chatActions.addMessage({
             role: 'system',
-            content: `Error generating report: ${
-              error instanceof Error ? error.message : 'Unknown error'
-            }. Please try again.`,
+            content: `Error generating report: ${normalizedError.message}. Please try again.`,
             createdAt: new Date(),
             metadata: {
               type: 'error',
               isError: true,
+              errorCode: normalizedError.code
             },
           })
         )
@@ -348,7 +391,16 @@ async function handleReportGenerationMessage(
           format: 'markdown',
         } as ProcessingReportFormat)
       } catch (error) {
-        console.error('Error completing workflow:', error)
+        const normalizedError = normalizeError(error);
+        const errorLogger = logger.withMetadata({
+          module: 'MessageProcessor', 
+          method: 'handleReportGenerationMessage',
+          phase: 'workflow_completion',
+          errorCode: normalizedError.code
+        });
+        
+        errorLogger.warn('Error completing workflow', {}, normalizedError);
+        // Not showing to user since this is a non-critical error
       }
     }
   }

@@ -1,5 +1,9 @@
 import { patientSummaryService } from '@/lib/services/patient/patient-summary-service'
 import { createServerClient } from '@/lib/supabase/clients'
+import { ValidationError, NotFoundError, AuthenticationError } from '@/lib/errors'
+import { apiSuccess, apiError, withErrorHandling, getRequestId } from '@/lib/api-response'
+import logger from '@/lib/logger'
+
 /**
  * Patient Summary Verification API
  *
@@ -18,30 +22,41 @@ export async function POST(
   request: Request,
   { params }: { params: { patientId: string } }
 ) {
-  try {
-    const supabase = await createServerClient()
+  return withErrorHandling(async () => {
+    const requestId = getRequestId(request);
+    const moduleLogger = logger.withMetadata({
+      module: 'API',
+      endpoint: '/api/patient/[patientId]/verify-summary',
+      method: 'POST',
+      requestId
+    });
+    
+    moduleLogger.info('Processing patient summary verification request');
+    
+    const supabase = await createServerClient();
 
     // Verify authentication
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser()
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      throw new AuthenticationError({
+        message: 'Authentication required',
+        code: 'AUTH_REQUIRED',
+        data: { cause: authError }
+      });
     }
 
     // Get patient ID from route params
-    const { patientId } = params
+    const { patientId } = params;
 
     if (!patientId) {
-      return NextResponse.json(
-        { error: 'Patient ID is required' },
-        { status: 400 }
-      )
+      throw new ValidationError({
+        message: 'Patient ID is required',
+        code: 'MISSING_PATIENT_ID'
+      });
     }
 
     // Parse the request body
@@ -49,39 +64,47 @@ export async function POST(
     const { status = 'verified', comments } = body
 
     // Verify the summary
+    moduleLogger.info('Verifying patient summary', { 
+      patientId, 
+      verifierId: user.id, 
+      status 
+    });
+    
     const result = await patientSummaryService.verifySummary(
       patientId,
       user.id,
       status,
       comments
-    )
+    );
 
     if (!result) {
-      return NextResponse.json(
-        { error: 'Summary not found or could not be verified' },
-        { status: 404 }
-      )
+      throw new NotFoundError({
+        message: 'Summary not found or could not be verified',
+        resource: 'PatientSummary',
+        code: 'SUMMARY_NOT_FOUND',
+        data: { patientId }
+      });
     }
 
+    moduleLogger.info('Patient summary verified successfully', { 
+      patientId, 
+      status,
+      timestamp: new Date().toISOString()
+    });
+
     // Return success response
-    return NextResponse.json({
-      success: true,
+    return apiSuccess({
       message: `Summary for patient ${patientId} has been ${status}`,
       patientId,
       verifiedAt: new Date().toISOString(),
       verifiedBy: user.id,
-    })
-  } catch (error) {
-    console.error('Error verifying patient summary:', error)
-
-    return NextResponse.json(
-      {
-        error: `Failed to verify summary: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    )
-  }
+    });
+  }, {
+    logMetadata: {
+      endpoint: '/api/patient/[patientId]/verify-summary',
+      method: 'POST'
+    }
+  });
 }
 
 /**
@@ -95,64 +118,76 @@ export async function GET(
   request: Request,
   { params }: { params: { patientId: string } }
 ) {
-  try {
-    const supabase = await createServerClient()
+  return withErrorHandling(async () => {
+    const requestId = getRequestId(request);
+    const moduleLogger = logger.withMetadata({
+      module: 'API',
+      endpoint: '/api/patient/[patientId]/verify-summary',
+      method: 'GET',
+      requestId
+    });
+    
+    moduleLogger.info('Checking patient summary verification status');
+    
+    const supabase = await createServerClient();
 
     // Verify authentication
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser()
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+      throw new AuthenticationError({
+        message: 'Authentication required',
+        code: 'AUTH_REQUIRED',
+        data: { cause: authError }
+      });
     }
 
     // Get patient ID from route params
-    const { patientId } = params
+    const { patientId } = params;
 
     if (!patientId) {
-      return NextResponse.json(
-        { error: 'Patient ID is required' },
-        { status: 400 }
-      )
+      throw new ValidationError({
+        message: 'Patient ID is required',
+        code: 'MISSING_PATIENT_ID'
+      });
     }
 
     // Get verification status
-    const status =
-      await patientSummaryService.getSummaryVerificationStatus(patientId)
+    moduleLogger.info('Fetching summary verification status', { patientId });
+    const status = await patientSummaryService.getSummaryVerificationStatus(patientId);
 
     if (!status) {
-      return NextResponse.json(
-        {
-          verified: false,
-          message: 'Summary has not been verified',
-          patientId,
-        },
-        { status: 200 }
-      )
+      moduleLogger.info('Summary has not been verified', { patientId });
+      
+      // This is not an error, just a valid state
+      return apiSuccess({
+        verified: false,
+        message: 'Summary has not been verified',
+        patientId,
+      });
     }
 
+    moduleLogger.info('Retrieved verification status', { 
+      patientId, 
+      status: status.status,
+      verifiedAt: status.verifiedAt
+    });
+
     // Return verification status
-    return NextResponse.json({
+    return apiSuccess({
       verified: true,
       status: status.status,
       verifiedAt: status.verifiedAt,
       verifiedBy: status.verifiedBy,
       patientId,
-    })
-  } catch (error) {
-    console.error('Error checking summary verification status:', error)
-
-    return NextResponse.json(
-      {
-        error: `Failed to check verification status: ${error instanceof Error ? error.message : String(error)}`,
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    )
-  }
+    });
+  }, {
+    logMetadata: {
+      endpoint: '/api/patient/[patientId]/verify-summary',
+      method: 'GET'
+    }
+  });
 }

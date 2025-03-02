@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import React from 'react'
+import logger from '@/lib/logger'
+import { normalizeError } from '@/lib/errors'
 
 interface ChatErrorBoundaryProps {
   children: React.ReactNode
@@ -29,7 +31,18 @@ export class ChatErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Chat error:', error, errorInfo)
+    const normalizedError = normalizeError(error);
+    const errorLogger = logger.withMetadata({
+      component: 'ChatErrorBoundary',
+      errorName: normalizedError.name,
+      errorCode: normalizedError.code,
+      componentStack: errorInfo.componentStack
+    });
+    
+    errorLogger.error('Chat component error', {}, normalizedError);
+    
+    // You could add monitoring service integration here
+    // Example: Sentry.captureException(normalizedError);
   }
 
   render() {

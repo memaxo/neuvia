@@ -2,12 +2,13 @@ import { createBrowserClient } from '@/lib/supabase/clients'
 import {
   type DocumentType,
   type FileUpload,
-  type UploadError,
   type UploadMetadata,
   type UploadOptions,
   type UploadType,
 } from '@/lib/types/upload'
 import type { StorageError } from '@supabase/storage-js'
+import logger from '@/lib/logger'
+import { ValidationError, ExternalServiceError, SystemError, normalizeError } from '@/lib/errors'
 
 /**
  * Centralized service for handling all file uploads in the application
@@ -21,16 +22,32 @@ export class UploadService {
    */
   async uploadFile(file: File, options: UploadOptions): Promise<FileUpload> {
     if (!file) {
-      throw this.createError('INVALID_FILE', 'No file provided', false)
+      throw new ValidationError({
+        message: 'No file provided',
+        code: 'INVALID_FILE'
+      });
     }
 
     try {
+      const moduleLogger = logger.withMetadata({
+        module: 'UploadService',
+        method: 'uploadFile',
+        uploadType: options.type,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      
+      moduleLogger.info('Starting file upload');
+      
       // Start progress tracking
       options.onProgress?.(0, 'Preparing upload...')
 
       // Validate file based on type and options
       this.validateFile(file, options)
       options.onProgress?.(5, 'File validated')
+      
+      moduleLogger.debug('File validated successfully');
 
       // Configure metadata based on upload type
       const metadata = this.configureMetadata(file, options)
@@ -54,9 +71,11 @@ export class UploadService {
         })
 
       if (uploadError) {
-        throw this.handleStorageError(uploadError)
+        moduleLogger.error('Storage upload failed', { bucketName, filePath }, uploadError);
+        throw this.handleStorageError(uploadError);
       }
 
+      moduleLogger.info('File uploaded to storage successfully', { bucketName, filePath });
       options.onProgress?.(80, 'Processing upload...')
 
       // Get public URL for the file
@@ -66,10 +85,13 @@ export class UploadService {
 
       // If needed, trigger processing based on file type
       if (!options.skipProcessing) {
-        await this.processUploadedFile(file, filePath, bucketName, options)
+        moduleLogger.debug('Starting file processing');
+        await this.processUploadedFile(file, filePath, bucketName, options);
+        moduleLogger.debug('File processing completed');
       }
 
-      options.onProgress?.(100, 'Upload complete')
+      options.onProgress?.(100, 'Upload complete');
+      moduleLogger.info('File upload and processing completed successfully', { publicUrl });
 
       // Return the complete file upload info
       return {
@@ -82,17 +104,38 @@ export class UploadService {
         createdAt: new Date(),
       }
     } catch (error) {
-      // Ensure error is properly formatted
-      if (error instanceof Error && 'code' in error) {
-        throw error
+      // Create appropriate error type based on existing error
+      const moduleLogger = logger.withMetadata({
+        module: 'UploadService',
+        method: 'uploadFile',
+        uploadType: options.type,
+        fileName: file.name
+      });
+      
+      // If it's already one of our error types, just use it directly
+      if (error instanceof ValidationError || 
+          error instanceof ExternalServiceError || 
+          error instanceof SystemError) {
+        moduleLogger.error('Upload failed', {}, error);
+        throw error;
       }
-
-      throw this.createError(
-        'UPLOAD_FAILED',
-        error instanceof Error ? error.message : 'Failed to upload file',
-        true,
-        error
-      )
+      
+      // Otherwise normalize it
+      const normalizedError = new ExternalServiceError({
+        message: error instanceof Error ? error.message : 'Failed to upload file',
+        code: 'UPLOAD_FAILED',
+        service: 'Storage',
+        data: { 
+          fileName: file.name, 
+          fileType: file.type,
+          fileSize: file.size,
+          uploadType: options.type
+        },
+        cause: error
+      });
+      
+      moduleLogger.error('Upload failed with unexpected error', {}, normalizedError);
+      throw normalizedError;
     }
   }
 
@@ -166,31 +209,44 @@ export class UploadService {
     const maxSize =
       options.maxSize || this.getDefaultMaxSizeForType(options.type)
     if (file.size > maxSize) {
-      throw this.createError(
-        'FILE_TOO_LARGE',
-        `File size exceeds maximum allowed size of ${this.formatFileSize(maxSize)}`,
-        false
-      )
+      throw new ValidationError({
+        message: `File size exceeds maximum allowed size of ${this.formatFileSize(maxSize)}`,
+        code: 'FILE_TOO_LARGE',
+        data: {
+          fileSize: file.size,
+          maxSize: maxSize,
+          fileName: file.name
+        }
+      });
     }
 
     // Check file type if specified
     if (options.allowedMimeTypes && options.allowedMimeTypes.length > 0) {
       if (!options.allowedMimeTypes.includes(file.type)) {
-        throw this.createError(
-          'INVALID_FILE_TYPE',
-          `File type ${file.type} is not supported. Allowed types: ${options.allowedMimeTypes.join(', ')}`,
-          false
-        )
+        throw new ValidationError({
+          message: `File type ${file.type} is not supported. Allowed types: ${options.allowedMimeTypes.join(', ')}`,
+          code: 'INVALID_FILE_TYPE',
+          data: {
+            fileType: file.type,
+            allowedTypes: options.allowedMimeTypes,
+            fileName: file.name
+          }
+        });
       }
     } else {
       // Use default allowed types based on upload type
       const allowedTypes = this.getAllowedMimeTypesForType(options.type)
       if (allowedTypes.length > 0 && !allowedTypes.includes(file.type)) {
-        throw this.createError(
-          'INVALID_FILE_TYPE',
-          `File type ${file.type} is not supported for ${options.type} uploads`,
-          false
-        )
+        throw new ValidationError({
+          message: `File type ${file.type} is not supported for ${options.type} uploads`,
+          code: 'INVALID_FILE_TYPE',
+          data: {
+            fileType: file.type,
+            uploadType: options.type,
+            allowedTypes: allowedTypes,
+            fileName: file.name
+          }
+        });
       }
     }
 
@@ -201,11 +257,14 @@ export class UploadService {
         break
       case 'patient-document':
         if (!options.patientId) {
-          throw this.createError(
-            'MISSING_PATIENT_ID',
-            'Patient ID is required for patient document uploads',
-            false
-          )
+          throw new ValidationError({
+            message: 'Patient ID is required for patient document uploads',
+            code: 'MISSING_PATIENT_ID',
+            data: {
+              uploadType: options.type,
+              fileName: file.name
+            }
+          });
         }
         break
       case 'chat-attachment':
@@ -388,45 +447,73 @@ export class UploadService {
   }
 
   /**
-   * Create a standardized error object
+   * Create a standardized error using the new error system
+   * This is a transitional method for compatibility with existing code
    */
   private createError(
     code: string,
     message: string,
     retryable: boolean,
     details?: any
-  ): UploadError {
-    const error = new Error(message) as UploadError
-    error.code = code
-    error.retryable = retryable
-    error.details = details
-    return error
+  ): ValidationError | ExternalServiceError {
+    if (code.startsWith('STORAGE_') || code === 'UPLOAD_FAILED') {
+      return new ExternalServiceError({
+        message,
+        code,
+        service: 'Storage',
+        data: { 
+          retryable,
+          details
+        },
+        cause: details instanceof Error ? details : undefined
+      });
+    } else {
+      return new ValidationError({
+        message,
+        code,
+        data: { 
+          retryable,
+          details
+        }
+      });
+    }
   }
 
   /**
    * Handle Supabase storage errors
    */
-  private handleStorageError(error: StorageError): UploadError {
-    let code = 'STORAGE_ERROR'
-    let retryable = false
+  private handleStorageError(error: StorageError): ExternalServiceError {
+    let code = 'STORAGE_ERROR';
+    let message = error.message || 'Storage error occurred';
+    let isOperational = false;
+    let statusCode = 500;
 
     if (error.statusCode) {
+      statusCode = error.statusCode;
+      
       if (error.statusCode >= 500) {
-        retryable = true
-        code = 'STORAGE_SERVER_ERROR'
+        code = 'STORAGE_SERVER_ERROR';
+        isOperational = true; // Server errors are generally retryable
       } else if (error.statusCode === 413) {
-        code = 'FILE_TOO_LARGE'
+        code = 'FILE_TOO_LARGE';
+        statusCode = 413;
       } else if (error.statusCode === 401 || error.statusCode === 403) {
-        code = 'UNAUTHORIZED'
+        code = 'STORAGE_UNAUTHORIZED';
+        statusCode = error.statusCode;
       }
     }
 
-    return this.createError(
+    return new ExternalServiceError({
+      message,
       code,
-      error.message || 'Storage error occurred',
-      retryable,
-      error
-    )
+      service: 'Storage',
+      statusCode,
+      data: { 
+        retryable: isOperational,
+        originalError: error
+      },
+      cause: error
+    });
   }
 }
 
