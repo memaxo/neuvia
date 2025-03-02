@@ -1,15 +1,7 @@
-/* eslint-disable */
-/* tslint:disable */
-/*
- * ---------------------------------------------------------------
- * ## THIS FILE WAS GENERATED VIA SWAGGER-TYPESCRIPT-API        ##
- * ##                                                           ##
- * ## AUTHOR: acacode                                           ##
- * ## SOURCE: https://github.com/acacode/swagger-typescript-api ##
- * ---------------------------------------------------------------
+/**
+ * Reports service implementation
  */
-
-import { Report } from './data-contracts';
+import { Report } from '../models/data-contracts';
 import { ContentType, HttpClient, RequestParams } from "../models/http-client"
 
 export class Reports<SecurityDataType = unknown> {
