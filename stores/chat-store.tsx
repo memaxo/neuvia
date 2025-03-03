@@ -18,35 +18,29 @@ import type {
   ChatAction,
   ChatMode,
   ChatState,
+  ChatStoreSelector,
+  ChatStoreState,
   ExtendedChatContextType,
   Message,
   MessageMetadata,
+  ProcessingPhase,
+  ProcessingStatus,
+  ReportFormat,
+  VerificationItem,
+  VerificationMetadata,
+  VerificationOptions,
+  VerificationResult,
+  VerificationStatusType,
+  WorkflowState,
 } from '@/lib/chat/types'
 
 import { processMessage } from '@/lib/actions/message-processor'
 import { initialChatState } from '@/lib/chat/types'
 
 // Import for database operations
-import type {
-  ProcessingStatus,
-  DocumentType,
-} from '@/lib/processing/types/base'
-import type {
-  ProcessingPhase,
-  VerificationStatusType,
-  WorkflowStep,
-  WorkflowOptions,
-  VerificationMetadata,
-} from '@/lib/workflow/types'
+import type { DocumentType } from '@/lib/processing/types/base'
+import type { WorkflowStep, WorkflowOptions } from '@/lib/workflow/types'
 
-import type {
-  VerificationItem,
-  VerificationOptions,
-  VerificationResult,
-} from '@/lib/processing/types/verification'
-import type { Database } from '@/lib/supabase'
-import { createBrowserClient } from '@/lib/supabase/clients'
-import { documentService } from '@/lib/services/document/document-service'
 import { ApiClient } from '@/lib/api/client/api-client'
 import { useWorkflow } from '@/lib/workflow/use-workflow'
 import { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
@@ -62,8 +56,11 @@ import {
 // Import the useWorkflowSync hook for transaction tracking
 import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
 
+// Import error handling utilities
+import { useWorkflowErrorHandler } from '@/lib/errors/workflow-error-handler'
+
 // Initialize API client
-const apiClient = new ApiClient()
+const apiClientInstance = new ApiClient()
 
 // Define initial workflow state
 const initialWorkflowState = {
@@ -90,6 +87,7 @@ const generateUniqueId = () => crypto.randomUUID()
 import { workflowService } from '@/lib/services/workflow/workflow-service'
 import { chatService } from '@/lib/services/chat/chat-service'
 import { workflowStateManager } from '@/lib/services/workflow/workflow-state-manager'
+import { verificationService } from '@/lib/services/verification/verification-service'
 
 // Track pending workflow transactions
 interface PendingTransaction {
@@ -137,7 +135,14 @@ async function updateDatabaseWorkflowState(
         if (status.status !== 'pending') {
           const transaction = pendingTransactions.get(transactionId)
           if (transaction) {
-            transaction.status = status.status
+            // Handle the status safely with type checking
+            if (
+              status.status === 'committed' ||
+              status.status === 'failed' ||
+              status.status === 'conflict'
+            ) {
+              transaction.status = status.status
+            }
 
             // Clean up transactions after a while
             if (status.status === 'committed' || status.status === 'failed') {
@@ -237,6 +242,14 @@ interface ChatStore extends ChatState {
   ) => Promise<any>
   resetVerification: () => Promise<any>
   beginReportGeneration: (reportMetadata?: Record<string, any>) => Promise<any>
+}
+
+// Extend the WorkflowState interface to properly type the data property
+interface ExtendedWorkflowState extends WorkflowState {
+  data: Record<string, unknown> & {
+    verificationMetadata?: VerificationMetadata
+    patientId?: string
+  }
 }
 
 // Create the Zustand store
@@ -492,21 +505,27 @@ export const useChatStore = create<ChatStore>()(
 
             // If we're using async/await in a synchronous context, we need to handle the promise
             // but Zustand's set function should finish before the promise resolves
-            transactionId.then((id) => {
-              if (id !== '__FAILED__') {
-                // Store transaction ID in the state for reference
-                // This happens after the state update, so a subsequent render will pick it up
-                set((state) => ({
-                  workflow: {
-                    ...state.workflow,
-                    data: {
-                      ...state.workflow.data,
-                      _latestTransactionId: id,
+            transactionId
+              .then((id) => {
+                if (id !== '__FAILED__') {
+                  // Store transaction ID in the state for reference
+                  // This happens after the state update, so a subsequent render will pick it up
+                  set((state) => ({
+                    workflow: {
+                      ...state.workflow,
+                      data: {
+                        ...state.workflow.data,
+                        _latestTransactionId: id,
+                      },
                     },
-                  },
-                }))
-              }
-            })
+                  }))
+                }
+                return id // Return a value from then()
+              })
+              .catch((err) => {
+                console.error('Transaction ID promise failed:', err)
+                return '__ERROR__'
+              })
           }
 
           return {
@@ -540,50 +559,50 @@ export const useChatStore = create<ChatStore>()(
 
       // Verification actions
       startVerification: (content, options) => {
-        return Promise.resolve().then(() => {
-          set((state) => {
-            const summaryId = crypto.randomUUID()
-            const timestamp = new Date().toISOString()
+        set((state) => {
+          const summaryId = crypto.randomUUID()
+          const timestamp = new Date().toISOString()
 
-            return {
-              mode: 'verification',
-              verification: {
-                ...state.verification,
-                isInVerificationMode: true,
-                currentSummary: content,
-                verificationItems: options?.items || [],
-                verificationStatus: 'in_progress',
-                summaryVersions: [
-                  ...state.verification.summaryVersions,
-                  {
-                    id: summaryId,
-                    content,
-                    timestamp,
-                  },
-                ],
-              },
-              workflow: {
-                ...state.workflow,
-                currentStep: 'verification',
-                processingStatus: {
-                  status: 'processing',
-                  progress: 70,
-                  phase: 'verification',
+          return {
+            mode: 'verification',
+            verification: {
+              ...state.verification,
+              isInVerificationMode: true,
+              currentSummary: content,
+              verificationItems: options?.items || [],
+              verificationStatus: 'in_progress',
+              summaryVersions: [
+                ...state.verification.summaryVersions,
+                {
+                  id: summaryId,
+                  content,
+                  timestamp,
                 },
-                data: {
-                  ...state.workflow.data,
-                  verification: {
-                    isInVerificationMode: true,
-                    originalSummaryId: summaryId,
-                    currentVersionId: summaryId,
-                    correctionCount: 0,
-                    startedAt: timestamp,
-                  },
+              ],
+            },
+            workflow: {
+              ...state.workflow,
+              currentStep: 'verification',
+              processingStatus: {
+                status: 'processing',
+                progress: 70,
+                phase: 'verification',
+              },
+              data: {
+                ...state.workflow.data,
+                verification: {
+                  isInVerificationMode: true,
+                  originalSummaryId: summaryId,
+                  currentVersionId: summaryId,
+                  correctionCount: 0,
+                  startedAt: timestamp,
                 },
               },
-            }
-          })
+            },
+          }
         })
+
+        return Promise.resolve(true)
       },
 
       submitCorrection: (correction) =>
@@ -702,19 +721,21 @@ export const useChatStore = create<ChatStore>()(
           const currentSummary = state.verification.currentSummary || ''
 
           // Call the verification API through the client
-          const result = await apiClient.verification.submitCorrection({
+          const result = await verificationService.submitCorrection({
             correction,
             currentSummary,
             workflowId: workflowStateManager.getCurrentWorkflowId() || '',
             messageId: progressMessageId,
           })
 
-          // Get data from the API response
-          const newSummaryId = result.data.summaryId || crypto.randomUUID()
+          // Get data from the service response
+          const newSummaryId = result.success
+            ? result.data.summaryId
+            : crypto.randomUUID()
           const timestamp = new Date().toISOString()
-          const newSummary =
-            result.data.summary ||
-            `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
+          const newSummary = result.success
+            ? result.data.summary
+            : `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
 
           // Update the progress message
           get().updateMessageProgress(progressMessageId, 100, 'completed')
@@ -730,7 +751,10 @@ export const useChatStore = create<ChatStore>()(
               timestamp,
               verificationMetadata: {
                 verificationStatus: 'in_progress',
-                correctionCount: state.verification.summaryVersions.length,
+                correctionCount:
+                  (get().workflow.data as ExtendedWorkflowState['data'])
+                    .verificationMetadata?.correctionCount ||
+                  state.verification.summaryVersions.length,
               },
             },
           })
@@ -835,16 +859,17 @@ export const useChatStore = create<ChatStore>()(
         // Start report generation in workflow
         get().startReportGeneration()
 
-        try {
-          // Get current workflow and patient data
-          const state = get()
-          const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-          const patientId = (state.workflow.data.patientId as string) || ''
+        // Get current workflow and patient data
+        const state = get()
+        const currentWorkflowId =
+          workflowStateManager.getCurrentWorkflowId() || ''
+        const currentPatientId = (state.workflow.data.patientId as string) || ''
 
+        try {
           // Call the reports API
-          const report = await apiClient.reports.generateReport({
-            workflowId,
-            patientId,
+          const report = await apiClientInstance.reports.generateReport({
+            workflowId: currentWorkflowId,
+            patientId: currentPatientId,
             format: 'pdf',
             includeVerificationData: true,
             detailLevel: 'comprehensive',
@@ -866,8 +891,8 @@ export const useChatStore = create<ChatStore>()(
           const reportError = new ReportGenerationError({
             message: normalizedError.message || 'Failed to generate report',
             code: 'REPORT_GENERATION_FAILED',
-            workflowId,
-            patientId,
+            workflowId: currentWorkflowId,
+            patientId: currentPatientId,
             data: {
               requestDetails: {
                 format: 'pdf',
@@ -902,12 +927,14 @@ export const useChatStore = create<ChatStore>()(
           }
 
           // Call the reports API to update format
-          const formattedReport = await apiClient.reports.formatReport({
+          const formattedReport = await apiClientInstance.reports.formatReport(
             reportId,
-            format: format.format || 'pdf',
-            style: format.style || 'clinical',
-            metadataInFooter: format.metadataInFooter || false,
-          })
+            {
+              format: format.format || 'pdf',
+              style: format.style || 'clinical',
+              metadataInFooter: format.metadataInFooter || false,
+            }
+          )
 
           get().completeReportGeneration({
             format,
@@ -970,7 +997,7 @@ export const useChatStore = create<ChatStore>()(
             : undefined
 
           // Call the API client instead of document service directly
-          const result = await apiClient.documents.processDocument({
+          const result = await apiClientInstance.documents.processDocument({
             file,
             patientId,
             documentType: docTypeObj?.type || 'clinical',
@@ -1050,7 +1077,7 @@ export const useChatStore = create<ChatStore>()(
           }
 
           // Call the API client instead of document service directly
-          const result = await apiClient.documents.uploadDocument({
+          const result = await apiClientInstance.documents.uploadDocument({
             patientId,
             file,
             documentType: documentType || 'clinical',
@@ -1270,7 +1297,8 @@ export const useChatStore = create<ChatStore>()(
       initiateVerification: async (extractedDocument, messageId) => {
         try {
           // Get the auth user ID for the workflow using the API client
-          const { data: userData } = await apiClient.auth.getCurrentUser()
+          const { data: userData } =
+            await apiClientInstance.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
 
@@ -1282,7 +1310,7 @@ export const useChatStore = create<ChatStore>()(
           const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
 
           const verificationResult =
-            await apiClient.verification.generateVerification({
+            await verificationService.generateVerification({
               document: extractedDocument,
               workflowId,
               messageId: messageId || '',
@@ -1309,15 +1337,27 @@ export const useChatStore = create<ChatStore>()(
           }))
 
           return {
-            summaryId: verificationResult.data.summaryId,
-            summary: verificationResult.data.summary,
-            structuredData: verificationResult.data.structuredData || {
-              patient: {
-                name: 'Sample Patient',
-                age: 0,
-                diagnosis: 'Pending diagnosis',
-              },
-            },
+            summaryId: verificationResult.success
+              ? verificationResult.data.summaryId
+              : crypto.randomUUID(),
+            summary: verificationResult.success
+              ? verificationResult.data.summary
+              : 'Summary extraction failed',
+            structuredData: verificationResult.success
+              ? verificationResult.data.structuredData || {
+                  patient: {
+                    name: 'Sample Patient',
+                    age: 0,
+                    diagnosis: 'Pending diagnosis',
+                  },
+                }
+              : {
+                  patient: {
+                    name: 'Sample Patient',
+                    age: 0,
+                    diagnosis: 'Pending diagnosis',
+                  },
+                },
           }
         } catch (error) {
           console.error('Error initiating verification:', error)
@@ -1336,7 +1376,8 @@ export const useChatStore = create<ChatStore>()(
       processCorrection: async (correctionText, currentSummary, messageId) => {
         try {
           // Get the auth user ID for the workflow using the API client
-          const { data: userData } = await apiClient.auth.getCurrentUser()
+          const { data: userData } =
+            await apiClientInstance.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
 
@@ -1364,13 +1405,12 @@ export const useChatStore = create<ChatStore>()(
           // Use API client for compatibility
           const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
 
-          const correctionResult =
-            await apiClient.verification.processCorrection({
-              correction: correctionText,
-              currentSummary,
-              workflowId,
-              messageId: messageId || '',
-            })
+          const correctionResult = await verificationService.processCorrection({
+            correction: correctionText,
+            currentSummary,
+            workflowId,
+            messageId: messageId || '',
+          })
 
           // Update local state with new summary
           set((state) => {
@@ -1426,8 +1466,8 @@ export const useChatStore = create<ChatStore>()(
             },
             correctionCount:
               correctionResult.data.correctionCount ||
-              (get().workflow.data.verificationMetadata?.correctionCount || 0) +
-                1,
+              ((get().workflow.data as ExtendedWorkflowState['data'])
+                .verificationMetadata?.correctionCount || 0) + 1,
           }
         } catch (error) {
           console.error('Error processing correction:', error)
@@ -1446,7 +1486,8 @@ export const useChatStore = create<ChatStore>()(
       resetVerification: async () => {
         try {
           // Get the auth user ID for the workflow using the API client
-          const { data: userData } = await apiClient.auth.getCurrentUser()
+          const { data: userData } =
+            await apiClientInstance.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
 
@@ -1495,7 +1536,8 @@ export const useChatStore = create<ChatStore>()(
       beginReportGeneration: async (reportMetadata) => {
         try {
           // Get the auth user ID for the workflow using the API client
-          const { data: userData } = await apiClient.auth.getCurrentUser()
+          const { data: userData } =
+            await apiClientInstance.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
 
@@ -1641,21 +1683,13 @@ export function useChatDispatch(): React.Dispatch<ChatAction> {
 
 // Hook for handling errors with toast notifications
 export function useErrorHandler() {
+  const { toast } = useToast()
   const setError = useChatStore((state) => state.setError)
   const updateWorkflowStep = useChatStore((state) => state.updateWorkflowStep)
   const currentStep = useChatStore((state) => state.workflow.currentStep)
 
-  // Import the workflow error handler
-  const {
-    workflowErrorHandler,
-    useWorkflowErrorHandler,
-  } = require('@/lib/errors/workflow-error-handler')
-
-  // Get API client for error recovery
-  const { apiClient } = require('@/lib/api/client/api-client')
-
   // Initialize the workflow error handler with API client
-  const errorHandler = useWorkflowErrorHandler(apiClient)
+  const errorHandler = useWorkflowErrorHandler(apiClientInstance)
 
   return {
     // Enhanced error handler that preserves workflow transition context
@@ -1806,18 +1840,20 @@ export function useChatContext(): ExtendedChatContextType {
     mode: store.mode,
     chatId: store.chatId,
 
-    // Workflow
+    // Workflow - match the structure expected by UseProcessingWorkflowResult
     workflow: {
-      processDocument: store.processDocument,
       workflowStep: store.workflow.currentStep,
-      processingStatus: store.workflow.processingStatus,
       error: store.workflow.workflowError,
       resetWorkflow: store.resetChat,
-      startVerification: store.startVerification,
-      processCorrection: store.processCorrection,
-      completeVerification: store.completeVerification,
+      processDocument: store.processDocument,
+      extractedDocument: store.extractedDocument,
+      status: store.workflow.processingStatus.status,
+      data: store.workflow.data as ExtendedWorkflowState['data'],
+      // Add these methods to match the expected interface
       generateReport: store.generateReport,
       formatReport: store.formatReport,
+      completeVerification: store.completeVerification,
+      processCorrection: store.processCorrection,
     },
     workflowStep: store.workflow.currentStep,
 

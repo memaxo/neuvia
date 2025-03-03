@@ -16,8 +16,9 @@ import { WorkflowStatusDisplay } from '@/components/chat/workflow/workflow-statu
 import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
 import { UnifiedDocumentUploader } from '@/components/upload/unified-document-uploader'
 import { useErrorHandler } from '@/stores/chat-store'
-// Import API client
+// Import API client and service layer
 import { apiClient } from '@/lib/api/client/api-client'
+import { verificationService } from '@/lib/services/verification/verification-service'
 // Import real-time sync hook
 import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
 // Import error boundary
@@ -190,8 +191,8 @@ export function ChatInterface({
             'verification_prompt'
           )
           
-          // Get actual extracted summary from verification service
-          const verificationResult = await apiClient.verification.generateVerification({
+          // Get actual extracted summary from verification service layer
+          const verificationResult = await verificationService.generateVerification({
             document: result,
             workflowId: workflowData?.id || '',
             messageId: processingMsg.id,
@@ -199,7 +200,7 @@ export function ChatInterface({
           })
           
           // Start verification with the actual extracted summary
-          startVerification(verificationResult?.summary || result.extractedData?.rawText || '')
+          startVerification(verificationResult.success ? verificationResult.data.summary : result.extractedData?.rawText || '')
         }
       } catch (error) {
         const errorMsg =
