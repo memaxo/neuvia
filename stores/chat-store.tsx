@@ -4,9 +4,14 @@ import { useToast } from '@/components/ui/use-toast'
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useRef } from 'react'
-import React from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react'
 
 // Import types from our centralized type system
 import type {
@@ -22,7 +27,10 @@ import { processMessage } from '@/lib/actions/message-processor'
 import { initialChatState } from '@/lib/chat/types'
 
 // Import for database operations
-import type { ProcessingStatus } from '@/lib/processing/types/base'
+import type {
+  ProcessingStatus,
+  DocumentType,
+} from '@/lib/processing/types/base'
 import type {
   ProcessingPhase,
   VerificationStatusType,
@@ -36,7 +44,6 @@ import type {
   VerificationOptions,
   VerificationResult,
 } from '@/lib/processing/types/verification'
-import type { DocumentType } from '@/lib/processing/types/base'
 import type { Database } from '@/lib/supabase'
 import { createBrowserClient } from '@/lib/supabase/clients'
 import { documentService } from '@/lib/services/document/document-service'
@@ -44,13 +51,16 @@ import { ApiClient } from '@/lib/api/client/api-client'
 import { useWorkflow } from '@/lib/workflow/use-workflow'
 import { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
 import { validateWorkflowTransition } from '@/lib/workflow/workflow-manager'
-import { 
-  WorkflowStateError, 
-  DocumentProcessingError, 
+import {
+  WorkflowStateError,
+  DocumentProcessingError,
   VerificationError,
   ReportGenerationError,
-  normalizeError
+  normalizeError,
 } from '@/lib/errors'
+
+// Import the useWorkflowSync hook for transaction tracking
+import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
 
 // Initialize API client
 const apiClient = new ApiClient()
@@ -81,20 +91,73 @@ import { workflowService } from '@/lib/services/workflow/workflow-service'
 import { chatService } from '@/lib/services/chat/chat-service'
 import { workflowStateManager } from '@/lib/services/workflow/workflow-state-manager'
 
-// Function to update workflow state in database using the service layer
-async function updateDatabaseWorkflowState(
-  step: WorkflowStep,
-  metadata?: Record<string, any>
-) {
-  try {
-    // Use the centralized workflow state manager instead of direct localStorage access
-    await workflowStateManager.updateWorkflowState(step, metadata)
-  } catch (error) {
-    console.error('Failed to update workflow state in database:', error)
-  }
+// Track pending workflow transactions
+interface PendingTransaction {
+  id: string
+  step: WorkflowStep
+  metadata: Record<string, any>
+  timestamp: string
+  status: 'pending' | 'committed' | 'failed' | 'conflict'
 }
 
-// Note: Client ID generation is now handled in the workflow service
+const pendingTransactions = new Map<string, PendingTransaction>()
+
+// Function to update workflow state in database using the service layer with optimistic updates
+async function updateDatabaseWorkflowState(
+  step: WorkflowStep,
+  metadata?: Record<string, any>,
+  options: {
+    optimistic?: boolean
+    conflictStrategy?: 'client-wins' | 'server-wins' | 'merge' | 'manual'
+    forceUpdate?: boolean
+  } = {}
+): Promise<string> {
+  try {
+    // Use the service to update the workflow state with optimistic updates
+    const transactionId = await workflowService.updateWorkflowState(
+      workflowStateManager.getCurrentWorkflowId() || '',
+      step,
+      metadata,
+      options
+    )
+
+    // Store the transaction for tracking
+    pendingTransactions.set(transactionId, {
+      id: transactionId,
+      step,
+      metadata: metadata || {},
+      timestamp: new Date().toISOString(),
+      status: 'pending',
+    })
+
+    // Set up a timeout to check transaction status
+    setTimeout(async () => {
+      try {
+        const status = await workflowService.getTransactionStatus(transactionId)
+        if (status.status !== 'pending') {
+          const transaction = pendingTransactions.get(transactionId)
+          if (transaction) {
+            transaction.status = status.status
+
+            // Clean up transactions after a while
+            if (status.status === 'committed' || status.status === 'failed') {
+              setTimeout(() => {
+                pendingTransactions.delete(transactionId)
+              }, 60000) // Keep for 1 minute for debugging
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking transaction status:', err)
+      }
+    }, 2000) // Check after 2 seconds
+
+    return transactionId
+  } catch (error) {
+    console.error('Failed to update workflow state in database:', error)
+    throw error
+  }
+}
 
 // Define Zustand store with both state and actions
 interface ChatStore extends ChatState {
@@ -263,31 +326,42 @@ export const useChatStore = create<ChatStore>()(
             : state.workflow,
         })),
 
-      // Workflow actions
+      // Workflow actions with optimistic updates and transaction tracking
       updateWorkflowStep: (step, metadata) =>
         set((state) => {
           // Use the imported validation functions
-          
+
           // Current step from state
           const currentStep = state.workflow.currentStep
-          
+
           // Check if this is a remote update from Supabase sync
           const isRemoteUpdate = metadata?._syncedFromRemote === true
-          
-          // Always validate transitions unless it's a remote update or same-state update
+
+          // Check if this has a transaction ID, indicating it's part of an optimistic update
+          const isTransactionalUpdate = metadata?._transactionId !== undefined
+
+          // Always validate transitions unless it's a remote update, transactional, or same-state update
           // Remote updates are already validated on the originating client
-          if (!isRemoteUpdate && currentStep !== step) {
+          if (
+            !isRemoteUpdate &&
+            !isTransactionalUpdate &&
+            currentStep !== step
+          ) {
             // Validate the transition
-            const validation = validateWorkflowTransition(currentStep, step, metadata)
-            
+            const validation = validateWorkflowTransition(
+              currentStep,
+              step,
+              metadata
+            )
+
             // If the transition is invalid, handle it more strictly
             if (!validation.isValid) {
               console.error(
-                `Invalid workflow transition from '${currentStep}' to '${step}':`, 
+                `Invalid workflow transition from '${currentStep}' to '${step}':`,
                 validation.error,
                 { details: validation.details, metadata }
               )
-              
+
               // Add detailed error information to metadata for better debugging
               if (metadata) {
                 metadata.transitionWarning = validation.error
@@ -295,29 +369,29 @@ export const useChatStore = create<ChatStore>()(
                 metadata.validationDetails = validation.details
                 metadata.attemptedAt = new Date().toISOString()
               }
-              
+
               // Create error object to use for state updates or throwing
               const transitionError = new WorkflowStateError({
                 message: validation.error || 'Invalid workflow transition',
                 transition: { from: currentStep, to: step },
-                data: { 
+                data: {
                   ...metadata,
-                  validationDetails: validation.details
-                }
+                  validationDetails: validation.details,
+                },
               })
-              
+
               // In production, we'll update error state but stay on the current step
               // This prevents UI from breaking while still tracking the error
               if (process.env.NODE_ENV !== 'development') {
                 // Set error in state instead of throwing
                 state.error = transitionError.message
                 state.workflow.workflowError = transitionError.message
-                
+
                 // Return early with updated metadata but keep the current step
                 return {
                   workflow: {
                     ...state.workflow,
-                    currentStep: currentStep, // Stay on current step
+                    currentStep, // Stay on current step
                     data: {
                       ...state.workflow.data,
                       transitionError: {
@@ -325,14 +399,14 @@ export const useChatStore = create<ChatStore>()(
                         from: currentStep,
                         to: step,
                         details: validation.details,
-                        timestamp: new Date().toISOString()
-                      }
+                        timestamp: new Date().toISOString(),
+                      },
                     },
                   },
                   // Keep current mode
                   mode: state.mode,
                   // Set error state
-                  error: transitionError.message
+                  error: transitionError.message,
                 }
               } else {
                 // In development, throw error to catch invalid transitions early
@@ -340,13 +414,13 @@ export const useChatStore = create<ChatStore>()(
                 setTimeout(() => {
                   throw transitionError
                 }, 0)
-                
+
                 // Also prevent the transition by keeping the current step
                 step = currentStep
               }
             }
           }
-          
+
           // Helper to map workflow steps to chat modes
           const mapStepToMode = (
             step: WorkflowStep,
@@ -375,9 +449,9 @@ export const useChatStore = create<ChatStore>()(
           // For error steps, set the error state too
           if (step === 'error' && metadata?.error) {
             // Set the error in the workflow and main error state
-            const errorMessage = metadata.error as string;
-            state.error = errorMessage;
-            state.workflow.workflowError = errorMessage;
+            const errorMessage = metadata.error as string
+            state.error = errorMessage
+            state.workflow.workflowError = errorMessage
           }
 
           // Track the transition in metadata for diagnostics
@@ -386,14 +460,53 @@ export const useChatStore = create<ChatStore>()(
             _transition: {
               from: currentStep,
               to: step,
-              timestamp: new Date().toISOString()
-            }
+              timestamp: new Date().toISOString(),
+            },
           }
 
-          // Only update the database if this is a local change (not a remote sync)
+          // Only update the database if this is a local change (not a remote sync or part of an optimistic update)
           // This prevents endless loops of updates between clients
-          if (!isRemoteUpdate) {
-            updateDatabaseWorkflowState(step, enrichedMetadata)
+          if (!isRemoteUpdate && !isTransactionalUpdate) {
+            // Use options based on the update context
+            const options = {
+              // Use optimistic updates by default
+              optimistic: true,
+
+              // Use merge strategy by default but allow overrides
+              conflictStrategy: metadata?._conflictStrategy || 'merge',
+
+              // Force update for error states
+              forceUpdate: step === 'error',
+            }
+
+            // Add transaction ID to state for tracking
+            const transactionId = updateDatabaseWorkflowState(
+              step,
+              enrichedMetadata,
+              options
+            ).catch((error) => {
+              console.error('Failed to update workflow state:', error)
+              // Return a special value to indicate failure
+              return '__FAILED__'
+            })
+
+            // If we're using async/await in a synchronous context, we need to handle the promise
+            // but Zustand's set function should finish before the promise resolves
+            transactionId.then((id) => {
+              if (id !== '__FAILED__') {
+                // Store transaction ID in the state for reference
+                // This happens after the state update, so a subsequent render will pick it up
+                set((state) => ({
+                  workflow: {
+                    ...state.workflow,
+                    data: {
+                      ...state.workflow.data,
+                      _latestTransactionId: id,
+                    },
+                  },
+                }))
+              }
+            })
           }
 
           return {
@@ -407,7 +520,9 @@ export const useChatStore = create<ChatStore>()(
             },
             mode,
             // If transitioning to error, also set the error state
-            ...(step === 'error' && metadata?.error ? { error: metadata.error } : {}),
+            ...(step === 'error' && metadata?.error
+              ? { error: metadata.error }
+              : {}),
           }
         }),
 
@@ -591,13 +706,15 @@ export const useChatStore = create<ChatStore>()(
             correction,
             currentSummary,
             workflowId: workflowStateManager.getCurrentWorkflowId() || '',
-            messageId: progressMessageId
+            messageId: progressMessageId,
           })
-          
+
           // Get data from the API response
-          const newSummaryId = result.summaryId || crypto.randomUUID()
+          const newSummaryId = result.data.summaryId || crypto.randomUUID()
           const timestamp = new Date().toISOString()
-          const newSummary = result.summary || `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
+          const newSummary =
+            result.data.summary ||
+            `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
 
           // Update the progress message
           get().updateMessageProgress(progressMessageId, 100, 'completed')
@@ -646,10 +763,10 @@ export const useChatStore = create<ChatStore>()(
           }))
         } catch (error) {
           console.error('Error processing correction:', error)
-          
+
           // Normalize and create domain-specific error
           const normalizedError = normalizeError(error)
-          
+
           const verificationError = new VerificationError({
             message: normalizedError.message || 'Failed to process correction',
             code: 'CORRECTION_PROCESSING_FAILED',
@@ -658,11 +775,11 @@ export const useChatStore = create<ChatStore>()(
             data: {
               correction,
               currentSummary: state.verification.currentSummary,
-              correctionCount: state.verification.summaryVersions.length
+              correctionCount: state.verification.summaryVersions.length,
             },
-            cause: error
+            cause: error,
           })
-          
+
           // Update workflow state with detailed error
           get().setError(verificationError.message)
           get().updateWorkflowStep('error', {
@@ -671,7 +788,7 @@ export const useChatStore = create<ChatStore>()(
             errorCode: verificationError.code,
             errorTimestamp: verificationError.timestamp,
             errorStage: 'verification',
-            previousStep: 'verification_in_progress'
+            previousStep: 'verification_in_progress',
           })
         }
       },
@@ -722,30 +839,30 @@ export const useChatStore = create<ChatStore>()(
           // Get current workflow and patient data
           const state = get()
           const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-          const patientId = state.workflow.data.patientId as string || ''
-          
+          const patientId = (state.workflow.data.patientId as string) || ''
+
           // Call the reports API
           const report = await apiClient.reports.generateReport({
             workflowId,
             patientId,
             format: 'pdf',
             includeVerificationData: true,
-            detailLevel: 'comprehensive'
+            detailLevel: 'comprehensive',
           })
 
           // Update workflow state to completion once report is done
           get().completeReportGeneration({
-            format: report.format || 'pdf',
-            content: report.content || 'Generated report content',
-            generatedAt: report.generatedAt || new Date().toISOString(),
-            reportId: report.id
+            format: report.data.format || 'pdf',
+            content: report.data.content || 'Generated report content',
+            generatedAt: report.data.generatedAt || new Date().toISOString(),
+            reportId: report.data.id,
           })
         } catch (error) {
           console.error('Error generating report:', error)
-          
+
           // Normalize and create domain-specific error
           const normalizedError = normalizeError(error)
-          
+
           const reportError = new ReportGenerationError({
             message: normalizedError.message || 'Failed to generate report',
             code: 'REPORT_GENERATION_FAILED',
@@ -755,12 +872,12 @@ export const useChatStore = create<ChatStore>()(
               requestDetails: {
                 format: 'pdf',
                 includeVerificationData: true,
-                detailLevel: 'comprehensive'
-              }
+                detailLevel: 'comprehensive',
+              },
             },
-            cause: error
+            cause: error,
           })
-          
+
           // Update workflow state with detailed error
           get().setError(reportError.message)
           get().updateWorkflowStep('error', {
@@ -768,7 +885,7 @@ export const useChatStore = create<ChatStore>()(
             errorDetails: reportError.data,
             errorCode: reportError.code,
             errorTimestamp: reportError.timestamp,
-            errorStage: 'report_generation'
+            errorStage: 'report_generation',
           })
         }
       },
@@ -779,24 +896,24 @@ export const useChatStore = create<ChatStore>()(
           // Get current report data
           const state = get()
           const reportId = state.reportGeneration?.reportId || ''
-          
+
           if (!reportId) {
             throw new Error('No report has been generated yet')
           }
-          
+
           // Call the reports API to update format
           const formattedReport = await apiClient.reports.formatReport({
             reportId,
             format: format.format || 'pdf',
             style: format.style || 'clinical',
-            metadataInFooter: format.metadataInFooter || false
+            metadataInFooter: format.metadataInFooter || false,
           })
-          
+
           get().completeReportGeneration({
             format,
-            content: formattedReport.content || 'Formatted report content',
+            content: formattedReport.data.content || 'Formatted report content',
             formattedAt: new Date().toISOString(),
-            reportId: formattedReport.id || reportId
+            reportId: formattedReport.data.id || reportId,
           })
         } catch (error) {
           console.error('Error formatting report:', error)
@@ -883,8 +1000,8 @@ export const useChatStore = create<ChatStore>()(
 
           // Normalize and log the error properly
           const normalizedError = normalizeError(error)
-          
-          // Create a domain-specific document processing error 
+
+          // Create a domain-specific document processing error
           const documentError = new DocumentProcessingError({
             message: normalizedError.message,
             code: 'DOCUMENT_PROCESSING_FAILED',
@@ -893,9 +1010,9 @@ export const useChatStore = create<ChatStore>()(
               fileName: file.name,
               fileSize: file.size,
               fileType: file.type,
-              patientId
+              patientId,
             },
-            cause: error
+            cause: error,
           })
 
           // Update workflow state with detailed error
@@ -904,7 +1021,7 @@ export const useChatStore = create<ChatStore>()(
             error: documentError.message,
             errorDetails: documentError.data,
             errorCode: documentError.code,
-            errorTimestamp: documentError.timestamp
+            errorTimestamp: documentError.timestamp,
           })
 
           throw documentError
@@ -1156,21 +1273,22 @@ export const useChatStore = create<ChatStore>()(
           const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
-          
+
           if (!userId) {
             throw new Error('User not authenticated')
           }
 
           // Use API client first for compatibility
           const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-          
-          const verificationResult = await apiClient.verification.generateVerification({
-            document: extractedDocument,
-            workflowId,
-            messageId: messageId || '',
-            summaryId: crypto.randomUUID()
-          })
-          
+
+          const verificationResult =
+            await apiClient.verification.generateVerification({
+              document: extractedDocument,
+              workflowId,
+              messageId: messageId || '',
+              summaryId: crypto.randomUUID(),
+            })
+
           // Update the store state with API result
           set((state) => ({
             workflow: {
@@ -1183,16 +1301,17 @@ export const useChatStore = create<ChatStore>()(
               },
               data: {
                 ...state.workflow.data,
-                extractedData: verificationResult.structuredData || extractedDocument,
-                summaryId: verificationResult.summaryId,
-              }
+                extractedData:
+                  verificationResult.data.structuredData || extractedDocument,
+                summaryId: verificationResult.data.summaryId,
+              },
             },
           }))
 
           return {
-            summaryId: verificationResult.summaryId,
-            summary: verificationResult.summary,
-            structuredData: verificationResult.structuredData || {
+            summaryId: verificationResult.data.summaryId,
+            summary: verificationResult.data.summary,
+            structuredData: verificationResult.data.structuredData || {
               patient: {
                 name: 'Sample Patient',
                 age: 0,
@@ -1220,7 +1339,7 @@ export const useChatStore = create<ChatStore>()(
           const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
-          
+
           if (!userId) {
             throw new Error('User not authenticated')
           }
@@ -1244,20 +1363,22 @@ export const useChatStore = create<ChatStore>()(
 
           // Use API client for compatibility
           const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-          
-          const correctionResult = await apiClient.verification.processCorrection({
-            correction: correctionText,
-            currentSummary,
-            workflowId,
-            messageId: messageId || ''
-          })
-          
+
+          const correctionResult =
+            await apiClient.verification.processCorrection({
+              correction: correctionText,
+              currentSummary,
+              workflowId,
+              messageId: messageId || '',
+            })
+
           // Update local state with new summary
           set((state) => {
             const currVerificationMetadata =
               state.workflow.data.verificationMetadata || {}
             const currSummaryVersions = state.verification.summaryVersions || []
-            const newSummaryId = correctionResult.summaryId || crypto.randomUUID()
+            const newSummaryId =
+              correctionResult.data.summaryId || crypto.randomUUID()
 
             return {
               workflow: {
@@ -1280,12 +1401,12 @@ export const useChatStore = create<ChatStore>()(
               },
               verification: {
                 ...state.verification,
-                currentSummary: correctionResult.summary,
+                currentSummary: correctionResult.data.summary,
                 summaryVersions: [
                   ...currSummaryVersions,
                   {
                     id: newSummaryId,
-                    content: correctionResult.summary,
+                    content: correctionResult.data.summary,
                     timestamp: new Date().toISOString(),
                   },
                 ],
@@ -1294,17 +1415,19 @@ export const useChatStore = create<ChatStore>()(
           })
 
           return {
-            summaryId: correctionResult.summaryId,
-            summary: correctionResult.summary,
-            structuredData: correctionResult.structuredData || {
+            summaryId: correctionResult.data.summaryId,
+            summary: correctionResult.data.summary,
+            structuredData: correctionResult.data.structuredData || {
               patient: {
                 name: 'Sample Patient',
                 age: 45,
                 diagnosis: 'Updated diagnosis based on correction',
               },
             },
-            correctionCount: correctionResult.correctionCount || 
-              ((get().workflow.data.verificationMetadata?.correctionCount || 0) + 1),
+            correctionCount:
+              correctionResult.data.correctionCount ||
+              (get().workflow.data.verificationMetadata?.correctionCount || 0) +
+                1,
           }
         } catch (error) {
           console.error('Error processing correction:', error)
@@ -1326,11 +1449,11 @@ export const useChatStore = create<ChatStore>()(
           const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
-          
+
           if (!userId) {
             throw new Error('User not authenticated')
           }
-          
+
           // Reset verification in database - use the workflow state manager
           await workflowStateManager.resetWorkflow()
 
@@ -1375,16 +1498,20 @@ export const useChatStore = create<ChatStore>()(
           const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = workflowStateManager.getCurrentChatId() || undefined
-          
+
           if (!userId) {
             throw new Error('User not authenticated')
           }
-          
+
           // Get current workflow step for validation
           const currentStep = get().workflow.currentStep
 
           // Validate current state - this should be verification_completed
-          const validSteps = ['verification_completed', 'verification', 'complete']
+          const validSteps = [
+            'verification_completed',
+            'verification',
+            'complete',
+          ]
           if (!validSteps.includes(currentStep)) {
             throw new Error(
               `Verification must be completed before generating report, current step: ${currentStep}`
@@ -1392,13 +1519,10 @@ export const useChatStore = create<ChatStore>()(
           }
 
           // Update database workflow state through the workflow state manager
-          await workflowStateManager.updateWorkflowState(
-            'report_generation',
-            {
-              ...(reportMetadata || {}),
-              reportGenerationStartedAt: new Date().toISOString(),
-            }
-          )
+          await workflowStateManager.updateWorkflowState('report_generation', {
+            ...(reportMetadata || {}),
+            reportGenerationStartedAt: new Date().toISOString(),
+          })
 
           // Update local state
           set((state) => ({
@@ -1520,28 +1644,28 @@ export function useErrorHandler() {
   const setError = useChatStore((state) => state.setError)
   const updateWorkflowStep = useChatStore((state) => state.updateWorkflowStep)
   const currentStep = useChatStore((state) => state.workflow.currentStep)
-  
+
   // Import the workflow error handler
-  const { 
-    workflowErrorHandler, 
-    useWorkflowErrorHandler 
+  const {
+    workflowErrorHandler,
+    useWorkflowErrorHandler,
   } = require('@/lib/errors/workflow-error-handler')
-  
+
   // Get API client for error recovery
   const { apiClient } = require('@/lib/api/client/api-client')
-  
+
   // Initialize the workflow error handler with API client
   const errorHandler = useWorkflowErrorHandler(apiClient)
-  
+
   return {
     // Enhanced error handler that preserves workflow transition context
     handleError: async (
-      error: unknown, 
+      error: unknown,
       fallbackMessage = 'An error occurred',
       options?: {
-        step?: string,
-        details?: Record<string, any>,
-        showToast?: boolean,
+        step?: string
+        details?: Record<string, any>
+        showToast?: boolean
         attemptRecovery?: boolean
       }
     ) => {
@@ -1550,51 +1674,48 @@ export function useErrorHandler() {
         error,
         currentStep as any,
         {
-          previousStep: options?.step as any || currentStep as any,
+          previousStep: (options?.step as any) || (currentStep as any),
           details: options?.details,
           showToast: options?.showToast,
-          attemptRecovery: options?.attemptRecovery
+          attemptRecovery: options?.attemptRecovery,
         }
       )
-      
+
       return metadata
     },
-    
+
     // Attempt recovery from an error with a specific strategy
     recoverFromError: async (
       targetStage: string,
       metadata?: Record<string, any>
     ) => {
       try {
-        return await errorHandler.recoverFromError(
-          targetStage as any,
-          {
-            errorMessage: metadata?.error || 'Unknown error',
-            workflowStep: currentStep as any,
-            previousStep: metadata?.previousStep as any,
-            timestamp: new Date().toISOString(),
-            details: metadata,
-          }
-        )
+        return await errorHandler.recoverFromError(targetStage as any, {
+          errorMessage: metadata?.error || 'Unknown error',
+          workflowStep: currentStep as any,
+          previousStep: metadata?.previousStep as any,
+          timestamp: new Date().toISOString(),
+          details: metadata,
+        })
       } catch (error) {
         console.error('Error recovery failed:', error)
         return false
       }
     },
-    
+
     // Get recovery paths for current workflow step
     getRecoveryPaths: () => {
       return errorHandler.getRecoveryPaths(currentStep as any)
     },
-    
+
     // Clear any error state
     clearError: (returnToStep?: string) => {
       setError(null)
-      
+
       if (returnToStep) {
         updateWorkflowStep(returnToStep as any)
       }
-    }
+    },
   }
 }
 

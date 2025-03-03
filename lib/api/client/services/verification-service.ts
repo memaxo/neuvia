@@ -9,21 +9,25 @@
  * ---------------------------------------------------------------
  */
 
-import {
+import type {
   VerificationItem,
   VerificationMetadata,
   VerificationOptions,
   VerificationResult,
   VerificationStatusType,
   VerifiedDocument,
-} from './data-contracts';
-import { ContentType, HttpClient, RequestParams } from "../models/http-client"
+} from '../models/data-contracts'
+import {
+  ContentType,
+  type HttpClient,
+  type RequestParams,
+} from '../models/http-client'
 
 export class Verification<SecurityDataType = unknown> {
-  http: HttpClient<SecurityDataType>;
+  http: HttpClient<SecurityDataType>
 
   constructor(http: HttpClient<SecurityDataType>) {
-    this.http = http;
+    this.http = http
   }
 
   /**
@@ -114,84 +118,84 @@ export class Verification<SecurityDataType = unknown> {
   submitCorrection = (
     data: {
       /** The correction text provided by the user */
-      correction: string;
+      correction: string
       /** The current summary content being corrected */
-      currentSummary: string;
+      currentSummary: string
       /**
        * The workflow ID associated with this correction
        * @format uuid
        */
-      workflowId?: string;
+      workflowId?: string
       /** Optional ID of the message associated with this correction */
-      messageId?: string;
+      messageId?: string
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         data: {
           /** ID of the updated summary */
-          summaryId: string;
+          summaryId: string
           /** Updated summary with correction applied */
-          summary: string;
+          summary: string
           /** Structured data extracted from the summary */
-          structuredData?: Record<string, any>;
+          structuredData?: Record<string, unknown>
           /**
            * Total number of corrections applied
            * @min 0
            */
-          correctionCount?: number;
-        };
+          correctionCount?: number
+        }
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Validation failed" */
-            message: string;
+            message: string
             /** @example "VALIDATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** Field-specific validation errors */
-              fields?: Record<string, string>;
-            };
-          };
+              fields?: Record<string, string>
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/verification/submit-correction`,
@@ -201,7 +205,7 @@ export class Verification<SecurityDataType = unknown> {
       type: ContentType.Json,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Processes a correction to verified content and returns updated content
  *
@@ -290,84 +294,84 @@ export class Verification<SecurityDataType = unknown> {
   processCorrection = (
     data: {
       /** The correction text */
-      correction: string;
+      correction: string
       /** The current summary content */
-      currentSummary: string;
+      currentSummary: string
       /**
        * The workflow ID associated with this correction
        * @format uuid
        */
-      workflowId?: string;
+      workflowId?: string
       /** Optional ID of message associated with this correction */
-      messageId?: string;
+      messageId?: string
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         data: {
           /** ID of the updated summary */
-          summaryId: string;
+          summaryId: string
           /** Updated summary with correction applied */
-          summary: string;
+          summary: string
           /** Structured data extracted from the summary */
-          structuredData?: Record<string, any>;
+          structuredData?: Record<string, unknown>
           /**
            * Total number of corrections applied
            * @min 0
            */
-          correctionCount?: number;
-        };
+          correctionCount?: number
+        }
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Validation failed" */
-            message: string;
+            message: string
             /** @example "VALIDATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** Field-specific validation errors */
-              fields?: Record<string, string>;
-            };
-          };
+              fields?: Record<string, string>
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/verification/process-correction`,
@@ -377,7 +381,7 @@ export class Verification<SecurityDataType = unknown> {
       type: ContentType.Json,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Generates verification items and summary for a document
  *
@@ -461,79 +465,79 @@ export class Verification<SecurityDataType = unknown> {
   generateVerification = (
     data: {
       /** The document to be verified */
-      document: Record<string, any>;
+      document: Record<string, unknown>
       /**
        * The workflow ID for this verification
        * @format uuid
        */
-      workflowId?: string;
+      workflowId?: string
       /** Optional ID of message associated with this verification */
-      messageId?: string;
+      messageId?: string
       /** Optional ID for the generated summary */
-      summaryId?: string;
+      summaryId?: string
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         data: {
           /** ID of the generated summary */
-          summaryId: string;
+          summaryId: string
           /** Summary content generated from the document */
-          summary: string;
+          summary: string
           /** Structured data extracted from the document */
-          structuredData?: Record<string, any>;
-        };
+          structuredData?: Record<string, unknown>
+        }
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Validation failed" */
-            message: string;
+            message: string
             /** @example "VALIDATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** Field-specific validation errors */
-              fields?: Record<string, string>;
-            };
-          };
+              fields?: Record<string, string>
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/verification/generate`,
@@ -543,7 +547,7 @@ export class Verification<SecurityDataType = unknown> {
       type: ContentType.Json,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Retrieves the verification status of a patient summary
  *
@@ -628,71 +632,74 @@ export class Verification<SecurityDataType = unknown> {
 
 }`
  */
-  getPatientSummaryVerification = (patientId: string, params: RequestParams = {}) =>
+  getPatientSummaryVerification = (
+    patientId: string,
+    params: RequestParams = {}
+  ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         data: {
           /** Current verification status */
-          verificationStatus: VerificationStatusType;
+          verificationStatus: VerificationStatusType
           /** Verification items */
-          items: VerificationItem[];
+          items: VerificationItem[]
           /** Verification metadata */
-          metadata?: VerificationMetadata;
+          metadata?: VerificationMetadata
           /** Original content being verified */
-          originalContent?: string;
+          originalContent?: string
           /** Current content after any corrections */
-          currentContent?: string;
-        };
+          currentContent?: string
+        }
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Resource not found" */
-            message: string;
+            message: string
             /** @example "NOT_FOUND" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** The type of resource that was not found */
-              resource?: string;
-            };
-          };
+              resource?: string
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/patient/${patientId}/verify-summary`,
@@ -700,7 +707,7 @@ export class Verification<SecurityDataType = unknown> {
       secure: true,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Updates the verification status of a patient summary
  *
@@ -781,68 +788,68 @@ export class Verification<SecurityDataType = unknown> {
        * Verification status to set
        * @default "verified"
        */
-      status: 'pending' | 'verified' | 'rejected';
+      status: 'pending' | 'verified' | 'rejected'
       /** Optional comments about the verification */
-      comments?: string;
+      comments?: string
       /** Updated verification items */
-      items?: VerificationItem[];
+      items?: VerificationItem[]
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         /** Verification result */
-        data: VerificationResult;
+        data: VerificationResult
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Resource not found" */
-            message: string;
+            message: string
             /** @example "NOT_FOUND" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** The type of resource that was not found */
-              resource?: string;
-            };
-          };
+              resource?: string
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/patient/${patientId}/verify-summary`,
@@ -852,7 +859,7 @@ export class Verification<SecurityDataType = unknown> {
       type: ContentType.Json,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Retrieves the verification status of a document
  *
@@ -932,64 +939,64 @@ export class Verification<SecurityDataType = unknown> {
        * Extracted document ID
        * @format uuid
        */
-      extractedDocumentId: string;
+      extractedDocumentId: string
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         /** Verified document data */
-        data: VerifiedDocument;
+        data: VerifiedDocument
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Resource not found" */
-            message: string;
+            message: string
             /** @example "NOT_FOUND" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** The type of resource that was not found */
-              resource?: string;
-            };
-          };
+              resource?: string
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/document-verification`,
@@ -998,7 +1005,7 @@ export class Verification<SecurityDataType = unknown> {
       secure: true,
       format: 'json',
       ...params,
-    });
+    })
   /**
  * @description Creates verification items for a document
  *
@@ -1093,85 +1100,85 @@ export class Verification<SecurityDataType = unknown> {
        * Document ID
        * @format uuid
        */
-      documentId: string;
+      documentId: string
       /**
        * Workflow ID
        * @format uuid
        */
-      workflowId: string;
+      workflowId: string
       /** Verification options */
-      options?: VerificationOptions;
+      options?: VerificationOptions
     },
-    params: RequestParams = {},
+    params: RequestParams = {}
   ) =>
     this.http.request<
       {
         /** @example true */
-        success: boolean;
+        success: boolean
         data: {
           /**
            * Verification process ID
            * @format uuid
            */
-          verificationId: string;
+          verificationId: string
           /**
            * Workflow ID
            * @format uuid
            */
-          workflowId?: string;
+          workflowId?: string
           /** Verification items */
-          items: VerificationItem[];
+          items: VerificationItem[]
           /** Verification status */
-          status?: VerificationStatusType;
-        };
+          status?: VerificationStatusType
+        }
         /** @format date-time */
-        timestamp: string;
+        timestamp: string
       },
       | {
           error: {
             /** @example "Invalid input parameters" */
-            message: string;
+            message: string
             /** @example "INVALID_INPUT" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             /** May contain field-specific validation errors */
-            details?: object;
-          };
+            details?: object
+          }
         }
       | {
           error: {
             /** @example "Authentication failed" */
-            message: string;
+            message: string
             /** @example "AUTHENTICATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
       | {
           error: {
             /** @example "Validation failed" */
-            message: string;
+            message: string
             /** @example "VALIDATION_FAILED" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
+            timestamp: string
             details?: {
               /** Field-specific validation errors */
-              fields?: Record<string, string>;
-            };
-          };
+              fields?: Record<string, string>
+            }
+          }
         }
       | {
           error: {
             /** @example "Internal server error" */
-            message: string;
+            message: string
             /** @example "SERVER_ERROR" */
-            code: string;
+            code: string
             /** @format date-time */
-            timestamp: string;
-          };
+            timestamp: string
+          }
         }
     >({
       path: `/document-verification`,
@@ -1181,5 +1188,5 @@ export class Verification<SecurityDataType = unknown> {
       type: ContentType.Json,
       format: 'json',
       ...params,
-    });
+    })
 }
