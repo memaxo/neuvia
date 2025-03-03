@@ -69,92 +69,27 @@ const extendedInitialState: ChatState = {
 // Function to generate unique IDs
 const generateUniqueId = () => crypto.randomUUID()
 
-// Function to update workflow state in database using the useWorkflow hook's interface
+// Import the workflow service
+import { workflowService } from '@/lib/services/workflow/workflow-service'
+import { chatService } from '@/lib/services/chat/chat-service'
+
+// Function to update workflow state in database using the service layer
 async function updateDatabaseWorkflowState(
   step: WorkflowStep,
   metadata?: Record<string, any>
 ) {
   try {
-    const supabase = createBrowserClient()
     const workflowId = localStorage.getItem('current_workflow_id')
-
     if (!workflowId) return
 
-    // Convert application workflow step to database workflow step if needed
-    let dbStep: Database['public']['Enums']['workflow_step'] = 'idle'
-
-    // Map application-specific steps to database enum values
-    if (step === 'error') {
-      dbStep = 'chat_error'
-    } else if (step === 'research' || step === 'report_presentation') {
-      // Map research to chat_in_progress for database compatibility
-      dbStep = 'chat_in_progress'
-    } else if (
-      step === 'idle' ||
-      step === 'uploading' ||
-      step === 'extracting' ||
-      step === 'verification' ||
-      step === 'report_generation' ||
-      step === 'complete' ||
-      step === 'chat_started' ||
-      step === 'chat_in_progress' ||
-      step === 'chat_completed' ||
-      step === 'verification_pending' ||
-      step === 'verification_in_progress' ||
-      step === 'verification_completed' ||
-      step === 'verification_failed'
-    ) {
-      // These steps exist in both types, so use directly
-      dbStep = step
-    }
-
-    // Mark this update as originated from local client to prevent echo updates
-    const enrichedMetadata = {
-      ...(metadata || {}),
-      updatedAt: new Date().toISOString(),
-      originalStep: step, // Store the original step for reference
-      _localUpdate: true, // Flag to prevent echo updates in real-time sync
-      _clientId: generateClientId(), // Add unique client ID to track the source
-    }
-
-    await supabase
-      .from('workflow_states')
-      .update({
-        current_step: dbStep,
-        metadata: enrichedMetadata,
-      })
-      .eq('id', workflowId)
+    // Call the service method instead of direct database access
+    await workflowService.updateWorkflowState(workflowId, step, metadata)
   } catch (error) {
     console.error('Failed to update workflow state in database:', error)
   }
 }
 
-// Create a semi-persistent client ID for tracking local changes
-// This helps prevent echo updates in multi-instance scenarios
-let clientId: string | null = null
-function generateClientId(): string {
-  if (clientId) return clientId
-  
-  // Check localStorage first for a persistent ID
-  const storedId = typeof localStorage !== 'undefined' 
-    ? localStorage.getItem('neuvia_client_id')
-    : null
-    
-  if (storedId) {
-    clientId = storedId
-    return clientId
-  }
-  
-  // Generate a new ID if not found
-  clientId = crypto.randomUUID()
-  
-  // Store in localStorage for persistence across page loads
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('neuvia_client_id', clientId)
-  }
-  
-  return clientId
-}
+// Note: Client ID generation is now handled in the workflow service
 
 // Define Zustand store with both state and actions
 interface ChatStore extends ChatState {
@@ -1113,9 +1048,8 @@ export const useChatStore = create<ChatStore>()(
       // Initialize verification process for a document using the useWorkflow hook
       initiateVerification: async (extractedDocument, messageId) => {
         try {
-          // Get the auth user ID for the workflow
-          const supabase = createBrowserClient()
-          const { data: userData } = await supabase.auth.getUser()
+          // Get the auth user ID for the workflow using the API client
+          const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = localStorage.getItem('current_chat_id') || undefined
           
@@ -1178,9 +1112,8 @@ export const useChatStore = create<ChatStore>()(
       // Process a user correction to the summary
       processCorrection: async (correctionText, currentSummary, messageId) => {
         try {
-          // Get the auth user ID for the workflow
-          const supabase = createBrowserClient()
-          const { data: userData } = await supabase.auth.getUser()
+          // Get the auth user ID for the workflow using the API client
+          const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = localStorage.getItem('current_chat_id') || undefined
           
@@ -1285,9 +1218,8 @@ export const useChatStore = create<ChatStore>()(
       // Reset verification state using useWorkflow hook
       resetVerification: async () => {
         try {
-          // Get the auth user ID for the workflow
-          const supabase = createBrowserClient()
-          const { data: userData } = await supabase.auth.getUser()
+          // Get the auth user ID for the workflow using the API client
+          const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = localStorage.getItem('current_chat_id') || undefined
           
@@ -1299,16 +1231,7 @@ export const useChatStore = create<ChatStore>()(
           const workflowId = localStorage.getItem('current_workflow_id') || ''
           
           if (workflowId) {
-            await supabase
-              .from('workflow_states')
-              .update({
-                current_step: 'idle',
-                verification_metadata: null,
-                current_summary_id: null,
-                correction_history: [],
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', workflowId)
+            await workflowService.resetWorkflow(workflowId)
           }
 
           // Update local state
@@ -1348,9 +1271,8 @@ export const useChatStore = create<ChatStore>()(
       // Begin report generation using workflow hooks
       beginReportGeneration: async (reportMetadata) => {
         try {
-          // Get the auth user ID for the workflow
-          const supabase = createBrowserClient()
-          const { data: userData } = await supabase.auth.getUser()
+          // Get the auth user ID for the workflow using the API client
+          const { data: userData } = await apiClient.auth.getCurrentUser()
           const userId = userData?.user?.id
           const chatId = localStorage.getItem('current_chat_id') || undefined
           
@@ -1373,17 +1295,14 @@ export const useChatStore = create<ChatStore>()(
           const workflowId = localStorage.getItem('current_workflow_id') || ''
           
           if (workflowId) {
-            await supabase
-              .from('workflow_states')
-              .update({
-                current_step: 'report_generation',
-                metadata: {
-                  ...(reportMetadata || {}),
-                  reportGenerationStartedAt: new Date().toISOString(),
-                },
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', workflowId)
+            await workflowService.updateWorkflowState(
+              workflowId,
+              'report_generation',
+              {
+                ...(reportMetadata || {}),
+                reportGenerationStartedAt: new Date().toISOString(),
+              }
+            )
           }
 
           // Update local state

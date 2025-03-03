@@ -4,7 +4,7 @@ import {
   processCorrection as processPatientSummaryCorrection,
 } from '@/lib/langchain/patient-summary'
 import type { Database } from '@/lib/supabase'
-import { createBrowserClient } from '@/lib/supabase/clients'
+import { workflowService } from '@/lib/services/workflow/workflow-service'
 // lib/workflow/use-workflow.ts
 import { useCallback, useEffect, useState } from 'react'
 import type {

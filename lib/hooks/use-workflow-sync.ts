@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { createBrowserClient } from '@/lib/supabase/clients'
+import { workflowService } from '@/lib/services/workflow/workflow-service'
 import { useChatStore } from '@/stores/chat-store'
 import type { WorkflowStep } from '@/lib/workflow/types'
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
@@ -36,31 +36,17 @@ export function useWorkflowSync(workflowId?: string) {
       return
     }
 
-    const supabase = createBrowserClient()
-    
     // Initialize the connection
     const setupRealtimeSubscription = async () => {
       try {
-        // Create a new realtime channel
-        const channel = supabase
-          .channel(`workflow-${effectiveWorkflowId}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'workflow_states',
-              filter: `id=eq.${effectiveWorkflowId}`
-            },
-            (payload: RealtimePostgresChangesPayload<{
-              current_step: string
-              metadata: Record<string, any>
-            }>) => {
-              // Handle the database update
-              handleWorkflowUpdate(payload)
-            }
-          )
-          .subscribe((status) => {
+        // Create a new realtime channel through the workflow service
+        const channel = workflowService.subscribeToWorkflowChanges(
+          effectiveWorkflowId,
+          (payload) => {
+            // Handle the database update
+            handleWorkflowUpdate(payload)
+          },
+          (status) => {
             // Update connection status
             setIsConnected(status === 'SUBSCRIBED')
             if (status === 'SUBSCRIBED') {
@@ -69,7 +55,8 @@ export function useWorkflowSync(workflowId?: string) {
             } else if (status === 'CHANNEL_ERROR') {
               setError('Error connecting to realtime updates')
             }
-          })
+          }
+        )
 
         // Store channel reference for cleanup
         channelRef.current = channel
@@ -85,33 +72,16 @@ export function useWorkflowSync(workflowId?: string) {
     // Fetch current workflow state to ensure we're in sync
     const fetchCurrentWorkflowState = async (id: string) => {
       try {
-        const { data, error } = await supabase
-          .from('workflow_states')
-          .select('current_step, metadata')
-          .eq('id', id)
-          .single()
+        const state = await workflowService.getWorkflowState(id)
         
-        if (error) throw error
+        if (!state) throw new Error('No workflow state found')
         
-        if (data) {
-          // Determine application-specific step from database step
-          const dbStep = data.current_step
-          
-          // Map database step to application step if needed
-          let appStep: WorkflowStep = dbStep as WorkflowStep
-          
-          // If there's custom step mapping in the metadata, use it
-          if (data.metadata?.originalStep) {
-            appStep = data.metadata.originalStep as WorkflowStep
-          }
-          
-          // Don't update if the steps are the same (prevents loops)
-          const currentStep = useChatStore.getState().workflow.currentStep
-          if (currentStep !== appStep) {
-            // Update the local state with remote state
-            updateWorkflowStep(appStep, data.metadata || {})
-            setLastSyncedAt(new Date())
-          }
+        // Don't update if the steps are the same (prevents loops)
+        const currentStep = useChatStore.getState().workflow.currentStep
+        if (currentStep !== state.step) {
+          // Update the local state with remote state
+          updateWorkflowStep(state.step, state.metadata || {})
+          setLastSyncedAt(new Date())
         }
       } catch (err) {
         console.error('Error fetching current workflow state:', err)
@@ -162,7 +132,7 @@ export function useWorkflowSync(workflowId?: string) {
     // Cleanup on unmount
     return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
+        workflowService.unsubscribeFromChannel(channelRef.current)
         channelRef.current = null
       }
     }
@@ -182,39 +152,20 @@ export function useWorkflowSync(workflowId?: string) {
         return false
       }
       
-      const supabase = createBrowserClient()
       try {
-        const { data, error } = await supabase
-          .from('workflow_states')
-          .select('current_step, metadata')
-          .eq('id', effectiveWorkflowId)
-          .single()
+        const state = await workflowService.getWorkflowState(effectiveWorkflowId)
         
-        if (error) throw error
+        if (!state) throw new Error('No workflow state found')
         
-        if (data) {
-          // Determine application-specific step from database step
-          const dbStep = data.current_step
+        // Update the local state with remote state
+        updateWorkflowStep(state.step, {
+          ...state.metadata,
+          _forceSynced: true,
+          _syncedAt: new Date().toISOString()
+        })
           
-          // Map database step to application step if needed
-          let appStep: WorkflowStep = dbStep as WorkflowStep
-          
-          // If there's custom step mapping in the metadata, use it
-          if (data.metadata?.originalStep) {
-            appStep = data.metadata.originalStep as WorkflowStep
-          }
-          
-          // Update the local state with remote state
-          updateWorkflowStep(appStep, {
-            ...data.metadata,
-            _forceSynced: true,
-            _syncedAt: new Date().toISOString()
-          })
-          
-          setLastSyncedAt(new Date())
-          return true
-        }
-        return false
+        setLastSyncedAt(new Date())
+        return true
       } catch (err) {
         console.error('Error during force sync:', err)
         setError(`Force sync failed: ${err instanceof Error ? err.message : String(err)}`)
