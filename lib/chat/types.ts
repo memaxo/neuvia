@@ -1,20 +1,79 @@
+/**
+ * @fileoverview Core chat types for the application
+ * 
+ * This file defines the chat-specific types for the application.
+ * It imports canonical types from workflow/types.ts as the source of truth
+ * and extends them with chat-specific needs.
+ * 
+ * IMPORTANT: This file should NOT define duplicates of types already defined in 
+ * lib/workflow/types.ts or lib/processing/types/verification/index.ts.
+ * Instead, it should import and re-export those types.
+ */
+
 // Import from both workflow hooks and Zustand store
 import type { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
 import type { useChatStore } from '@/stores/chat-store'
+
+// Import core workflow and verification types
 import type {
   VerificationOptions as BaseVerificationOptions,
   VerificationItem,
   VerificationResult,
+  createVerificationItem,
+  createVerificationMessageMetadata,
+  createCorrectionMessageMetadata,
 } from '@/lib/processing/types/verification'
+
+// Import canonical workflow types
 import type {
-  VerificationMetadata,
+  CorrectionEntry,
   MessageMetadata as WorkflowMessageMetadata,
+  MessageType,
+  VerificationMetadata,
+  VerificationStatusType,
   WorkflowStep,
   ProcessingPhase,
+  getMessageType,
+  isMessageOfType,
+  isVerificationMessage,
+  isSummaryMessage as isWorkflowSummaryMessage,
+  isCorrectionMessage as isWorkflowCorrectionMessage,
+  isProgressMessage as isWorkflowProgressMessage,
+  isResearchMessage as isWorkflowResearchMessage,
+  isReportMessage as isWorkflowReportMessage,
 } from '@/lib/workflow/types'
+
+// Import AI SDK types
 import type { Message as AIMessage } from 'ai'
 
-// Re-export MessageMetadata from workflow types
+// Re-export core types for easier importing
+export type {
+  CorrectionEntry,
+  MessageType,
+  VerificationMetadata,
+  VerificationStatusType,
+  WorkflowStep,
+  ProcessingPhase,
+  VerificationItem,
+  VerificationResult,
+}
+
+// Re-export utility functions for convenience
+export {
+  createVerificationItem,
+  createVerificationMessageMetadata,
+  createCorrectionMessageMetadata,
+  getMessageType,
+  isMessageOfType,
+  isVerificationMessage,
+  isWorkflowSummaryMessage as isSummaryMessageMetadata,
+  isWorkflowCorrectionMessage as isCorrectionMessageMetadata,
+  isWorkflowProgressMessage as isProgressMessageMetadata,
+  isWorkflowResearchMessage as isResearchMessageMetadata,
+  isWorkflowReportMessage as isReportMessageMetadata,
+}
+
+// Use the canonical MessageMetadata from workflow types
 export type MessageMetadata = WorkflowMessageMetadata
 
 // Extend VerificationOptions with items for backward compatibility
@@ -45,7 +104,11 @@ export interface ReportFormat {
   metadataInFooter?: boolean
 }
 
-// Legacy interfaces that will be replaced by the newer types below
+/**
+ * Legacy message interface
+ * 
+ * @deprecated Use ChatMessage with MessageMetadata instead
+ */
 export interface Message extends AIMessage {
   metadata?: {
     documentId?: string
@@ -60,16 +123,31 @@ export interface Message extends AIMessage {
   }
 }
 
+/**
+ * Check if a message is a report
+ * 
+ * @deprecated Use isReportMessageMetadata or isMessageOfType(metadata, 'report') instead
+ */
 export function isReportMessage(message: Message): boolean {
   return message.metadata?.isReport === true
 }
 
+/**
+ * Check if a message is a research message
+ * 
+ * @deprecated Use isResearchMessageMetadata or isMessageOfType(metadata, 'research') instead
+ */
 export function isResearchMessage(message: Message): boolean {
   return message.metadata?.isResearch === true
 }
 
+/**
+ * Check if a message has verification metadata
+ * 
+ * @deprecated Use message.metadata?.verificationMetadata instead
+ */
 export function hasVerificationMetadata(message: Message): boolean {
-  return !!message.metadata?.verificationStatus
+  return !!message.metadata?.verificationStatus || !!message.metadata?.verificationMetadata
 }
 
 /**
@@ -81,6 +159,9 @@ export function hasVerificationMetadata(message: Message): boolean {
 
 /**
  * Enhanced chat message that extends AI SDK Message with our metadata
+ * 
+ * This is the canonical message type that should be used throughout the application.
+ * It integrates with the workflow system via the MessageMetadata type.
  */
 export interface ChatMessage extends AIMessage {
   /**
@@ -234,6 +315,8 @@ export interface ExtendedChatContextType
 
     /**
      * History of summary versions
+     * 
+     * @deprecated Use SummaryVersion[] type instead
      */
     summaryVersions: Array<{
       /**
@@ -255,7 +338,7 @@ export interface ExtendedChatContextType
     /**
      * Current verification status
      */
-    verificationStatus: 'pending' | 'in_progress' | 'completed' | 'failed'
+    verificationStatus: VerificationStatusType
 
     /**
      * Items that require verification
@@ -343,38 +426,95 @@ export interface ExtendedChatContextType
 
 /**
  * Helper functions for chat messages
+ * 
+ * These functions provide a convenient way to check message types
+ * while maintaining backward compatibility with the legacy boolean flags.
+ * They operate on ChatMessage instances rather than just metadata.
  */
 
 /**
  * Check if a message is a verification request
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a verification request message
  */
 export function isVerificationRequestMessage(message: ChatMessage): boolean {
-  return message.metadata?.isVerificationRequest === true
+  return isMessageOfType(message.metadata, 'verification_request') || 
+    message.metadata?.isVerificationRequest === true
 }
 
 /**
  * Check if a message contains a summary
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a summary message
  */
 export function isSummaryMessage(message: ChatMessage): boolean {
-  return message.metadata?.isSummary === true
+  return isMessageOfType(message.metadata, 'summary') || 
+    message.metadata?.isSummary === true
 }
 
 /**
  * Check if a message is a correction
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a correction message
  */
 export function isCorrectionMessage(message: ChatMessage): boolean {
-  return message.metadata?.isCorrection === true
+  return isMessageOfType(message.metadata, 'correction') || 
+    message.metadata?.isCorrection === true
 }
 
 /**
  * Check if a message is a progress update
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a progress message
  */
 export function isProgressMessage(message: ChatMessage): boolean {
-  return message.metadata?.isProgress === true
+  return isMessageOfType(message.metadata, 'progress') || 
+    message.metadata?.isProgress === true
+}
+
+/**
+ * Check if a message is a research message
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a research message
+ */
+export function isResearchChatMessage(message: ChatMessage): boolean {
+  return isMessageOfType(message.metadata, 'research') ||
+    message.metadata?.isResearch === true
+}
+
+/**
+ * Check if a message is a report message
+ * 
+ * @param message The chat message to check
+ * @returns True if this is a report message
+ */
+export function isReportChatMessage(message: ChatMessage): boolean {
+  return isMessageOfType(message.metadata, 'report') ||
+    message.metadata?.isReport === true
+}
+
+/**
+ * Check if a message has error information
+ * 
+ * @param message The chat message to check
+ * @returns True if this is an error message
+ */
+export function isErrorMessage(message: ChatMessage): boolean {
+  return isMessageOfType(message.metadata, 'error') ||
+    message.metadata?.isError === true
 }
 
 /**
  * Create a system message with metadata
+ * 
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns A system message without an ID (ID should be added by the consumer)
  */
 export function createSystemMessage(
   content: string,
@@ -384,12 +524,20 @@ export function createSystemMessage(
     content,
     role: 'system',
     createdAt: new Date(),
-    metadata,
+    metadata: {
+      ...metadata,
+      type: metadata?.type || 'system',
+      isSystem: true
+    },
   }
 }
 
 /**
  * Create an assistant message with metadata
+ * 
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns An assistant message without an ID (ID should be added by the consumer)
  */
 export function createAssistantMessage(
   content: string,
@@ -405,6 +553,10 @@ export function createAssistantMessage(
 
 /**
  * Create a user message with metadata
+ * 
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns A user message without an ID (ID should be added by the consumer)
  */
 export function createUserMessage(
   content: string,
@@ -441,34 +593,222 @@ export type ChatStoreState = ReturnType<typeof useChatStore.getState>
 export type ChatStoreSelector<T> = (state: ChatStoreState) => T
 
 /**
- * Chat reducer state management
+ * Processing status for workflow operations
  */
+export interface ProcessingStatus {
+  /**
+   * Current processing status
+   */
+  status: 'idle' | 'processing' | 'success' | 'error'
+  
+  /**
+   * Current progress (0-100)
+   */
+  progress: number
+  
+  /**
+   * Current processing phase
+   */
+  phase: ProcessingPhase
+  
+  /**
+   * Start time of the current operation (ISO format)
+   */
+  startedAt?: string
+  
+  /**
+   * Estimated completion time (ISO format)
+   */
+  estimatedCompletionAt?: string
+}
 
+/**
+ * Summary version tracking the history of content
+ */
+export interface SummaryVersion {
+  /**
+   * Unique identifier for this version
+   */
+  id: string
+  
+  /**
+   * Content at this version
+   */
+  content: string
+  
+  /**
+   * Timestamp for this version (ISO format)
+   */
+  timestamp: string
+  
+  /**
+   * Optional user ID who created this version
+   */
+  userId?: string
+}
+
+/**
+ * Verification state within the chat
+ * 
+ * This represents the current state of content verification in the application.
+ * It is the canonical interface for verification state in the chat system.
+ */
+export interface VerificationState {
+  /**
+   * Whether verification mode is active
+   */
+  isInVerificationMode: boolean
+  
+  /**
+   * Current summary content being verified
+   */
+  currentSummary: string | null
+  
+  /**
+   * History of summary versions
+   */
+  summaryVersions: SummaryVersion[]
+  
+  /**
+   * Current verification status
+   */
+  verificationStatus: VerificationStatusType
+  
+  /**
+   * Items requiring verification
+   */
+  verificationItems: VerificationItem[]
+  
+  /**
+   * Verification metadata containing detailed state
+   */
+  metadata?: VerificationMetadata
+  
+  /**
+   * Original content before corrections
+   */
+  originalContent?: string
+  
+  /**
+   * Current content after any corrections
+   */
+  currentContent?: string
+}
+
+/**
+ * Workflow state within the chat
+ * 
+ * This represents the current workflow processing state in the application.
+ * It is the canonical interface for workflow state in the chat system.
+ */
+export interface WorkflowState {
+  /**
+   * Current workflow step
+   */
+  currentStep: WorkflowStep
+  
+  /**
+   * Current processing status
+   */
+  processingStatus: ProcessingStatus
+  
+  /**
+   * Error message if any
+   */
+  workflowError: string | null
+  
+  /**
+   * Additional workflow data
+   * 
+   * This includes metadata about the current workflow state, previous steps,
+   * and any processing-specific information.
+   */
+  data: Record<string, unknown>
+  
+  /**
+   * Workflow ID for database persistence
+   */
+  workflowId?: string
+  
+  /**
+   * Transition history for debugging
+   */
+  transitionHistory?: Array<{
+    /**
+     * Timestamp of the transition
+     */
+    timestamp: string
+    
+    /**
+     * Source step
+     */
+    from: WorkflowStep
+    
+    /**
+     * Target step
+     */
+    to: WorkflowStep
+    
+    /**
+     * Metadata associated with this transition
+     */
+    metadata?: Record<string, unknown>
+  }>
+}
+
+/**
+ * Canonical chat state for the application
+ * 
+ * This is the source of truth for chat state management.
+ */
 export interface ChatState {
+  /**
+   * Chat messages
+   */
   messages: Message[]
+  
+  /**
+   * Whether the chat is currently loading
+   */
   isLoading: boolean
+  
+  /**
+   * Error message if any
+   */
   error: string | null
+  
+  /**
+   * Current chat mode
+   */
   mode: ChatMode
+  
+  /**
+   * Current chat ID
+   */
   chatId: string | null
-  verification: {
-    isInVerificationMode: boolean
-    currentSummary: string | null
-    summaryVersions: Array<{ id: string; content: string; timestamp: string }>
-    verificationStatus: 'pending' | 'in_progress' | 'completed' | 'failed'
-    verificationItems: VerificationItem[]
-  }
-  workflow: {
-    currentStep: WorkflowStep
-    processingStatus: {
-      status: 'idle' | 'processing' | 'success' | 'error'
-      progress: number
-      phase: ProcessingPhase
-    }
-    workflowError: string | null
-    data: Record<string, unknown>
-  }
+  
+  /**
+   * Verification state
+   */
+  verification: VerificationState
+  
+  /**
+   * Workflow state
+   */
+  workflow: WorkflowState
+  
+  /**
+   * Report generation state
+   */
   reportGeneration?: {
+    /**
+     * Whether report generation is complete
+     */
     isComplete: boolean
+    
+    /**
+     * Format of the generated report
+     */
     format: ReportFormat | null
   }
 }
@@ -499,21 +839,38 @@ export const initialChatState: ChatState = {
 }
 
 /**
- * Chat action types
+ * Report generation options
  */
 export interface ReportOptions {
+  /**
+   * Output format for the report
+   */
   format?: 'markdown' | 'pdf' | 'docx' | 'html' | 'json'
+  
+  /**
+   * Whether to include metadata in the report
+   */
   includeMetadata?: boolean
+  
+  /**
+   * Level of detail to include in the report
+   */
   detailLevel?: 'basic' | 'standard' | 'comprehensive'
 }
 
+/**
+ * Chat action types for state management
+ * 
+ * These actions are used with dispatch functions in components to update chat state.
+ * They follow a Flux/Redux-style pattern for predictable state management.
+ */
 export type ChatAction =
   | { type: 'INITIALIZE_CHAT'; payload: { chatId: string } }
   | { type: 'RESET_CHAT' }
   | { type: 'SET_LOADING'; payload: { isLoading: boolean } }
   | { type: 'SET_ERROR'; payload: { error: string | null } }
-  | { type: 'ADD_MESSAGE'; payload: { message: Message | Omit<Message, 'id'> } }
-  | { type: 'UPDATE_MESSAGES'; payload: { messages: Message[] } }
+  | { type: 'ADD_MESSAGE'; payload: { message: ChatMessage | Omit<ChatMessage, 'id'> } }
+  | { type: 'UPDATE_MESSAGES'; payload: { messages: ChatMessage[] } }
   | { type: 'SET_MODE'; payload: { mode: ChatMode } }
   | {
       type: 'START_VERIFICATION'
@@ -533,4 +890,10 @@ export type ChatAction =
       type: 'UPDATE_PROGRESS'
       payload: { messageId: string; progress: number; phase: string }
     }
-  | { type: 'UPDATE_WORKFLOW_STEP'; payload: { step: WorkflowStep } }
+  | { 
+      type: 'UPDATE_WORKFLOW_STEP'; 
+      payload: { 
+        step: WorkflowStep;
+        metadata?: Record<string, unknown>;
+      } 
+    }

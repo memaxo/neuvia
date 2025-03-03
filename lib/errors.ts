@@ -208,6 +208,152 @@ export class ExternalServiceError extends SystemError {
 }
 
 /**
+ * Workflow state error - specialized for workflow state machine issues
+ */
+export class WorkflowStateError extends SystemError {
+  constructor(options: {
+    message?: string
+    transition?: { from: string; to: string }
+    code?: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    const transitionInfo = options.transition 
+      ? `from '${options.transition.from}' to '${options.transition.to}'` 
+      : '';
+    
+    super({
+      message: options.message || `Invalid workflow transition ${transitionInfo}`,
+      code: options.code || 'WORKFLOW_STATE_ERROR',
+      statusCode: 422, // Using 422 since it's an operational validation issue
+      data: {
+        ...options.data,
+        ...(options.transition && { transition: options.transition })
+      },
+      cause: options.cause,
+      isOperational: true
+    })
+  }
+}
+
+/**
+ * Document processing error - for issues during document extraction and analysis
+ */
+export class DocumentProcessingError extends SystemError {
+  constructor(options: {
+    message?: string
+    documentId?: string
+    phase?: string
+    code?: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    const phaseInfo = options.phase ? ` during ${options.phase}` : '';
+    const docInfo = options.documentId ? ` for document ${options.documentId}` : '';
+    
+    super({
+      message: options.message || `Document processing failed${phaseInfo}${docInfo}`,
+      code: options.code || 'DOCUMENT_PROCESSING_ERROR',
+      statusCode: 500,
+      data: {
+        ...options.data,
+        documentId: options.documentId,
+        phase: options.phase
+      },
+      cause: options.cause,
+      isOperational: true // Document processing errors are typically recoverable
+    })
+  }
+}
+
+/**
+ * Verification error - for issues during the verification workflow
+ */
+export class VerificationError extends SystemError {
+  constructor(options: {
+    message?: string
+    verificationId?: string
+    documentId?: string
+    code?: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    super({
+      message: options.message || 'Verification failed',
+      code: options.code || 'VERIFICATION_ERROR',
+      statusCode: 422,
+      data: {
+        ...options.data,
+        verificationId: options.verificationId,
+        documentId: options.documentId
+      },
+      cause: options.cause,
+      isOperational: true
+    })
+  }
+}
+
+/**
+ * Report generation error - for issues during report creation
+ */
+export class ReportGenerationError extends SystemError {
+  constructor(options: {
+    message?: string
+    workflowId?: string
+    patientId?: string
+    reportId?: string
+    code?: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    super({
+      message: options.message || 'Report generation failed',
+      code: options.code || 'REPORT_GENERATION_ERROR',
+      statusCode: 500,
+      data: {
+        ...options.data,
+        workflowId: options.workflowId,
+        patientId: options.patientId,
+        reportId: options.reportId
+      },
+      cause: options.cause,
+      isOperational: true
+    })
+  }
+}
+
+/**
+ * Storage error - for issues with file upload, download, or storage
+ */
+export class StorageError extends SystemError {
+  constructor(options: {
+    message?: string
+    operation?: 'upload' | 'download' | 'delete' | 'access'
+    fileId?: string
+    filePath?: string
+    code?: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    const opInfo = options.operation ? `${options.operation} operation` : 'storage operation';
+    
+    super({
+      message: options.message || `File ${opInfo} failed`,
+      code: options.code || 'STORAGE_ERROR',
+      statusCode: 500,
+      data: {
+        ...options.data,
+        operation: options.operation,
+        fileId: options.fileId,
+        filePath: options.filePath
+      },
+      cause: options.cause,
+      isOperational: true
+    })
+  }
+}
+
+/**
  * Helper function to safely handle unknown errors and convert to ApplicationError
  */
 export function normalizeError(error: unknown): ApplicationError {

@@ -1,4 +1,5 @@
 import { verificationService } from '@/lib/services/verification/verification-service'
+import { workflowService } from '@/lib/services/workflow/workflow-service'
 import { createServerClient } from '@/lib/supabase/clients'
 import type { NextRequest } from 'next/server'
 import { ValidationError, NotFoundError, AuthenticationError } from '@/lib/errors'
@@ -40,22 +41,24 @@ export const POST = createApiRoute(async (req: NextRequest) => {
     });
   }
 
-  // Get workflow state
-  const { data: workflow, error: workflowError } = await supabase
-    .from('workflow_states')
-    .select('*')
-    .eq('id', workflowId)
-    .single()
+  // Get workflow state using service
+  const workflowState = await workflowService.getWorkflowState(workflowId)
 
-  if (workflowError || !workflow) {
-    moduleLogger.error('Error fetching workflow', { workflowId }, workflowError);
+  if (!workflowState) {
+    moduleLogger.error('Error fetching workflow', { workflowId });
     throw new NotFoundError({
       message: 'Workflow not found',
       resource: 'Workflow',
       code: 'WORKFLOW_NOT_FOUND',
-      data: { workflowId },
-      cause: workflowError
+      data: { workflowId }
     });
+  }
+  
+  // Format workflow data for API response
+  const workflow = {
+    id: workflowId,
+    current_step: workflowState.step,
+    metadata: workflowState.metadata
   }
 
   // Format the data to match the expected ExtractedDocument structure

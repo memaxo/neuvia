@@ -1,19 +1,35 @@
 /**
  * Centralized verification types
- * All verification-related types and interfaces are defined or re-exported here
+ * 
+ * This file contains all verification-related types and interfaces.
+ * It imports canonical types from /lib/workflow/types.ts when available
+ * and defines specific verification-related types that aren't already defined.
+ * 
+ * IMPORTANT: For core workflow types (WorkflowStep, VerificationMetadata, etc.)
+ * always import from /lib/workflow/types.ts rather than defining duplicates here.
  */
 
 import type { Json } from '@/lib/supabase'
 import type {
+  CorrectionEntry,
   MessageMetadata,
   VerificationMetadata,
   VerificationStatusType,
+  WorkflowStep
 } from '@/lib/workflow/types'
 import type { DocumentBase, DocumentType } from '../base'
 import type {
   DocumentMetadata,
   ExtractedDocument as OriginalExtractedDocument,
 } from '../extraction'
+
+// Re-export canonical workflow types for convenience
+export type {
+  VerificationMetadata,
+  VerificationStatusType,
+  CorrectionEntry,
+  WorkflowStep
+}
 
 /**
  * Flexible date type for UI and database compatibility
@@ -62,53 +78,40 @@ export interface VerificationStatus {
 }
 
 /**
- * Base verification item interface
+ * Version entry for tracking content changes in verification items
  */
-export interface BaseVerificationItem {
+export interface VersionHistoryEntry {
   /**
-   * Unique identifier for the verification item
+   * Unique identifier for this version
    */
   id: string
 
   /**
-   * Section of the document this item belongs to
+   * Content at this version
    */
-  section: string
+  content: string
 
   /**
-   * Key for the item within its section
+   * Timestamp of the change (ISO format)
    */
-  key: string
+  timestamp: string
 
   /**
-   * Original extracted value
+   * User who made the change (if applicable)
    */
-  value: any
-
+  userId?: string
+  
   /**
-   * Confidence score for the extraction (0-1)
+   * Optional reason for the change
    */
-  confidence: number
-
-  /**
-   * Whether the item has been verified
-   */
-  isVerified: boolean
-
-  /**
-   * Corrections made by the user (if any)
-   */
-  corrections?: Record<string, any>
-
-  /**
-   * Optional explanatory note for the verification
-   */
-  note?: string
+  reason?: string
 }
 
 /**
- * Verification item represents a specific content element
- * that requires verification
+ * Canonical verification item that represents content requiring verification
+ * 
+ * This is the primary verification item interface to use throughout the application.
+ * It provides a consistent structure for verification workflow.
  */
 export interface VerificationItem {
   /**
@@ -125,6 +128,16 @@ export interface VerificationItem {
    * Description of what needs to be verified
    */
   description?: string
+  
+  /**
+   * Category of this verification item (e.g., "demographics", "diagnosis", "medications")
+   */
+  category?: string
+  
+  /**
+   * Path or key that identifies this item within a larger data structure
+   */
+  path?: string
 
   /**
    * The original content extracted from the document
@@ -145,54 +158,92 @@ export interface VerificationItem {
    * Whether this item has been modified during verification
    */
   isModified: boolean
+  
+  /**
+   * Confidence score for the extraction (0-1)
+   * Higher values indicate higher confidence in the extraction
+   */
+  confidence?: number
 
   /**
    * History of content changes
    */
-  changeHistory: Array<{
-    /**
-     * Version ID
-     */
-    id: string
-
-    /**
-     * Content at this version
-     */
-    content: string
-
-    /**
-     * Timestamp of the change
-     */
-    timestamp: string
-
-    /**
-     * User who made the change (if applicable)
-     */
-    userId?: string
-  }>
+  changeHistory: VersionHistoryEntry[]
 
   /**
    * Metadata for this verification item
    */
   metadata?: Record<string, any>
+  
+  /**
+   * Optional source location in the original document
+   */
+  source?: {
+    /**
+     * Document ID this item was extracted from
+     */
+    documentId: string
+    
+    /**
+     * Page number where this content appears
+     */
+    page?: number
+    
+    /**
+     * Section in the document where this content appears
+     */
+    section?: string
+    
+    /**
+     * Start position in the document (character offset)
+     */
+    startPosition?: number
+    
+    /**
+     * End position in the document (character offset)
+     */
+    endPosition?: number
+  }
+}
+
+/**
+ * Legacy base verification item interface
+ * @deprecated Use VerificationItem instead
+ */
+export interface BaseVerificationItem {
+  id: string
+  section: string
+  key: string
+  value: any
+  confidence: number
+  isVerified: boolean
+  corrections?: Record<string, any>
+  note?: string
 }
 
 /**
  * Options for the verification process
+ * 
+ * This provides configuration for verification workflows.
  */
 export interface VerificationOptions {
   /**
-   * Whether verification is required
+   * Whether verification is required to proceed
+   * If false, the system can auto-approve if needed
    */
   isRequired: boolean
 
   /**
    * Timeout for verification (in milliseconds)
+   * After this time, the system will take the action specified
+   * by autoApproveOnTimeout
    */
   timeoutMs?: number
 
   /**
    * Whether to auto-approve after timeout
+   * If true, the system will automatically approve after the timeout
+   * If false, the system will mark as failed after the timeout
    */
   autoApproveOnTimeout?: boolean
 
@@ -200,6 +251,18 @@ export interface VerificationOptions {
    * User ID performing verification
    */
   userId?: string
+
+  /**
+   * Threshold for confidence scores that require verification
+   * Items with confidence below this value will be flagged for verification
+   * Value should be between 0 and 1
+   */
+  confidenceThreshold?: number
+  
+  /**
+   * Verification mode - controls how the verification is presented
+   */
+  mode?: 'full' | 'selective' | 'batch' | 'automated'
 
   /**
    * Additional metadata
@@ -210,31 +273,45 @@ export interface VerificationOptions {
    * Optional verification items to include
    */
   items?: VerificationItem[]
+  
+  /**
+   * When to save verification state to the database
+   */
+  persistenceMode?: 'immediate' | 'onComplete' | 'onApproval' | 'manual'
+  
+  /**
+   * Callback when verification is complete
+   */
+  onVerificationComplete?: (result: VerificationResult) => void
 }
 
 /**
- * Verification result after user review
+ * Canonical verification result after user review
+ * 
+ * This is returned by verification processes to indicate the outcome
+ * of the verification workflow.
  */
 export interface VerificationResult {
   /**
-   * Whether verification was completed
+   * Whether verification was completed (regardless of approval status)
    */
   isCompleted: boolean
 
   /**
    * Whether the content was approved
+   * If false and isCompleted is true, the content was rejected
    */
   isApproved: boolean
 
   /**
-   * List of verification items with their verification status
+   * List of verification items with their final verification status
    */
   items: VerificationItem[]
 
   /**
-   * Timestamp of verification completion
+   * Timestamp of verification completion (ISO format)
    */
-  completedAt?: string
+  completedAt: string
 
   /**
    * User who completed verification
@@ -245,6 +322,36 @@ export interface VerificationResult {
    * Time taken for verification (in milliseconds)
    */
   verificationTime?: number
+  
+  /**
+   * Summary of changes made during verification
+   */
+  changeSummary?: {
+    /**
+     * Total number of items
+     */
+    totalItems: number
+    
+    /**
+     * Number of items that were modified
+     */
+    modifiedItems: number
+    
+    /**
+     * Number of items that were approved without changes
+     */
+    approvedWithoutChanges: number
+    
+    /**
+     * Number of items that failed verification 
+     */
+    failedItems: number
+  }
+  
+  /**
+   * Reason for rejection if the verification was not approved
+   */
+  rejectionReason?: string
 
   /**
    * Detailed metadata about the verification process
@@ -478,19 +585,13 @@ export type WorkflowStep =
 
 /**
  * Helper functions for verification process
+ * 
+ * These utility functions standardize common operations related to
+ * verification workflow and metadata.
  */
 
 /**
- * Check if a verification process is complete
- */
-export function isVerificationComplete(
-  verificationMetadata?: VerificationMetadata
-): boolean {
-  return verificationMetadata?.verificationStatus === 'completed'
-}
-
-/**
- * Create a new verification metadata object
+ * Create a new verification metadata object with default values
  */
 export function createVerificationMetadata(
   originalSummaryId: string,
@@ -502,24 +603,26 @@ export function createVerificationMetadata(
     currentVersionId,
     correctionCount: 0,
     corrections: [],
+    startedAt: new Date().toISOString(),
+    lastUpdated: new Date().toISOString()
   }
 }
 
 /**
- * Update verification status
+ * Update verification status with appropriate timestamps
  */
 export function updateVerificationStatus(
   metadata: VerificationMetadata,
   status: VerificationStatusType
 ): VerificationMetadata {
+  const now = new Date().toISOString()
+  
   return {
     ...metadata,
     verificationStatus: status,
-    ...(status === 'completed'
-      ? {
-          verifiedAt: new Date().toISOString(),
-        }
-      : {}),
+    lastUpdated: now,
+    ...(status === 'completed' ? { verifiedAt: now } : {}),
+    ...(status === 'failed' ? { rejectionReason: metadata.rejectionReason || 'Verification failed' } : {})
   }
 }
 
@@ -528,12 +631,16 @@ export function updateVerificationStatus(
  */
 export function addCorrection(
   metadata: VerificationMetadata,
-  correctionText: string
+  correctionText: string,
+  userId?: string
 ): VerificationMetadata {
-  const newCorrection = {
+  const now = new Date().toISOString()
+  
+  const newCorrection: CorrectionEntry = {
     id: `correction-${Date.now()}`,
     text: correctionText,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
+    ...(userId ? { userId } : {})
   }
 
   return {
@@ -541,34 +648,100 @@ export function addCorrection(
     verificationStatus: 'in_progress',
     correctionCount: metadata.correctionCount + 1,
     corrections: [...metadata.corrections, newCorrection],
+    lastUpdated: now
+  }
+}
+
+/**
+ * Create a new verification item
+ */
+export function createVerificationItem(
+  title: string, 
+  originalContent: string,
+  options?: {
+    category?: string;
+    confidence?: number;
+    description?: string;
+    documentId?: string;
+  }
+): VerificationItem {
+  const id = `verification-item-${Date.now()}-${Math.floor(Math.random() * 10000)}`
+  const now = new Date().toISOString()
+  
+  return {
+    id,
+    title,
+    originalContent,
+    currentContent: originalContent, // Start with original content
+    isVerified: false,
+    isModified: false,
+    confidence: options?.confidence,
+    category: options?.category,
+    description: options?.description,
+    changeHistory: [
+      {
+        id: `version-${Date.now()}`,
+        content: originalContent,
+        timestamp: now
+      }
+    ],
+    metadata: {},
+    ...(options?.documentId ? {
+      source: {
+        documentId: options.documentId
+      }
+    } : {})
   }
 }
 
 /**
  * Create message metadata for a verification message
+ * with consistent structure
  */
 export function createVerificationMessageMetadata(
   verificationMetadata: VerificationMetadata,
   isRequest: boolean = false
 ): MessageMetadata {
   return {
+    type: isRequest ? 'verification_request' : 'summary',
     isVerificationRequest: isRequest,
     isSummary: !isRequest,
-    summaryVersionId: verificationMetadata.currentVersionId,
-    verificationMetadata,
+    contentVersionId: verificationMetadata.currentVersionId,
+    summaryVersionId: verificationMetadata.currentVersionId, // Legacy support
+    verificationMetadata
   }
 }
 
 /**
  * Create message metadata for a correction message
+ * with consistent structure
  */
 export function createCorrectionMessageMetadata(
   verificationMetadata: VerificationMetadata,
-  summaryVersionId: string
+  contentVersionId: string
 ): MessageMetadata {
   return {
+    type: 'correction',
     isCorrection: true,
-    summaryVersionId,
-    verificationMetadata,
+    contentVersionId,
+    summaryVersionId: contentVersionId, // Legacy support
+    verificationMetadata
+  }
+}
+
+/**
+ * Generate a change summary from verification items
+ */
+export function generateChangeSummary(items: VerificationItem[]): VerificationResult['changeSummary'] {
+  const totalItems = items.length
+  const modifiedItems = items.filter(item => item.isModified).length
+  const failedItems = items.filter(item => !item.isVerified).length
+  const approvedWithoutChanges = items.filter(item => item.isVerified && !item.isModified).length
+  
+  return {
+    totalItems,
+    modifiedItems,
+    failedItems,
+    approvedWithoutChanges
   }
 }

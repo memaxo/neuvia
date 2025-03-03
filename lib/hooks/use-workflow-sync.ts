@@ -5,6 +5,9 @@ import { workflowService } from '@/lib/services/workflow/workflow-service'
 import { useChatStore } from '@/stores/chat-store'
 import type { WorkflowStep } from '@/lib/workflow/types'
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { validateWorkflowTransition } from '@/lib/workflow/workflow-manager'
+import { workflowStateManager } from '@/lib/services/workflow/workflow-state-manager'
+import { WorkflowStateError } from '@/lib/errors'
 
 /**
  * Synchronizes the local workflow state with Supabase realtime updates.
@@ -113,14 +116,48 @@ export function useWorkflowSync(workflowId?: string) {
       // Don't update if the steps are the same (prevents loops)
       const currentStep = useChatStore.getState().workflow.currentStep
       if (currentStep !== appStep) {
-        // Add a flag to prevent loop-back updates
+        // Validate the transition even for remote updates
+        const validationResult = validateWorkflowTransition(currentStep, appStep, metadata)
+        
+        if (!validationResult.isValid) {
+          console.warn(
+            `Remote workflow transition validation failed from '${currentStep}' to '${appStep}':`,
+            validationResult.error
+          )
+          
+          // Log the validation error but allow the transition (with warning)
+          const validationError = new WorkflowStateError({
+            message: validationResult.error || 'Invalid remote workflow transition',
+            transition: { from: currentStep, to: appStep },
+            data: {
+              source: 'remote',
+              details: validationResult.details,
+              metadata
+            }
+          })
+          
+          // Record the validation warning in the metadata
+          metadata._validationWarning = {
+            message: validationError.message,
+            details: validationResult.details,
+            from: currentStep,
+            to: appStep,
+            timestamp: new Date().toISOString()
+          }
+          
+          setError(`Remote workflow update validation warning: ${validationError.message}`)
+        }
+        
+        // Add a flag to prevent loop-back updates and include validation info
         const enrichedMetadata = {
           ...metadata,
           _syncedFromRemote: true,
-          _syncedAt: new Date().toISOString()
+          _syncedAt: new Date().toISOString(),
+          _validationResult: validationResult.isValid ? 'valid' : 'invalid_but_allowed'
         }
         
-        // Update the local state with remote state
+        // Update the local state with remote state, even if validation failed
+        // This keeps clients in sync even if transitions are technically invalid
         updateWorkflowStep(appStep, enrichedMetadata)
         setLastSyncedAt(new Date())
       }
@@ -146,7 +183,7 @@ export function useWorkflowSync(workflowId?: string) {
     
     // Force a manual sync with the database
     forceSync: async () => {
-      const effectiveWorkflowId = workflowId || localStorage.getItem('current_workflow_id')
+      const effectiveWorkflowId = workflowId || workflowStateManager.getCurrentWorkflowId()
       if (!effectiveWorkflowId) {
         setError('No workflow ID available for synchronization')
         return false
@@ -157,11 +194,41 @@ export function useWorkflowSync(workflowId?: string) {
         
         if (!state) throw new Error('No workflow state found')
         
+        // Get current step from store for validation
+        const currentStep = useChatStore.getState().workflow.currentStep
+        
+        // Validate the transition if steps are different
+        if (currentStep !== state.step) {
+          const validationResult = validateWorkflowTransition(currentStep, state.step, state.metadata)
+          
+          if (!validationResult.isValid) {
+            console.warn(
+              `Force sync validation warning - transition from '${currentStep}' to '${state.step}' is invalid:`,
+              validationResult.error
+            )
+            
+            // Add validation warning to metadata
+            state.metadata = {
+              ...state.metadata,
+              _validationWarning: {
+                message: validationResult.error || 'Invalid forced transition',
+                details: validationResult.details,
+                from: currentStep,
+                to: state.step,
+                timestamp: new Date().toISOString()
+              }
+            }
+          }
+        }
+        
         // Update the local state with remote state
         updateWorkflowStep(state.step, {
           ...state.metadata,
           _forceSynced: true,
-          _syncedAt: new Date().toISOString()
+          _syncedAt: new Date().toISOString(),
+          _validation: currentStep !== state.step 
+            ? { result: validationResult.isValid ? 'valid' : 'invalid_but_forced' }
+            : { result: 'same_step' }
         })
           
         setLastSyncedAt(new Date())

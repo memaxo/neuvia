@@ -1,4 +1,11 @@
 // lib/workflow/types.ts
+/**
+ * @fileoverview Core workflow types for the entire application
+ * 
+ * This file defines the foundational types for the workflow system.
+ * All other files that need workflow types should import from here.
+ */
+
 import type { Database } from '@/lib/supabase'
 
 /**
@@ -125,16 +132,46 @@ export interface WorkflowState {
 }
 
 /**
- * Verification status type for chat-based verification
+ * Verification status type used throughout the application
+ * 
+ * This is the canonical type for verification status.
+ * Use this type anywhere verification status is needed.
  */
 export type VerificationStatusType =
-  | 'pending'
-  | 'in_progress'
-  | 'completed'
-  | 'failed'
+  | 'pending'     // Waiting for verification to begin
+  | 'in_progress' // Verification is actively being performed
+  | 'completed'   // Verification has been successfully completed
+  | 'failed'      // Verification has failed or been rejected
 
 /**
- * Verification metadata for tracking the verification process
+ * Core correction entry for tracking changes during verification
+ */
+export interface CorrectionEntry {
+  /**
+   * Unique identifier for this correction
+   */
+  id: string
+
+  /**
+   * The text of the correction request
+   */
+  text: string
+
+  /**
+   * Timestamp when the correction was made (ISO format)
+   */
+  timestamp: string
+
+  /**
+   * Optional user ID who made the correction
+   */
+  userId?: string
+}
+
+/**
+ * Canonical verification metadata format for tracking the verification process
+ * 
+ * This is the source of truth for verification metadata throughout the application.
  */
 export interface VerificationMetadata {
   /**
@@ -143,7 +180,7 @@ export interface VerificationMetadata {
   verificationStatus: VerificationStatusType
 
   /**
-   * ID of the original summary
+   * ID of the original summary or content version
    */
   originalSummaryId: string
 
@@ -158,88 +195,127 @@ export interface VerificationMetadata {
   correctionCount: number
 
   /**
-   * Timestamp when the summary was verified
+   * Timestamp when the content was verified (ISO format)
    */
   verifiedAt?: string
 
   /**
-   * User ID who verified the summary
+   * User ID who verified the content
    */
   verifiedBy?: string
 
   /**
    * History of corrections applied
    */
-  corrections: Array<{
-    /**
-     * Correction ID
-     */
-    id: string
-
-    /**
-     * Correction text
-     */
-    text: string
-
-    /**
-     * Timestamp when correction was made
-     */
-    timestamp: string
-  }>
+  corrections: CorrectionEntry[]
 
   /**
-   * Extracted document data
+   * Extracted document data - can be any structured data
+   * that requires verification
    */
   extractedData?: any
 
   /**
-   * Timestamp when verification started
+   * Timestamp when verification started (ISO format)
    */
   startedAt?: string
 
   /**
-   * Timestamp of last update
+   * Timestamp of last update (ISO format)
    */
   lastUpdated?: string
+  
+  /**
+   * Optional confidence score for the verification (0-1)
+   */
+  confidenceScore?: number
+  
+  /**
+   * Optional reason for rejection if status is 'failed'
+   */
+  rejectionReason?: string
 }
 
 /**
- * Message metadata for chat-based verification
+ * Message type - categorizes messages for specialized handling
+ */
+export type MessageType = 
+  | 'summary'              // Contains summary content to be verified
+  | 'verification_request' // Requests verification of content
+  | 'correction'           // Contains a correction to previous content
+  | 'progress'             // Progress update for a long-running operation
+  | 'research'             // Research content from external sources
+  | 'report'               // Formal report content
+  | 'chat'                 // Regular chat message
+  | 'system'               // System notification or status message
+  | 'error'                // Error message
+
+/**
+ * Canonical message metadata for the entire application
+ * 
+ * This is the source of truth for message metadata throughout the system.
+ * It provides a consistent way to categorize and track message properties.
  */
 export interface MessageMetadata {
   /**
-   * Whether this message contains a summary
+   * Primary message type for categorization
+   */
+  type?: MessageType
+  
+  /**
+   * Legacy type flags - will be deprecated in future
+   * @deprecated Use the type field instead
    */
   isSummary?: boolean
-
-  /**
-   * Whether this message is requesting verification
-   */
   isVerificationRequest?: boolean
-
-  /**
-   * Whether this message is a correction to a summary
-   */
   isCorrection?: boolean
-
-  /**
-   * Whether this message is a progress update
-   */
   isProgress?: boolean
+  isResearch?: boolean
+  isReport?: boolean
+  isSystem?: boolean
+  isError?: boolean
 
   /**
-   * ID of the summary version this message refers to
+   * ID of the content version this message refers to
+   */
+  contentVersionId?: string
+  
+  /**
+   * Legacy version ID - will be standardized to contentVersionId
+   * @deprecated Use contentVersionId instead
    */
   summaryVersionId?: string
 
   /**
-   * Progress value (0-100) for progress messages
+   * Progress tracking for long-running operations
+   */
+  progress?: {
+    /**
+     * Progress value (0-100)
+     */
+    value: number
+    
+    /**
+     * Current processing phase
+     */
+    phase: string
+    
+    /**
+     * Start timestamp (ISO format)
+     */
+    startedAt?: string
+    
+    /**
+     * Estimated completion time (ISO format)
+     */
+    estimatedCompletionAt?: string
+  }
+  
+  /**
+   * Legacy progress fields - will be consolidated
+   * @deprecated Use the progress object instead
    */
   progressValue?: number
-
-  /**
-   * Current phase for progress messages
-   */
   progressPhase?: string
 
   /**
@@ -248,28 +324,83 @@ export interface MessageMetadata {
   verificationMetadata?: VerificationMetadata
 
   /**
+   * Associated document ID if relevant
+   */
+  documentId?: string
+  
+  /**
+   * Associated patient ID if relevant
+   */
+  patientId?: string
+  
+  /**
+   * Source documents if message contains referenced content
+   */
+  sourceDocuments?: string[]
+  
+  /**
    * Custom metadata specific to this message
+   * This allows for extensibility without changing the interface
    */
   [key: string]: any
 }
 
 /**
- * Union type helpers for message type checking
+ * Message type checking utilities
+ * 
+ * These functions provide a consistent way to check message types
+ * while supporting both the new type field and legacy boolean flags
  */
-export const isVerificationMessage = (metadata?: MessageMetadata): boolean =>
-  metadata?.isVerificationRequest === true
+export const getMessageType = (metadata?: MessageMetadata): MessageType | undefined => {
+  if (!metadata) return undefined
+  
+  // First check for explicit type field
+  if (metadata.type) return metadata.type
+  
+  // Then check legacy flags
+  if (metadata.isVerificationRequest) return 'verification_request'
+  if (metadata.isSummary) return 'summary'
+  if (metadata.isCorrection) return 'correction'
+  if (metadata.isProgress) return 'progress'
+  if (metadata.isResearch) return 'research'
+  if (metadata.isReport) return 'report'
+  if (metadata.isSystem) return 'system'
+  if (metadata.isError) return 'error'
+  
+  // Default to regular chat message
+  return 'chat'
+}
 
-export const isSummaryMessage = (metadata?: MessageMetadata): boolean =>
-  metadata?.isSummary === true
+export const isMessageOfType = (
+  metadata: MessageMetadata | undefined,
+  type: MessageType
+): boolean => {
+  if (!metadata) return false
+  return getMessageType(metadata) === type
+}
+
+export const isVerificationMessage = (metadata?: MessageMetadata): boolean =>
+  isMessageOfType(metadata, 'verification_request') || metadata?.isVerificationRequest === true
+
+export const isSummaryMessage = (metadata?: MessageMetadata): boolean => 
+  isMessageOfType(metadata, 'summary') || metadata?.isSummary === true
 
 export const isCorrectionMessage = (metadata?: MessageMetadata): boolean =>
-  metadata?.isCorrection === true
+  isMessageOfType(metadata, 'correction') || metadata?.isCorrection === true
 
 export const isProgressMessage = (metadata?: MessageMetadata): boolean =>
-  metadata?.isProgress === true
+  isMessageOfType(metadata, 'progress') || metadata?.isProgress === true
+
+export const isResearchMessage = (metadata?: MessageMetadata): boolean =>
+  isMessageOfType(metadata, 'research') || metadata?.isResearch === true
+
+export const isReportMessage = (metadata?: MessageMetadata): boolean =>
+  isMessageOfType(metadata, 'report') || metadata?.isReport === true
 
 /**
  * Verification status helper functions
+ * 
+ * These utilities provide a type-safe way to check verification statuses
  */
 export const isVerificationComplete = (
   metadata?: VerificationMetadata

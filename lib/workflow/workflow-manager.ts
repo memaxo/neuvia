@@ -32,17 +32,20 @@ type DBWorkflowStep = Database['public']['Enums']['workflow_step']
  * Update workflow state in the database
  *
  * @param workflowId Workflow ID
- * @param step Current workflow step
+ * @param step Current workflow step 
  * @param metadata Additional metadata
+ * @param options Additional options for the update
  * @returns Updated workflow state
  * @throws {ValidationError} If required parameters are missing
  * @throws {NotFoundError} If the workflow does not exist
  * @throws {ExternalServiceError} If database operations fail
+ * @throws {WorkflowStateError} If the transition is invalid
  */
 export async function updateWorkflowState(
   workflowId: string,
   step: WorkflowStep,
-  metadata: Record<string, any> = {}
+  metadata: Record<string, any> = {},
+  options: { skipValidation?: boolean; force?: boolean } = {}
 ): Promise<void> {
   // Input validation - fail fast for missing workflowId
   if (!workflowId) {
@@ -81,11 +84,98 @@ export async function updateWorkflowState(
         data: { workflowId }
       });
     }
-
+    
     moduleLogger.info('Updating workflow state', { 
       step,
-      hasMetadata: Object.keys(metadata).length > 0 
+      hasMetadata: Object.keys(metadata).length > 0,
+      options
     });
+    
+    // Fetch current workflow state for validation (unless skipped)
+    if (!options.skipValidation) {
+      try {
+        const { data: currentWorkflow, error: fetchError } = await supabase
+          .from('workflow_states')
+          .select('current_step, metadata')
+          .eq('id', workflowId)
+          .single();
+        
+        if (fetchError) {
+          moduleLogger.error('Error fetching current workflow state for validation', {
+            error: fetchError.message
+          });
+          
+          if (!options.force) {
+            throw new ExternalServiceError({
+              message: `Cannot validate workflow transition: ${fetchError.message}`,
+              code: 'WORKFLOW_VALIDATION_FAILED',
+              service: 'Database',
+              data: { workflowId },
+              cause: fetchError
+            });
+          }
+          
+          moduleLogger.warn('Skipping validation due to force option', {
+            fromStep: 'unknown',
+            toStep: step
+          });
+        } else if (currentWorkflow) {
+          // Get the actual application step, which might be stored in metadata
+          const currentStep = (currentWorkflow.metadata?.appStep || currentWorkflow.current_step) as WorkflowStep;
+          
+          // Validate the transition
+          const validationResult = validateWorkflowTransition(currentStep, step, metadata);
+          
+          if (!validationResult.isValid && !options.force) {
+            moduleLogger.error('Invalid workflow transition', {
+              fromStep: currentStep,
+              toStep: step,
+              errorDetails: validationResult.details
+            });
+            
+            // Convert to WorkflowStateError from our error lib
+            throw new WorkflowStateError({
+              message: validationResult.error || 'Invalid workflow transition',
+              transition: { from: currentStep, to: step },
+              data: {
+                workflowId,
+                details: validationResult.details,
+                metadata
+              }
+            });
+          } else if (!validationResult.isValid) {
+            moduleLogger.warn('Forcing invalid workflow transition', {
+              fromStep: currentStep,
+              toStep: step,
+              reason: validationResult.error
+            });
+            
+            // Add warning to metadata for audit purposes
+            metadata._validationWarning = {
+              message: validationResult.error,
+              fromStep: currentStep,
+              toStep: step,
+              forcedAt: new Date().toISOString(),
+              details: validationResult.details
+            };
+          }
+        }
+      } catch (validationError) {
+        if (validationError instanceof WorkflowStateError) {
+          throw validationError;
+        } else if (!options.force) {
+          moduleLogger.error('Error during workflow validation', {}, validationError);
+          throw validationError;
+        } else {
+          moduleLogger.warn('Validation error occurred but force option enabled', {}, validationError);
+        }
+      }
+    } else {
+      moduleLogger.warn('Skipping workflow transition validation', {
+        toStep: step,
+        skipValidation: true
+      });
+    }
     
     const supabase = createBrowserClient();
     
@@ -242,7 +332,8 @@ function isDbWorkflowStep(step: WorkflowStep): step is DBWorkflowStep {
 export async function createWorkflow(
   userId: string,
   initialStep: WorkflowStep = 'idle',
-  metadata: Record<string, any> = {}
+  metadata: Record<string, any> = {},
+  options: { skipValidation?: boolean; force?: boolean } = {}
 ): Promise<string> {
   const moduleLogger = logger.withMetadata({
     module: 'WorkflowService',
@@ -262,8 +353,39 @@ export async function createWorkflow(
       });
     }
 
+    // Validate that the initial step is allowed to be an initial step
+    if (!options.skipValidation) {
+      // These are the only valid starting states
+      const validInitialSteps: WorkflowStep[] = ['idle', 'uploading', 'chat_started', 'research'];
+      
+      if (!validInitialSteps.includes(initialStep) && !options.force) {
+        moduleLogger.error('Invalid initial workflow step', { providedStep: initialStep });
+        throw new WorkflowStateError({
+          message: `Step '${initialStep}' is not a valid initial workflow step`,
+          transition: { from: 'none', to: initialStep },
+          data: { 
+            allowedInitialSteps: validInitialSteps,
+            userId
+          }
+        });
+      } else if (!validInitialSteps.includes(initialStep)) {
+        moduleLogger.warn('Forcing invalid initial workflow step', { 
+          providedStep: initialStep, 
+          validSteps: validInitialSteps 
+        });
+        
+        // Add warning to metadata for audit purposes
+        metadata._validationWarning = {
+          message: `Forced invalid initial step '${initialStep}'`,
+          forcedAt: new Date().toISOString(),
+          validInitialSteps
+        };
+      }
+    }
+
     moduleLogger.info('Creating new workflow', {
-      hasMetadata: Object.keys(metadata).length > 0
+      hasMetadata: Object.keys(metadata).length > 0,
+      options
     });
     
     const supabase = createBrowserClient();

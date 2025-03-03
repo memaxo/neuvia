@@ -3,6 +3,16 @@ import { useCallback, useMemo, useState } from 'react'
 import { useDocumentProcessing } from './use-document-processing'
 import { useReport } from './use-report'
 import { useResearch } from './use-research'
+import { workflowService } from '@/lib/services/workflow/workflow-service'
+import { workflowStateManager } from '@/lib/services/workflow/workflow-state-manager'
+import { 
+  DocumentProcessingError, 
+  VerificationError,
+  ReportGenerationError,
+  NotFoundError,
+  ValidationError,
+  normalizeError
+} from '@/lib/errors'
 
 // Import types from specific modules
 import type {
@@ -137,28 +147,26 @@ export function useProcessingWorkflow() {
         // Only create workflow if we have a user ID
         let workflowId: string | null = null
         if (userId) {
-          const { data, error } = await supabase
-            .from('workflow_states')
-            .insert({
-              user_id: userId,
-              current_step: 'extracting',
-              workflow_type: 'document_processing',
-              metadata: {
-                patientId,
-                fileName: file.name,
-                fileSize: file.size,
-                fileType: file.type,
-                documentType,
-                startedAt: new Date().toISOString()
-              }
-            })
-            .select('id')
-            .single()
-            
-          if (!error && data) {
-            workflowId = data.id
-            // Store workflow ID in localStorage for access across components
-            localStorage.setItem('current_workflow_id', workflowId)
+          const metadata = {
+            patientId,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            documentType,
+            startedAt: new Date().toISOString(),
+            workflow_type: 'document_processing'
+          }
+          
+          // Use the workflow service to create a new workflow state
+          workflowId = await workflowService.createWorkflowState(
+            userId, 
+            'extracting',
+            metadata
+          )
+          
+          if (workflowId) {
+            // Store workflow ID using state manager for access across components
+            workflowStateManager.setCurrentWorkflowId(workflowId)
           }
         }
 
@@ -174,23 +182,21 @@ export function useProcessingWorkflow() {
         )
 
         if (result) {
-          // Update workflow state
+          // Update workflow state using service
           if (workflowId) {
-            await supabase
-              .from('workflow_states')
-              .update({
-                current_step: 'verification',
-                metadata: {
-                  patientId,
-                  fileName: file.name,
-                  fileSize: file.size,
-                  fileType: file.type,
-                  documentType,
-                  documentId: result.id,
-                  completedAt: new Date().toISOString()
-                }
-              })
-              .eq('id', workflowId)
+            await workflowService.updateWorkflowState(
+              workflowId,
+              'verification',
+              {
+                patientId,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                documentType,
+                documentId: result.id,
+                completedAt: new Date().toISOString()
+              }
+            )
           }
           
           setWorkflowStep('verification')
@@ -199,24 +205,35 @@ export function useProcessingWorkflow() {
           throw new Error('Document processing failed')
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err)
-        setError(errorMessage)
+        // Normalize the error for consistent handling
+        const normalizedError = normalizeError(err)
+        
+        // Create a domain-specific document processing error for better diagnostics
+        const documentError = new DocumentProcessingError({
+          message: normalizedError.message,
+          code: 'DOCUMENT_PROCESSING_FAILED',
+          phase: 'extraction',
+          data: {
+            fileName: file.name, 
+            fileSize: file.size,
+            fileType: file.type,
+            patientId
+          },
+          cause: err
+        })
+        
+        // Update local state
+        setError(documentError.message)
         setWorkflowStep('idle')
         
-        // Update workflow state to error if we have a workflow ID
-        const workflowId = localStorage.getItem('current_workflow_id')
-        if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: 'error',
-              metadata: {
-                errorMessage,
-                errorAt: new Date().toISOString()
-              }
-            })
-            .eq('id', workflowId)
-        }
+        // Update workflow state to error with detailed error information
+        await workflowStateManager.setWorkflowError(documentError.message, {
+          errorAt: documentError.timestamp,
+          errorCode: documentError.code,
+          errorPhase: 'extraction',
+          errorDetails: documentError.data,
+          recoverable: true
+        })
         
         return null
       }
@@ -258,22 +275,20 @@ export function useProcessingWorkflow() {
       setWorkflowStep('verification')
       
       try {
-        const workflowId = localStorage.getItem('current_workflow_id')
+        const workflowId = workflowStateManager.getCurrentWorkflowId()
         
         // If we have a workflow ID, update it to verification
         if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: 'verification',
-              metadata: {
-                verificationStartedAt: new Date().toISOString(),
-                documentId: extractedDocument.id,
-                patientId: extractedDocument.patientId,
-                documentType: extractedDocument.documentType
-              }
-            })
-            .eq('id', workflowId)
+          await workflowService.updateWorkflowState(
+            workflowId,
+            'verification',
+            {
+              verificationStartedAt: new Date().toISOString(),
+              documentId: extractedDocument.id,
+              patientId: extractedDocument.patientId,
+              documentType: extractedDocument.documentType
+            }
+          )
         }
         
         // Use API client to initiate verification through the correct endpoint
@@ -301,25 +316,34 @@ export function useProcessingWorkflow() {
           structuredData: patientSummary?.structured_data || extractedDocument.extractedData
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err)
-        setError(errorMessage)
+        // Normalize the error for consistent handling
+        const normalizedError = normalizeError(err)
+        
+        // Create a domain-specific verification error for better diagnostics
+        const verificationError = new VerificationError({
+          message: normalizedError.message,
+          code: 'VERIFICATION_INITIALIZATION_FAILED',
+          documentId: extractedDocument.id,
+          data: {
+            patientId: extractedDocument.patientId,
+            documentType: extractedDocument.documentType,
+            failureReason: normalizedError.message
+          },
+          cause: err
+        })
+        
+        // Update local state
+        setError(verificationError.message)
         setWorkflowStep('error')
         
-        // Update workflow state to error if we have a workflow ID
-        const workflowId = localStorage.getItem('current_workflow_id')
-        if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: 'error',
-              metadata: {
-                errorMessage,
-                errorAt: new Date().toISOString(),
-                errorStage: 'verification'
-              }
-            })
-            .eq('id', workflowId)
-        }
+        // Update workflow state to error with detailed error information
+        await workflowStateManager.setWorkflowError(verificationError.message, {
+          errorAt: verificationError.timestamp,
+          errorCode: verificationError.code,
+          errorStage: 'verification',
+          errorDetails: verificationError.data,
+          recoverable: true
+        })
         
         return null
       }
@@ -335,20 +359,18 @@ export function useProcessingWorkflow() {
       setError(null)
       
       try {
-        const workflowId = localStorage.getItem('current_workflow_id')
+        const workflowId = workflowStateManager.getCurrentWorkflowId()
         
         // If we have a workflow ID, update it to verification_in_progress
         if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: 'verification_in_progress',
-              metadata: {
-                correction: correctionText,
-                correctionAt: new Date().toISOString()
-              }
-            })
-            .eq('id', workflowId)
+          await workflowService.updateWorkflowState(
+            workflowId,
+            'verification_in_progress',
+            {
+              correction: correctionText,
+              correctionAt: new Date().toISOString()
+            }
+          )
         }
         
         // Use API client to process the correction
@@ -394,20 +416,18 @@ export function useProcessingWorkflow() {
       setError(null)
       
       try {
-        const workflowId = localStorage.getItem('current_workflow_id')
+        const workflowId = workflowStateManager.getCurrentWorkflowId()
         
         // If we have a workflow ID, update it to verification_completed or verification_failed
         if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: isApproved ? 'verification_completed' : 'verification_failed',
-              metadata: {
-                verificationCompletedAt: new Date().toISOString(),
-                verificationApproved: isApproved
-              }
-            })
-            .eq('id', workflowId)
+          await workflowService.updateWorkflowState(
+            workflowId,
+            isApproved ? 'verification_completed' : 'verification_failed',
+            {
+              verificationCompletedAt: new Date().toISOString(),
+              verificationApproved: isApproved
+            }
+          )
         }
         
         return {
@@ -434,37 +454,33 @@ export function useProcessingWorkflow() {
       setWorkflowStep('report_generation')
       
       try {
-        const workflowId = localStorage.getItem('current_workflow_id')
+        const workflowId = workflowStateManager.getCurrentWorkflowId()
         
         // If we have a workflow ID, update it to report_generation
         if (workflowId) {
-          await supabase
-            .from('workflow_states')
-            .update({
-              current_step: 'report_generation',
-              metadata: {
-                reportGenerationStartedAt: new Date().toISOString(),
-                reportOptions: options
-              }
-            })
-            .eq('id', workflowId)
+          await workflowService.updateWorkflowState(
+            workflowId,
+            'report_generation',
+            {
+              reportGenerationStartedAt: new Date().toISOString(),
+              reportOptions: options
+            }
+          )
         }
 
         const result = await report.generateReport(options)
 
         if (result) {
-          // Update workflow state to complete
+          // Update workflow state to complete using service
           if (workflowId) {
-            await supabase
-              .from('workflow_states')
-              .update({
-                current_step: 'complete',
-                metadata: {
-                  reportGenerationCompletedAt: new Date().toISOString(),
-                  reportId: result.id
-                }
-              })
-              .eq('id', workflowId)
+            await workflowService.updateWorkflowState(
+              workflowId,
+              'complete',
+              {
+                reportGenerationCompletedAt: new Date().toISOString(),
+                reportId: result.id
+              }
+            )
           }
           
           setWorkflowStep('complete')
