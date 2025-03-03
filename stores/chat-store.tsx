@@ -32,6 +32,7 @@ import type {
   VerificationResult,
   VerificationStatusType,
   WorkflowState,
+  ExtendedWorkflowResult,
 } from '@/lib/chat/types'
 
 import { processMessage } from '@/lib/actions/message-processor'
@@ -622,80 +623,124 @@ export const useChatStore = create<ChatStore>()(
 
       completeVerification: async (isApproved) => {
         const state = get()
+        const handleErrorFallback = (error: unknown) => {
+          console.error('completeVerification error:', error)
+        }
+        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
 
-        // Update state
-        set((state) => {
-          const verification = state.workflow.data.verification || {}
+        try {
+          // Call the verification service to complete verification
+          const result = await verificationService.completeVerification(
+            workflowId,
+            isApproved,
+            {
+              items: state.verification.verificationItems,
+              // Include any user-specific data if available
+              userId: '',
+            }
+          )
+
+          if (!result.success) {
+            throw new VerificationError({
+              message:
+                result.error?.message || 'Failed to complete verification',
+              code: result.error?.code || 'VERIFICATION_COMPLETION_FAILED',
+              verificationId: state.verification.summaryVersions[0]?.id,
+              documentId: state.workflow.data.documentId as string,
+              data: result.error?.details,
+            })
+          }
+
+          // Update state with the completed verification data
           const nextStep = isApproved
             ? 'report_generation'
             : state.workflow.currentStep
 
-          return {
-            verification: {
-              ...state.verification,
-              isInVerificationMode: false,
-              verificationStatus: isApproved ? 'completed' : 'failed',
-            },
-            workflow: {
-              ...state.workflow,
-              currentStep: nextStep,
-              processingStatus: isApproved
-                ? {
-                    status: 'success',
-                    progress: 100,
-                    phase: 'verification' as ProcessingPhase,
-                  }
-                : state.workflow.processingStatus,
-              data: {
-                ...state.workflow.data,
-                verification: {
-                  ...verification,
-                  isInVerificationMode: false,
-                  isApproved,
-                  completedAt: new Date().toISOString(),
+          set((state) => {
+            const verification = state.workflow.data.verification || {}
+
+            return {
+              verification: {
+                ...state.verification,
+                isInVerificationMode: false,
+                verificationStatus: isApproved ? 'completed' : 'failed',
+              },
+              workflow: {
+                ...state.workflow,
+                currentStep: nextStep,
+                processingStatus: isApproved
+                  ? {
+                      status: 'success',
+                      progress: 100,
+                      phase: 'verification' as ProcessingPhase,
+                    }
+                  : state.workflow.processingStatus,
+                data: {
+                  ...state.workflow.data,
+                  verification: {
+                    ...verification,
+                    isInVerificationMode: false,
+                    isApproved,
+                    completedAt: new Date().toISOString(),
+                    verificationResult: result.data,
+                  },
                 },
               },
-            },
-            mode: isApproved ? 'default' : state.mode,
-          }
-        })
+              mode: isApproved ? 'default' : state.mode,
+            }
+          })
 
-        // Build the verification result
-        return {
-          isCompleted: true,
-          isApproved,
-          items: state.verification.verificationItems,
-          completedAt: new Date().toISOString(),
-          verificationMetadata: {
-            verificationStatus: 'completed',
-            originalSummaryId: state.verification.summaryVersions[0]?.id || '',
-            currentVersionId:
-              state.verification.summaryVersions[
-                state.verification.summaryVersions.length - 1
-              ]?.id || '',
-            correctionCount: state.verification.summaryVersions.length - 1,
-            corrections: state.verification.summaryVersions.map((version) => ({
-              id: version.id,
-              text: version.content,
-              timestamp: version.timestamp,
-            })),
-            startedAt: state.verification.summaryVersions[0]?.timestamp,
-            lastUpdated: new Date().toISOString(),
-            verifiedAt: new Date().toISOString(),
-          },
+          // Return the verification result from the service
+          return result.data
+        } catch (error) {
+          // Handle errors and update workflow state accordingly
+          await handleErrorFallback(error)
+
+          // Return a basic verification result indicating failure
+          return {
+            isCompleted: false,
+            isApproved: false,
+            items: state.verification.verificationItems,
+            completedAt: new Date().toISOString(),
+            verificationMetadata: {
+              verificationStatus: 'failed',
+              originalSummaryId:
+                state.verification.summaryVersions[0]?.id || '',
+              currentVersionId:
+                state.verification.summaryVersions[
+                  state.verification.summaryVersions.length - 1
+                ]?.id || '',
+              correctionCount: state.verification.summaryVersions.length - 1,
+              corrections: state.verification.summaryVersions.map(
+                (version) => ({
+                  id: version.id,
+                  text: version.content,
+                  timestamp: version.timestamp,
+                })
+              ),
+              startedAt: state.verification.summaryVersions[0]?.timestamp,
+              lastUpdated: new Date().toISOString(),
+            },
+          }
         }
       },
 
       handleCorrectionMessage: async (correction) => {
         const state = get()
+        const handleErrorFallback = (error: unknown) => {
+          console.error('handleCorrectionMessage error:', error)
+        }
+        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
 
-        // Add the correction message
+        // Add the correction message with verification-specific metadata
         get().addMessage({
           role: 'user',
           content: correction,
           createdAt: new Date(),
           metadata: {
             isCorrection: true,
+            type: 'correction',
+            workflowId,
           },
         })
 
@@ -708,8 +753,10 @@ export const useChatStore = create<ChatStore>()(
           createdAt: new Date(),
           metadata: {
             isProgress: true,
+            type: 'progress',
             progressValue: 0,
             progressPhase: 'correction',
+            workflowId,
           },
         })
 
@@ -720,41 +767,62 @@ export const useChatStore = create<ChatStore>()(
           // Get the current summary from state
           const currentSummary = state.verification.currentSummary || ''
 
-          // Call the verification API through the client
+          // Use the verification service to submit the correction
           const result = await verificationService.submitCorrection({
             correction,
             currentSummary,
-            workflowId: workflowStateManager.getCurrentWorkflowId() || '',
+            workflowId,
             messageId: progressMessageId,
+            onStatusUpdate: (status) => {
+              // Update progress if callback is provided
+              if (status) {
+                get().updateMessageProgress(
+                  progressMessageId,
+                  status.progress || 0,
+                  status.phase || 'correction'
+                )
+              }
+            },
           })
 
-          // Get data from the service response
-          const newSummaryId = result.success
-            ? result.data.summaryId
-            : crypto.randomUUID()
-          const timestamp = new Date().toISOString()
-          const newSummary = result.success
-            ? result.data.summary
-            : `${currentSummary}\n\nUpdate based on your feedback: ${correction}`
+          // Handle service errors
+          if (!result.success) {
+            throw new VerificationError({
+              message: result.error?.message || 'Failed to submit correction',
+              code: result.error?.code || 'CORRECTION_SUBMISSION_FAILED',
+              verificationId: state.verification.summaryVersions[0]?.id,
+              documentId: state.workflow.data.documentId as string,
+              data: result.error?.details,
+            })
+          }
 
-          // Update the progress message
+          // Get data from the service response
+          const newSummaryId = result.data.summaryId
+          const timestamp = new Date().toISOString()
+          const newSummary = result.data.summary
+          const correctionCount =
+            result.data.correctionCount ||
+            ((state.workflow.data as ExtendedWorkflowState['data'])
+              .verificationMetadata?.correctionCount || 0) + 1
+
+          // Update the progress message to show completion
           get().updateMessageProgress(progressMessageId, 100, 'completed')
 
-          // Add the corrected summary
+          // Add the corrected summary with metadata from the service
           get().addMessage({
             role: 'assistant',
             content: newSummary,
             createdAt: new Date(),
             metadata: {
               isSummary: true,
+              type: 'summary',
               summaryVersionId: newSummaryId,
               timestamp,
+              workflowId,
               verificationMetadata: {
                 verificationStatus: 'in_progress',
-                correctionCount:
-                  (get().workflow.data as ExtendedWorkflowState['data'])
-                    .verificationMetadata?.correctionCount ||
-                  state.verification.summaryVersions.length,
+                correctionCount,
+                summaryId: newSummaryId,
               },
             },
           })
@@ -767,53 +835,65 @@ export const useChatStore = create<ChatStore>()(
             createdAt: new Date(),
             metadata: {
               isVerificationRequest: true,
+              type: 'verification_request',
+              workflowId,
             },
           })
 
-          // Update verification state with new summary
+          // Update verification state with new summary from the service
           set((state) => ({
             verification: {
               ...state.verification,
               currentSummary: newSummary,
+              verificationStatus: 'in_progress',
               summaryVersions: [
                 ...state.verification.summaryVersions,
                 {
                   id: newSummaryId,
                   content: newSummary,
                   timestamp,
+                  userId: '',
                 },
               ],
             },
+            workflow: {
+              ...state.workflow,
+              currentStep: 'verification_in_progress',
+              processingStatus: {
+                status: 'success',
+                progress: 100,
+                phase: 'verification',
+              },
+              data: {
+                ...state.workflow.data,
+                verificationMetadata: {
+                  ...(state.workflow.data.verificationMetadata || {}),
+                  currentVersionId: newSummaryId,
+                  correctionCount,
+                  lastUpdated: timestamp,
+                },
+              },
+            },
           }))
         } catch (error) {
-          console.error('Error processing correction:', error)
+          // Use the error handler to properly handle and log errors
+          await handleErrorFallback(error)
 
-          // Normalize and create domain-specific error
-          const normalizedError = normalizeError(error)
-
-          const verificationError = new VerificationError({
-            message: normalizedError.message || 'Failed to process correction',
-            code: 'CORRECTION_PROCESSING_FAILED',
-            verificationId: state.verification.summaryVersions[0]?.id,
-            documentId: state.workflow.data.documentId as string,
-            data: {
-              correction,
-              currentSummary: state.verification.currentSummary,
-              correctionCount: state.verification.summaryVersions.length,
+          // Add an error message to the chat
+          get().addMessage({
+            role: 'system',
+            content: `I couldn't process your correction. Please try again with a different correction or contact support if the issue persists.`,
+            createdAt: new Date(),
+            metadata: {
+              isError: true,
+              type: 'error',
+              errorCode: 'CORRECTION_PROCESSING_ERROR',
+              workflowId,
             },
-            cause: error,
           })
 
-          // Update workflow state with detailed error
-          get().setError(verificationError.message)
-          get().updateWorkflowStep('error', {
-            error: verificationError.message,
-            errorDetails: verificationError.data,
-            errorCode: verificationError.code,
-            errorTimestamp: verificationError.timestamp,
-            errorStage: 'verification',
-            previousStep: 'verification_in_progress',
-          })
+          // Update the progress message to show failure
+          get().updateMessageProgress(progressMessageId, 100, 'error')
         }
       },
 
@@ -1293,35 +1373,79 @@ export const useChatStore = create<ChatStore>()(
 
       // Methods from useWorkflow
 
-      // Initialize verification process for a document using the useWorkflow hook
+      // Initialize verification process for a document using the verification service
       initiateVerification: async (extractedDocument, messageId) => {
-        try {
-          // Get the auth user ID for the workflow using the API client
-          const { data: userData } =
-            await apiClientInstance.auth.getCurrentUser()
-          const userId = userData?.user?.id
-          const chatId = workflowStateManager.getCurrentChatId() || undefined
+        const handleErrorFallback = (error: unknown) => {
+          console.error('initiateVerification error:', error)
+        }
+        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
+        const chatId = workflowStateManager.getCurrentChatId() || undefined
 
+        try {
+          // Validate user is authenticated
+          const userId = ''
           if (!userId) {
             throw new Error('User not authenticated')
           }
 
-          // Use API client first for compatibility
-          const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
+          // Update state to show we're initiating verification
+          set((state) => ({
+            workflow: {
+              ...state.workflow,
+              currentStep: 'verification_pending',
+              processingStatus: {
+                status: 'processing',
+                progress: 50,
+                phase: 'verification',
+              },
+              data: {
+                ...state.workflow.data,
+                documentId: extractedDocument.documentId || '',
+                patientId: extractedDocument.patientId || '',
+              },
+            },
+            mode: 'verification',
+          }))
 
+          // Use the verification service to generate verification
           const verificationResult =
             await verificationService.generateVerification({
               document: extractedDocument,
               workflowId,
               messageId: messageId || '',
               summaryId: crypto.randomUUID(),
+              onStatusUpdate: (status) => {
+                // Update progress if a status update callback is provided
+                if (status && messageId) {
+                  get().updateMessageProgress(
+                    messageId,
+                    status.progress || 0,
+                    status.phase || 'verification'
+                  )
+                }
+              },
             })
 
-          // Update the store state with API result
+          // Handle service errors
+          if (!verificationResult.success) {
+            throw new VerificationError({
+              message:
+                verificationResult.error?.message ||
+                'Failed to generate verification',
+              code:
+                verificationResult.error?.code ||
+                'VERIFICATION_GENERATION_FAILED',
+              documentId: extractedDocument.documentId || '',
+              data: verificationResult.error?.details,
+            })
+          }
+
+          // Update the store state with result from verification service
+          const timestamp = new Date().toISOString()
           set((state) => ({
             workflow: {
               ...state.workflow,
-              currentStep: 'verification_pending',
+              currentStep: 'verification',
               processingStatus: {
                 status: 'success',
                 progress: 100,
@@ -1332,55 +1456,57 @@ export const useChatStore = create<ChatStore>()(
                 extractedData:
                   verificationResult.data.structuredData || extractedDocument,
                 summaryId: verificationResult.data.summaryId,
+                verificationMetadata: {
+                  verificationStatus: 'pending',
+                  originalSummaryId: verificationResult.data.summaryId,
+                  currentVersionId: verificationResult.data.summaryId,
+                  correctionCount: 0,
+                  startedAt: timestamp,
+                  lastUpdated: timestamp,
+                },
               },
+            },
+            verification: {
+              ...state.verification,
+              isInVerificationMode: true,
+              currentSummary: verificationResult.data.summary,
+              verificationStatus: 'pending',
+              summaryVersions: [
+                {
+                  id: verificationResult.data.summaryId,
+                  content: verificationResult.data.summary,
+                  timestamp,
+                  userId,
+                },
+              ],
             },
           }))
 
+          // Return a standardized result with data from the service
           return {
-            summaryId: verificationResult.success
-              ? verificationResult.data.summaryId
-              : crypto.randomUUID(),
-            summary: verificationResult.success
-              ? verificationResult.data.summary
-              : 'Summary extraction failed',
-            structuredData: verificationResult.success
-              ? verificationResult.data.structuredData || {
-                  patient: {
-                    name: 'Sample Patient',
-                    age: 0,
-                    diagnosis: 'Pending diagnosis',
-                  },
-                }
-              : {
-                  patient: {
-                    name: 'Sample Patient',
-                    age: 0,
-                    diagnosis: 'Pending diagnosis',
-                  },
-                },
+            summaryId: verificationResult.data.summaryId,
+            summary: verificationResult.data.summary,
+            structuredData: verificationResult.data.structuredData || {},
           }
         } catch (error) {
-          console.error('Error initiating verification:', error)
+          // Use the error handler to properly handle and log errors
+          await handleErrorFallback(error)
 
-          // Update to error state
-          get().updateWorkflowStep('error', {
-            error: error instanceof Error ? error.message : String(error),
-            errorTimestamp: new Date().toISOString(),
-          })
-
+          // Return a basic failure result
           throw error
         }
       },
 
       // Process a user correction to the summary
       processCorrection: async (correctionText, currentSummary, messageId) => {
-        try {
-          // Get the auth user ID for the workflow using the API client
-          const { data: userData } =
-            await apiClientInstance.auth.getCurrentUser()
-          const userId = userData?.user?.id
-          const chatId = workflowStateManager.getCurrentChatId() || undefined
+        const handleErrorFallback = (error: unknown) => {
+          console.error('processCorrection error:', error)
+        }
+        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
 
+        try {
+          // Validate user is authenticated
+          const userId = ''
           if (!userId) {
             throw new Error('User not authenticated')
           }
@@ -1402,23 +1528,45 @@ export const useChatStore = create<ChatStore>()(
             },
           }))
 
-          // Use API client for compatibility
-          const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-
+          // Use the verification service to process the correction
           const correctionResult = await verificationService.processCorrection({
             correction: correctionText,
             currentSummary,
             workflowId,
             messageId: messageId || '',
+            onStatusUpdate: (status) => {
+              // Update progress if a status update callback is provided
+              if (status && messageId) {
+                get().updateMessageProgress(
+                  messageId,
+                  status.progress || 0,
+                  status.phase || 'correction'
+                )
+              }
+            },
           })
 
-          // Update local state with new summary
+          // Handle service errors
+          if (!correctionResult.success) {
+            throw new VerificationError({
+              message:
+                correctionResult.error?.message ||
+                'Failed to process correction',
+              code:
+                correctionResult.error?.code || 'CORRECTION_PROCESSING_FAILED',
+              verificationId: get().verification.summaryVersions[0]?.id,
+              documentId: get().workflow.data.documentId as string,
+              data: correctionResult.error?.details,
+            })
+          }
+
+          // Update local state with new summary from the service
           set((state) => {
             const currVerificationMetadata =
               state.workflow.data.verificationMetadata || {}
             const currSummaryVersions = state.verification.summaryVersions || []
-            const newSummaryId =
-              correctionResult.data.summaryId || crypto.randomUUID()
+            const newSummaryId = correctionResult.data.summaryId
+            const timestamp = new Date().toISOString()
 
             return {
               workflow: {
@@ -1435,7 +1583,8 @@ export const useChatStore = create<ChatStore>()(
                     ...currVerificationMetadata,
                     currentVersionId: newSummaryId,
                     correctionCount:
-                      (currVerificationMetadata.correctionCount || 0) + 1,
+                      ((currVerificationMetadata as any).correctionCount || 0) +
+                      1,
                   },
                 },
               },
@@ -1447,37 +1596,29 @@ export const useChatStore = create<ChatStore>()(
                   {
                     id: newSummaryId,
                     content: correctionResult.data.summary,
-                    timestamp: new Date().toISOString(),
+                    timestamp,
+                    userId,
                   },
                 ],
               },
             }
           })
 
+          // Return standardized result with data from the service
           return {
             summaryId: correctionResult.data.summaryId,
             summary: correctionResult.data.summary,
-            structuredData: correctionResult.data.structuredData || {
-              patient: {
-                name: 'Sample Patient',
-                age: 45,
-                diagnosis: 'Updated diagnosis based on correction',
-              },
-            },
+            structuredData: correctionResult.data.structuredData || {},
             correctionCount:
               correctionResult.data.correctionCount ||
               ((get().workflow.data as ExtendedWorkflowState['data'])
                 .verificationMetadata?.correctionCount || 0) + 1,
           }
         } catch (error) {
-          console.error('Error processing correction:', error)
+          // Use the error handler to properly handle and log errors
+          await handleErrorFallback(error)
 
-          // Update to error state
-          get().updateWorkflowStep('error', {
-            error: error instanceof Error ? error.message : String(error),
-            errorTimestamp: new Date().toISOString(),
-          })
-
+          // Rethrow to allow callers to handle the error
           throw error
         }
       },

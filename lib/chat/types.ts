@@ -19,9 +19,6 @@ import type {
   VerificationOptions as BaseVerificationOptions,
   VerificationItem,
   VerificationResult,
-  createVerificationItem,
-  createVerificationMessageMetadata,
-  createCorrectionMessageMetadata,
 } from '@/lib/processing/types/verification'
 
 // Import canonical workflow types
@@ -33,18 +30,29 @@ import type {
   VerificationStatusType,
   WorkflowStep,
   ProcessingPhase,
-  getMessageType,
+} from '@/lib/workflow/types'
+
+// Import utility functions as values
+import {
   isMessageOfType,
   isVerificationMessage,
-  isSummaryMessage as isWorkflowSummaryMessage,
-  isCorrectionMessage as isWorkflowCorrectionMessage,
-  isProgressMessage as isWorkflowProgressMessage,
-  isResearchMessage as isWorkflowResearchMessage,
-  isReportMessage as isWorkflowReportMessage,
+  isSummaryMessage as isSummaryMetadata,
+  isCorrectionMessage as isCorrectionMetadata,
+  isProgressMessage as isProgressMetadata,
+  isResearchMessage as isResearchMetadata,
+  isReportMessage as isReportMetadata,
 } from '@/lib/workflow/types'
 
 // Import AI SDK types
 import type { Message as AIMessage } from 'ai'
+
+// Import for document types
+import type { ExtractedDocument } from '@/lib/processing/types/extraction'
+import type {
+  ResearchResult,
+  ResearchDocument,
+} from '@/lib/processing/types/research'
+import type { ReportDocument } from '@/lib/types/report'
 
 // Re-export core types for easier importing
 export type {
@@ -58,19 +66,15 @@ export type {
   VerificationResult,
 }
 
-// Re-export utility functions for convenience
+// Export individual utility functions
 export {
-  createVerificationItem,
-  createVerificationMessageMetadata,
-  createCorrectionMessageMetadata,
-  getMessageType,
   isMessageOfType,
   isVerificationMessage,
-  isWorkflowSummaryMessage as isSummaryMessageMetadata,
-  isWorkflowCorrectionMessage as isCorrectionMessageMetadata,
-  isWorkflowProgressMessage as isProgressMessageMetadata,
-  isWorkflowResearchMessage as isResearchMessageMetadata,
-  isWorkflowReportMessage as isReportMessageMetadata,
+  isSummaryMetadata,
+  isCorrectionMetadata,
+  isProgressMetadata,
+  isResearchMetadata,
+  isReportMetadata,
 }
 
 // Use the canonical MessageMetadata from workflow types
@@ -128,8 +132,8 @@ export interface Message extends AIMessage {
  *
  * @deprecated Use isReportMessageMetadata or isMessageOfType(metadata, 'report') instead
  */
-export function isReportMessage(message: Message): boolean {
-  return message.metadata?.isReport === true
+export function isReportMessage(message: ChatMessage): boolean {
+  return Boolean(message.metadata?.isReport)
 }
 
 /**
@@ -137,19 +141,20 @@ export function isReportMessage(message: Message): boolean {
  *
  * @deprecated Use isResearchMessageMetadata or isMessageOfType(metadata, 'research') instead
  */
-export function isResearchMessage(message: Message): boolean {
-  return message.metadata?.isResearch === true
+export function isResearchMessage(message: ChatMessage): boolean {
+  return Boolean(message.metadata?.isResearch)
 }
 
 /**
  * Check if a message has verification metadata
- *
- * @deprecated Use message.metadata?.verificationMetadata instead
  */
-export function hasVerificationMetadata(message: Message): boolean {
+export function hasVerificationMetadata(message: ChatMessage): boolean {
   return (
-    !!message.metadata?.verificationStatus ||
-    !!message.metadata?.verificationMetadata
+    message.metadata !== undefined &&
+    typeof message.metadata === 'object' &&
+    message.metadata !== null &&
+    ('verificationStatus' in message.metadata ||
+      'isVerificationRequest' in message.metadata)
   )
 }
 
@@ -371,12 +376,12 @@ export interface ExtendedChatContextType
     content: string,
     type?: string,
     metadata?: MessageMetadata
-  ) => Message
+  ) => ChatMessage
 
   /**
    * Post a summary for verification
    */
-  postSummaryMessage: (summary: string) => Message
+  postSummaryMessage: (summary: string) => ChatMessage
 
   /**
    * Handle corrections to a verified summary
@@ -386,7 +391,7 @@ export interface ExtendedChatContextType
   /**
    * Update summary after a correction
    */
-  updateSummaryAfterCorrection: (newSummary: string) => Message
+  updateSummaryAfterCorrection: (newSummary: string) => ChatMessage
 
   /**
    * Complete the verification process
@@ -406,7 +411,7 @@ export interface ExtendedChatContextType
   /**
    * Access to the workflow context
    */
-  workflow: UseProcessingWorkflowResult
+  workflow: ExtendedWorkflowResult
 
   /**
    * Generate a report
@@ -441,16 +446,48 @@ export interface ExtendedChatContextType
  */
 
 /**
- * Check if a message is a verification request
- *
- * @param message The chat message to check
- * @returns True if this is a verification request message
+ * Helper function to capitalize the first letter of a string
  */
-export function isVerificationRequestMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'verification_request') ||
-    message.metadata?.isVerificationRequest === true
-  )
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+/**
+ * Factory function to create type guard functions for different message types
+ *
+ * @param messageType The type of message to check for
+ * @returns A type guard function for the specified message type
+ */
+function createMessageTypeGuard<T extends MessageType>(messageType: T) {
+  // Create the property name that would be used in metadata (e.g., 'isVerificationRequest')
+  const metadataKey =
+    `is${capitalizeFirst(messageType.replace(/_/g, ' ')).replace(/\s/g, '')}` as const
+
+  // Return a type-predicate function
+  return function (message: ChatMessage): message is ChatMessage & {
+    metadata: { [K in typeof metadataKey]: true } | { type: T }
+  } {
+    return (
+      isMessageOfType(message.metadata, messageType) ||
+      (message.metadata !== undefined &&
+        typeof message.metadata === 'object' &&
+        message.metadata !== null &&
+        typeof message.metadata[metadataKey] === 'boolean' &&
+        message.metadata[metadataKey] === true)
+    )
+  }
+}
+
+/**
+ * Check if a message is a verification request
+ * @deprecated Use isVerificationRequestMessage instead
+ */
+export function isVerificationRequestMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isVerificationRequest: true } | { type: 'verification_request' }
+} {
+  return createMessageTypeGuard('verification_request')(message)
 }
 
 /**
@@ -459,11 +496,12 @@ export function isVerificationRequestMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is a summary message
  */
-export function isSummaryMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'summary') ||
-    message.metadata?.isSummary === true
-  )
+export function isSummaryMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isSummary: true } | { type: 'summary' }
+} {
+  return createMessageTypeGuard('summary')(message)
 }
 
 /**
@@ -472,11 +510,12 @@ export function isSummaryMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is a correction message
  */
-export function isCorrectionMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'correction') ||
-    message.metadata?.isCorrection === true
-  )
+export function isCorrectionMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isCorrection: true } | { type: 'correction' }
+} {
+  return createMessageTypeGuard('correction')(message)
 }
 
 /**
@@ -485,11 +524,12 @@ export function isCorrectionMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is a progress message
  */
-export function isProgressMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'progress') ||
-    message.metadata?.isProgress === true
-  )
+export function isProgressMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isProgress: true } | { type: 'progress' }
+} {
+  return createMessageTypeGuard('progress')(message)
 }
 
 /**
@@ -498,11 +538,12 @@ export function isProgressMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is a research message
  */
-export function isResearchChatMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'research') ||
-    message.metadata?.isResearch === true
-  )
+export function isResearchChatMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isResearch: true } | { type: 'research' }
+} {
+  return createMessageTypeGuard('research')(message)
 }
 
 /**
@@ -511,11 +552,12 @@ export function isResearchChatMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is a report message
  */
-export function isReportChatMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'report') ||
-    message.metadata?.isReport === true
-  )
+export function isReportChatMessage(
+  message: ChatMessage
+): message is ChatMessage & {
+  metadata: { isReport: true } | { type: 'report' }
+} {
+  return createMessageTypeGuard('report')(message)
 }
 
 /**
@@ -524,19 +566,14 @@ export function isReportChatMessage(message: ChatMessage): boolean {
  * @param message The chat message to check
  * @returns True if this is an error message
  */
-export function isErrorMessage(message: ChatMessage): boolean {
-  return (
-    isMessageOfType(message.metadata, 'error') ||
-    message.metadata?.isError === true
-  )
+export function isErrorMessage(message: ChatMessage): message is ChatMessage & {
+  metadata: { isError: true } | { type: 'error' }
+} {
+  return createMessageTypeGuard('error')(message)
 }
 
 /**
- * Create a system message with metadata
- *
- * @param content Message content
- * @param metadata Optional message metadata
- * @returns A system message without an ID (ID should be added by the consumer)
+ * Create a system message
  */
 export function createSystemMessage(
   content: string,
@@ -547,19 +584,15 @@ export function createSystemMessage(
     role: 'system',
     createdAt: new Date(),
     metadata: {
-      ...metadata,
-      type: metadata?.type || 'system',
+      ...(metadata ?? {}),
+      type: 'system',
       isSystem: true,
     },
   }
 }
 
 /**
- * Create an assistant message with metadata
- *
- * @param content Message content
- * @param metadata Optional message metadata
- * @returns An assistant message without an ID (ID should be added by the consumer)
+ * Create an assistant message
  */
 export function createAssistantMessage(
   content: string,
@@ -569,16 +602,12 @@ export function createAssistantMessage(
     content,
     role: 'assistant',
     createdAt: new Date(),
-    metadata,
+    metadata: metadata ?? {},
   }
 }
 
 /**
- * Create a user message with metadata
- *
- * @param content Message content
- * @param metadata Optional message metadata
- * @returns A user message without an ID (ID should be added by the consumer)
+ * Create a user message
  */
 export function createUserMessage(
   content: string,
@@ -588,7 +617,7 @@ export function createUserMessage(
     content,
     role: 'user',
     createdAt: new Date(),
-    metadata,
+    metadata: metadata ?? {},
   }
 }
 
@@ -601,6 +630,64 @@ export function createUserMessage(
 export type UseProcessingWorkflowResult = ReturnType<
   typeof useProcessingWorkflow
 >
+
+/**
+ * Base interface for workflow result
+ */
+export interface WorkflowResult {
+  // Core workflow state
+  workflowStep: WorkflowStep
+  error: string | null
+  status: ProcessingStatus | 'idle' | 'processing' | 'success' | 'error'
+
+  // Core workflow actions
+  resetWorkflow: () => void
+  processDocument: (
+    file: File,
+    patientId: string,
+    documentType?: string,
+    abortSignal?: AbortSignal
+  ) => Promise<ExtractedDocument | null>
+
+  // Document data
+  extractedDocument: ExtractedDocument | null
+
+  // Required workflow methods
+  generateReport: () => Promise<void>
+  formatReport: (format: ReportFormat) => Promise<void>
+  completeVerification: (isApproved: boolean) => Promise<VerificationResult>
+  processCorrection: (
+    correctionText: string,
+    currentSummary: string,
+    messageId?: string
+  ) => Promise<VerificationResult>
+
+  // Optional workflow data
+  researchResults?: Array<ResearchResult>
+  researchDocument?: ResearchDocument | null
+  reportData?: Record<string, unknown>
+  formattedReport?: Record<string, unknown>
+  reportDocument?: ReportDocument | null
+}
+
+/**
+ * Union type for all possible workflow data types
+ */
+export type WorkflowData =
+  | ExtractedDocument
+  | ResearchDocument
+  | ResearchResult
+  | ReportDocument
+  | Record<string, unknown>
+  | null
+
+/**
+ * Extended workflow result with additional data
+ */
+export interface ExtendedWorkflowResult extends WorkflowResult {
+  data?: WorkflowData
+  chatId?: string
+}
 
 /**
  * Result type for the Zustand store
@@ -792,7 +879,7 @@ export interface ChatState {
   /**
    * Chat messages
    */
-  messages: Message[]
+  messages: ChatMessage[]
 
   /**
    * Whether the chat is currently loading
@@ -932,3 +1019,73 @@ export type ChatAction =
         metadata?: Record<string, unknown>
       }
     }
+
+/**
+ * Constants for workflow steps
+ * This provides a type-safe way to reference workflow steps
+ */
+export const WORKFLOW_STEPS = {
+  IDLE: 'idle' as const,
+  UPLOADING: 'uploading' as const,
+  EXTRACTING: 'extracting' as const,
+  EXTRACTION_COMPLETED: 'extraction_completed' as const,
+  VERIFICATION_PENDING: 'verification_pending' as const,
+  VERIFICATION_IN_PROGRESS: 'verification_in_progress' as const,
+  VERIFICATION_COMPLETED: 'verification_completed' as const,
+  VERIFICATION_FAILED: 'verification_failed' as const,
+  RESEARCH: 'research' as const,
+  REPORT_GENERATION: 'report_generation' as const,
+  REPORT_PRESENTATION: 'report_presentation' as const,
+  COMPLETE: 'complete' as const,
+  ERROR: 'error' as const,
+} as const
+
+/**
+ * Type-safe workflow step type derived from the constants
+ */
+export type WorkflowStepType =
+  (typeof WORKFLOW_STEPS)[keyof typeof WORKFLOW_STEPS]
+
+/**
+ * Generate a random UUID for message IDs
+ */
+function generateId(): string {
+  return crypto.randomUUID()
+}
+
+/**
+ * Add a system message
+ */
+export function addSystemMessage(
+  content: string,
+  type?: MessageType,
+  metadata?: MessageMetadata
+): ChatMessage {
+  return {
+    id: generateId(),
+    content,
+    role: 'system',
+    createdAt: new Date(),
+    metadata: {
+      ...(metadata || {}),
+      type: type ?? 'system',
+      isSystem: true,
+    },
+  }
+}
+
+/**
+ * Update a summary after correction
+ */
+export function updateSummaryAfterCorrection(newSummary: string): ChatMessage {
+  return {
+    id: generateId(),
+    content: newSummary,
+    role: 'assistant',
+    createdAt: new Date(),
+    metadata: {
+      isSummary: true,
+      isVerified: true,
+    },
+  }
+}
