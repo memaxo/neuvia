@@ -375,13 +375,29 @@ export function ChatInterface({
           clearInterval(progressInterval)
 
           setTimeout(() => {
-            // Format the report to complete the workflow
-            formatReport({ format: 'pdf' })
+            // Actually generate the report using the API
+            try {
+              // Get patient data from the service
+              const patientData = await apiClient.patients.getPatientById(patientId)
+              if (!patientData) throw new Error('Patient data not found')
 
-            // Add a report message to the chat
-            const finalReportMarkdown = `**Final Report**\n\n- Diagnosis: Example Condition\n- Recommendations: Follow instructions\n${notes ? `\n**Additional Notes:** ${notes}` : ''}`
+              // Generate the report using the report service
+              const report = await apiClient.reports.generateReport({
+                patientId,
+                workflowId: localStorage.getItem('current_workflow_id') || '',
+                format: 'markdown',
+                includeVerificationData: true,
+                detailLevel: 'comprehensive',
+                additionalNotes: notes || ''
+              })
 
-            addSystemMessage('Report generation complete!', 'report_complete')
+              // Format the report
+              formatReport({ format: 'pdf' })
+
+              // Add the generated report content to the chat
+              const finalReportMarkdown = report.content || `**Final Report**\n\n- Patient: ${patientData.name || 'Unknown'}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}`
+
+              addSystemMessage('Report generation complete!', 'report_complete')
 
             const newMessage: Message = {
               id: crypto.randomUUID(),
@@ -390,11 +406,39 @@ export function ChatInterface({
               createdAt: new Date(),
               metadata: {
                 isReport: true,
+                reportId: report?.id || crypto.randomUUID(),
+                generatedAt: report?.generatedAt || new Date().toISOString(),
+                format: report?.format || 'markdown',
               },
             }
 
             // Add the report message using Zustand store
             useChatStore.getState().addMessage(newMessage)
+            } catch (error) {
+              console.error('Error generating report:', error);
+              
+              // Add error message
+              addSystemMessage(
+                `Error generating report: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                'error'
+              );
+              
+              // Add a basic fallback report
+              const fallbackReportMarkdown = `**Final Report (Generated Offline)**\n\n- Patient ID: ${patientId}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}\n\n*Note: This is a basic report as we encountered an error generating the detailed report.*`;
+              
+              const fallbackMessage: Message = {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: fallbackReportMarkdown,
+                createdAt: new Date(),
+                metadata: {
+                  isReport: true,
+                  isFallback: true
+                },
+              };
+              
+              useChatStore.getState().addMessage(fallbackMessage);
+            }
           }, 500)
         } else {
           useChatStore.getState().updateMessageProgress(

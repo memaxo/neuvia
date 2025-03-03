@@ -481,6 +481,33 @@ export class PatientSummaryService {
         })
       }
 
+      // First check if we already have a summary for this patient
+      const existingSummary = await this.getPatientSummary(patientId)
+      if (existingSummary) {
+        moduleLogger.info('Using existing patient summary', {
+          generatedAt: existingSummary.metadata.generatedAt,
+          documentCount: existingSummary.metadata.documentCount
+        })
+        
+        // Check if the summary is up to date
+        const existingDocIds = new Set(existingSummary.metadata.documents.map((doc: any) => doc.id))
+        const newDocIds = new Set(documents.map(doc => doc.id))
+        
+        // Check if all current documents are already in the summary
+        const isUpToDate = documents.every(doc => existingDocIds.has(doc.id))
+        
+        // If the summary is up to date, return it
+        if (isUpToDate && existingDocIds.size === newDocIds.size) {
+          moduleLogger.info('Existing summary is up to date')
+          return existingSummary
+        }
+        
+        moduleLogger.info('Existing summary needs to be updated', {
+          existingDocCount: existingDocIds.size,
+          newDocCount: newDocIds.size
+        })
+      }
+
       // Stage 1: Extract essential information from each document in parallel
       moduleLogger.info('Extracting essential information from documents')
       
@@ -502,7 +529,12 @@ export class PatientSummaryService {
         extractionCount: extractions.length
       })
       
-      return this.compilePatientSummary(patientId, extractions)
+      const summary = await this.compilePatientSummary(patientId, extractions)
+      
+      // Store the summary in the database
+      await this.storeSummary(patientId, summary)
+      
+      return summary
     } catch (error) {
       if (error instanceof ApplicationError) {
         // Already formatted appropriately, just re-throw

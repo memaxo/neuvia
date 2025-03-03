@@ -96,9 +96,10 @@ export const VerificationActions = ({
   onHistory?: () => void
   className?: string
 }) => {
-  // Get actions from Zustand store
+  // Get actions and state from Zustand store
   const confirmVerification = useChatStore(state => state.completeVerification)
   const currentSummary = useChatStore(state => state.verification.currentSummary)
+  const verificationItems = useChatStore(state => state.verification.verificationItems)
   
   // Use provided callbacks or default to store actions
   const handleConfirm = useCallback(() => {
