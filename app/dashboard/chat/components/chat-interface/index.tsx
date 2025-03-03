@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertCircle, CheckCircle, FileText, RefreshCw } from 'lucide-react'
+import { AlertCircle, CheckCircle, FileText, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react'
 // External dependencies
 import { useCallback, useEffect, useState } from 'react'
 
@@ -14,6 +14,15 @@ import { useChatStore } from '@/stores/chat-store'
 import { WorkflowProgressTracker } from '@/components/chat/workflow/workflow-progress-tracker'
 import { WorkflowStatusDisplay } from '@/components/chat/workflow/workflow-status-display'
 import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
+import { UnifiedDocumentUploader } from '@/components/upload/unified-document-uploader'
+import { useErrorHandler } from '@/stores/chat-store'
+// Import API client
+import { apiClient } from '@/lib/api/client/api-client'
+// Import real-time sync hook
+import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
+// Import error boundary
+import { ChatErrorBoundary } from '@/components/chat/error/error-boundary'
+
 import type {
   ChatMode,
   ChatState as ChatStateType,
@@ -29,7 +38,6 @@ import { ChatMessageList } from '@/components/chat/message/message-list'
 import { ReportGenerationPanel } from '@/components/chat/workflow/report-panel'
 // Import existing components from the codebase with correct paths
 import { DocumentUploader } from '@/components/upload/document-uploader'
-import { WorkflowStatusDisplay } from './workflow-display'
 
 interface ChatInterfaceProps {
   readonly initialMode: string
@@ -44,6 +52,7 @@ export function ChatInterface({
   patientId,
 }: ChatInterfaceProps) {
   const { toast } = useToast()
+  const { handleError } = useErrorHandler()
 
   // Chat state and methods from Zustand store
   const messages = useChatStore(state => state.messages)
@@ -62,22 +71,13 @@ export function ChatInterface({
   const workflowStep = useChatStore(state => state.workflow?.currentStep || 'idle')
   const verification = useChatStore(state => state.verification)
   const error = useChatStore(state => state.error)
+  
+  // Initialize real-time workflow synchronization
+  // This enables multiple users to see updates to the workflow in real-time
+  const workflowId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_workflow_id') : null
+  const { isConnected, lastSyncedAt, error: syncError, forceSync } = useWorkflowSync(workflowId || undefined)
 
-  // Local UI state
-  const [chatState, setChatState] = useState<ChatStateType>({
-    messages: [],
-    isLoading: false,
-    error: null,
-    mode: 'default',
-    chatId: null,
-    verification: {
-      isInVerificationMode: false,
-      currentSummary: null,
-      summaryVersions: [],
-      verificationStatus: 'pending',
-      verificationItems: [],
-    },
-  })
+  // Use Zustand store state directly instead of local state
 
   // Processed document state
   const [activeDocument, setActiveDocument] = useState<{
@@ -87,25 +87,17 @@ export function ChatInterface({
     readonly kind: 'text' | 'code' | 'spreadsheet'
   } | null>(null)
 
-  // Progress state
-  const [processProgress, setProcessProgress] = useState(0)
-  const [processPhase, setProcessPhase] = useState<string>('')
+  // Only keep truly local state that doesn't duplicate the store
   const [currentUpload, setCurrentUpload] = useState<File | null>(null)
 
-  // Function to update progress messages
+  // Function to update progress messages - now using Zustand's update function directly
   const updateProgressMessage = useCallback(
     (messageId: string, progress: number, phase: string) => {
-      setChatState((prev) => {
-        const messages = [...prev.messages]
-        const msgIndex = messages.findIndex((m) => m.id === messageId)
-
-        if (msgIndex !== -1) {
-          messages[msgIndex] = {
-            ...messages[msgIndex],
-            metadata: {
-              ...messages[msgIndex].metadata,
-              progressValue: progress,
-        // Process document with the Zustand store
+      // Use the store's updateMessageProgress function instead of local state
+      useChatStore.getState().updateMessageProgress(messageId, progress, phase)
+        // Access the API client for direct service calls
+  
+  // Process document with the API client
   const handleProcessDocument = useCallback(
     async (file: File) => {
       setCurrentUpload(file)
@@ -121,86 +113,129 @@ export function ChatInterface({
       )
 
       try {
-        // Process the document using the store action
-        await processDocument(file, patientId, undefined, abortController.signal)
+        // Get current user ID and create workflow if needed
+        const userId = localStorage.getItem('current_user_id') || ''
+        const workflowId = localStorage.getItem('current_workflow_id')
 
-        // Set document info when processing completes
-        if (extractedDocument) {
-          setActiveDocument({
-            id: crypto.randomUUID(),
-            title: file.name,
-            content: extractedDocument.extractedData?.rawText || 'Document processed',
-            kind: 'text',
+        // Create a new workflow if one doesn't exist
+        let workflowData = { id: workflowId }
+        if (!workflowId) {
+          workflowData = await apiClient.workflows.createWorkflow({
+            workflowType: 'document_processing',
+            userId,
+            patientId,
+            initialStep: 'uploading',
+            metadata: {
+              fileName: file.name,
+              fileSize: file.size,
+              fileType: file.type,
+              source: 'chat_interface',
+              startedAt: new Date().toISOString()
+            }
           })
+          
+          // Store workflow ID for future use
+          if (workflowData?.id) {
+            localStorage.setItem('current_workflow_id', workflowData.id)
+          }
         }
 
-        // Add document completion message and start verification if appropriate
-        setTimeout(() => {
-          if (workflowStep === 'verification') {
-            addSystemMessage(
-              "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
-              'verification_prompt'
-            )
-
-            // In a real app, this would be the actual extracted data
-            const extractedSummary = `
-## Patient Information
-- **Name**: John Doe
-- **Age**: 45
-- **Date of Birth**: January 15, 1978
-
-## Medical History
-- Hypertension (diagnosed 2015)
-- Type 2 Diabetes (diagnosed 2018)
-- History of lower back pain
-
-## Current Medications
-- Lisinopril 10mg daily
-- Metformin 500mg twice daily
-- Ibuprofen as needed for pain
-
-## Recent Test Results
-- Blood Pressure: 135/85
-- Blood Glucose: 142 mg/dL (fasting)
-- A1C: 7.1%
-`
-
-            // Start verification with the extracted summary
-            startVerification(extractedSummary)
+        // Process the document using API client instead of store action
+        const result = await apiClient.documents.processDocument({
+          file,
+          patientId,
+          documentType: 'clinical',
+          documentCategory: 'clinical',
+          onStatusUpdate: (status) => {
+            // Update progress message
+            if (status?.progress) {
+              updateMessageProgress(
+                processingMsg.id,
+                status.progress,
+                status.phase || 'extraction'
+              )
+            }
           }
-        }, 1000)
+        }, {
+          signal: abortController.signal // Pass abort signal for cancellation
+        })
+
+        // Set document info when processing completes
+        if (result) {
+          setActiveDocument({
+            id: result.id || crypto.randomUUID(),
+            title: file.name,
+            content: result.extractedData?.rawText || 'Document processed',
+            kind: 'text',
+          })
+          
+          // Update workflow status
+          if (workflowData?.id) {
+            await apiClient.workflows.updateWorkflowState(workflowData.id, {
+              step: 'verification',
+              progress: 70,
+              phase: 'verification',
+              metadata: {
+                documentId: result.id,
+                extractedAt: new Date().toISOString()
+              }
+            })
+          }
+        }
+
+        // Add document completion message and fetch actual summary from API
+        if (result && workflowStep === 'verification') {
+          addSystemMessage(
+            "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
+            'verification_prompt'
+          )
+          
+          // Get actual extracted summary from verification service
+          const verificationResult = await apiClient.verification.generateVerification({
+            document: result,
+            workflowId: workflowData?.id || '',
+            messageId: processingMsg.id,
+            summaryId: crypto.randomUUID()
+          })
+          
+          // Start verification with the actual extracted summary
+          startVerification(verificationResult?.summary || result.extractedData?.rawText || '')
+        }
       } catch (error) {
         const errorMsg =
           error instanceof Error ? error.message : 'An unknown error occurred'
 
-        // Differentiate between network errors and processing errors
-        const isNetworkError =
-          error instanceof TypeError &&
-          (error.message.includes('network') || error.message.includes('fetch'))
-
-        toast({
-          title: isNetworkError ? 'Network Error' : 'Processing Error',
-          description: isNetworkError
-            ? 'Failed to connect to the server. Please check your internet connection and try again.'
-            : 'Failed to process document. Please try again or contact support.',
-          variant: 'destructive',
+        // Use the existing error handler to handle document processing errors
+        handleError(error, 'Failed to process document', {
+          step: 'document_processing',
+          details: {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type
+          }
         })
-
+        
+        // Also add a system message to provide context in the chat
         addSystemMessage(
-          `There was an error processing your document: ${errorMsg}. Would you like to try uploading it again?`,
+          `There was an error processing your document. Would you like to try uploading it again?`,
           'error',
-          { isError: true }
+          { 
+            isError: true,
+            originalError: errorMsg,
+            errorStep: 'document_processing',
+            canRetry: true
+          }
         )
       }
     },
     [
       patientId,
-      processDocument,
+      updateMessageProgress,
       extractedDocument,
       workflowStep,
       addSystemMessage,
       startVerification,
-      toast,
+      handleError,
     ]
   )
           'error',
@@ -231,36 +266,9 @@ export function ChatInterface({
     }
   }, [currentUpload, handleProcessDocument, toast])
 
-  // Sync local state with Zustand store state
-  useEffect(() => {
-    if (messages && messages.length > 0) {
-      setChatState((prev) => ({
-        ...prev,
-        messages: messages as Message[],
-      }))
-    }
-  }, [messages])
-
-  // Sync loading state from Zustand store
-  useEffect(() => {
-    setChatState((prev) => ({
-      ...prev,
-      isLoading,
-    }))
-  }, [isLoading])
-  
-  // Sync document processing progress from Zustand store
-  useEffect(() => {
-    setProcessProgress(docProgress)
-  }, [docProgress])
-  
-  // Sync workflow phase from Zustand store
-  useEffect(() => {
-    const processingPhase = useChatStore.getState().workflow.processingStatus.phase
-    if (processingPhase) {
-      setProcessPhase(processingPhase)
-    }
-  }, [useChatStore().workflow.processingStatus.phase])
+  // Get document processing progress and phase directly from store
+  const processingProgress = useChatStore(state => state.docProgress)
+  const processingPhase = useChatStore(state => state.workflow.processingStatus.phase)
 
   // Helper to render the error recovery UI
   const renderErrorRecovery = () => {
@@ -419,42 +427,21 @@ export function ChatInterface({
     setShowReportPanel(workflowStep === 'report_generation')
   }, [workflowStep])
 
-  return (
+  // Wrap component content with error boundary
+  const content = (
     <div className="flex h-full flex-col">
-      {/* Document uploader */}
+      {/* Unified Document uploader */}
       <div className="border-b p-4">
-        <DocumentUploader
-          allowedTypes={['.pdf', '.docx', '.txt', '.jpg', '.png']}
+        <UnifiedDocumentUploader
+          patientId={patientId}
+          documentType="clinical"
+          documentCategory="patient_record"
+          storageContext="chat"
+          title=""
           description="Upload a document to begin processing"
-          multiple={false}
-          onComplete={(fileUpload) => {
-            // Handle the completed upload by fetching the file from the URL
-            fetch(fileUpload.url)
-              .then((response) => {
-                if (!response.ok) {
-                  throw new Error('Failed to fetch document')
-                }
-                return response.blob()
-              })
-              .then((blob) => {
-                // Create a File object from the blob
-                const file = new File(
-                  [blob],
-                  fileUpload.metadata?.originalFilename ?? 'document',
-                  { type: fileUpload.contentType ?? '' }
-                )
-                return handleProcessDocument(file)
-              })
-              .catch((error) => {
-                toast({
-                  title: 'Processing Error',
-                  description: 'Failed to process the uploaded document',
-                  variant: 'destructive',
-                })
-                // eslint-disable-next-line no-console
-                console.error('Document processing error:', error)
-              })
-          }}
+          compact={true}
+          showWorkflowStatus={true}
+          autoVerify={true}
           onError={(error) => {
             toast({
               title: 'Upload Error',
@@ -462,26 +449,123 @@ export function ChatInterface({
               variant: 'destructive',
             })
           }}
-          onStatusChange={(status) => {
-            // Update UI based on upload status if needed
-            if (status.status === 'uploading') {
-              // Show uploading state
+          onProcessingComplete={(result) => {
+            // Set document info when processing completes
+            if (result) {
+              setActiveDocument({
+                id: crypto.randomUUID(),
+                title: result.name || 'Document',
+                content: result.text || 'Document processed',
+                kind: 'text',
+              })
+              
+              // Add document completion message
+              setTimeout(() => {
+                addSystemMessage(
+                  "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
+                  'verification_prompt'
+                )
+              }, 1000)
             }
           }}
-          showProgress={true}
         />
       </div>
 
       {/* Workflow status indicator - Replaced with new component */}
       {workflowStep !== 'idle' && (
-        <div className="bg-muted/50 flex items-center gap-2 border-b px-4 py-2">
+        <div className="bg-muted/50 flex items-center justify-between gap-2 border-b px-4 py-2">
           <WorkflowIndicator showProgress={true} />
+          
+          {/* Real-time sync status indicator */}
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            {isConnected ? (
+              <>
+                <Wifi className="h-3.5 w-3.5 text-green-500" />
+                <span>Synced {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : ''}</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3.5 w-3.5 text-amber-500" />
+                <span>Offline</span>
+                <Button 
+                  variant="ghost" 
+                  size="xs" 
+                  className="h-6 px-2 py-0 text-xs" 
+                  onClick={() => void forceSync()}
+                >
+                  Sync
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Error recovery UI */}
+      {/* Error recovery UI - enhanced with stage-specific recovery options */}
       {error && (
-        <div className="px-4 pt-4">{renderErrorRecovery()}</div>
+        <div className="px-4 pt-4">
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Workflow Error</AlertTitle>
+            <AlertDescription>
+              {error}
+              <div className="mt-4 space-y-3">
+                {/* Recovery options based on workflow stage */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground">Recovery Options</div>
+                  <div className="flex flex-wrap gap-2">
+                    {handleError.getRecoveryPaths().map((path) => (
+                      <Button
+                        key={path}
+                        className="gap-1 rounded-full px-3 py-1"
+                        onClick={() => {
+                          // Try stage-specific recovery
+                          void handleError.recoverFromError(path, {
+                            error,
+                            previousStep: workflowStep,
+                            currentUpload
+                          });
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {path === 'idle' ? 'Reset' : 
+                         path === 'uploading' ? 'Retry Upload' :
+                         path === 'extracting' ? 'Retry Extraction' :
+                         path === 'verification' ? 'Resume Verification' :
+                         path === 'report_generation' ? 'Retry Report' :
+                         'Go to ' + path.replace('_', ' ')}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Button
+                    className="gap-1"
+                    onClick={retryProcessing}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RefreshCw className="size-3" /> Retry Last Action
+                  </Button>
+                  
+                  <Button
+                    onClick={() => {
+                      // Clear error state and current upload
+                      handleError.clearError();
+                      setCurrentUpload(null);
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
       )}
 
       {/* Workflow content based on current step */}
@@ -507,20 +591,24 @@ export function ChatInterface({
         visible={showReportPanel}
       />
 
-      {/* Chat message list - always visible to maintain conversation flow */}
-      <ChatMessageList
-        isLoading={chatState.isLoading}
-        messages={chatState.messages}
-      />
+      {/* Chat message list - now uses Zustand store directly */}
+      <ChatMessageList />
 
       {/* Message input - always available for continuation of chat */}
       <MessageInput
         isDisabled={
-          chatState.isLoading || (processProgress > 0 && processProgress < 100)
+          isLoading || (processingProgress > 0 && processingProgress < 100)
         }
         onSendMessage={handleMessageSubmit}
         placeholder={getDynamicPlaceholder()}
       />
     </div>
+  )
+  
+  // Return with error boundary
+  return (
+    <ChatErrorBoundary workflowStep={workflowStep} patientId={patientId}>
+      {content}
+    </ChatErrorBoundary>
   )
 }

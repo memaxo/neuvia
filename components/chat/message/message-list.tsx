@@ -3,18 +3,29 @@
 import type { Message } from '@/lib/chat/types'
 import { useEffect, useRef } from 'react'
 import { Message as ChatMessage } from './message'
+import { useChatStore } from '@/stores/chat-store'
 
+// Props now optional since we can use store directly
 interface ChatMessageListProps {
-  messages: Message[]
-  isLoading: boolean
+  messages?: Message[]
+  isLoading?: boolean
   loadingMessage?: string
 }
 
 export function ChatMessageList({
-  messages,
-  isLoading,
+  // Optional props allow for direct use or for use with passed props
+  messages: propMessages,
+  isLoading: propIsLoading,
   loadingMessage = 'Thinking...',
 }: ChatMessageListProps) {
+  // Get state directly from store if not provided via props
+  const storeMessages = useChatStore(state => state.messages)
+  const storeIsLoading = useChatStore(state => state.isLoading)
+  
+  // Use props if provided, otherwise use store values
+  const messages = propMessages || storeMessages
+  const isLoading = propIsLoading !== undefined ? propIsLoading : storeIsLoading
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {

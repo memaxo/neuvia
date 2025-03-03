@@ -43,17 +43,36 @@ export function WorkflowStatusDisplay({
   onSkipReportAction,
   hideWhenIdle = true
 }: WorkflowStatusDisplayProps) {
-  // Get workflow state from Zustand store
-  const workflowStep = useChatStore(state => state.workflow.currentStep)
-  const processingStatus = useChatStore(state => state.workflow.processingStatus)
-  const error = useChatStore(state => state.error)
-  const verification = useChatStore(state => state.verification)
-  
-  // Get workflow actions from Zustand store
-  const completeVerification = useChatStore(state => state.completeVerification)
-  const generateReport = useChatStore(state => state.generateReport)
-  const formatReport = useChatStore(state => state.formatReport)
-  const beginReportGeneration = useChatStore(state => state.beginReportGeneration)
+  // Get all needed state in one go using multiple selectors 
+  // This pattern minimizes rerenders by only subscribing to the exact state needed
+  const {
+    workflowStep,
+    processingStatus,
+    error,
+    verification,
+    progress,
+    isProcessing,
+    docType,
+    // Actions
+    completeVerification,
+    generateReport,
+    formatReport,
+    beginReportGeneration
+  } = useChatStore(state => ({
+    // Workflow state
+    workflowStep: state.workflow.currentStep,
+    processingStatus: state.workflow.processingStatus,
+    error: state.error,
+    verification: state.verification,
+    progress: state.docProgress,
+    isProcessing: state.isDocProcessing,
+    docType: state.workflow.data.documentType,
+    // Actions
+    completeVerification: state.completeVerification,
+    generateReport: state.generateReport,
+    formatReport: state.formatReport,
+    beginReportGeneration: state.beginReportGeneration
+  }))
   
   // Define actions based on current workflow step
   const handleContinue = useCallback(() => {

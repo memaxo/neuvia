@@ -43,6 +43,7 @@ import { documentService } from '@/lib/services/document/document-service'
 import { ApiClient } from '@/lib/api/client/api-client'
 import { useWorkflow } from '@/lib/workflow/use-workflow'
 import { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
+import { validateWorkflowTransition, WorkflowStateError } from '@/lib/workflow/workflow-manager'
 
 // Initialize API client
 const apiClient = new ApiClient()
@@ -107,20 +108,52 @@ async function updateDatabaseWorkflowState(
       dbStep = step
     }
 
+    // Mark this update as originated from local client to prevent echo updates
+    const enrichedMetadata = {
+      ...(metadata || {}),
+      updatedAt: new Date().toISOString(),
+      originalStep: step, // Store the original step for reference
+      _localUpdate: true, // Flag to prevent echo updates in real-time sync
+      _clientId: generateClientId(), // Add unique client ID to track the source
+    }
+
     await supabase
       .from('workflow_states')
       .update({
         current_step: dbStep,
-        metadata: {
-          ...(metadata || {}),
-          updatedAt: new Date().toISOString(),
-          originalStep: step, // Store the original step for reference
-        },
+        metadata: enrichedMetadata,
       })
       .eq('id', workflowId)
   } catch (error) {
     console.error('Failed to update workflow state in database:', error)
   }
+}
+
+// Create a semi-persistent client ID for tracking local changes
+// This helps prevent echo updates in multi-instance scenarios
+let clientId: string | null = null
+function generateClientId(): string {
+  if (clientId) return clientId
+  
+  // Check localStorage first for a persistent ID
+  const storedId = typeof localStorage !== 'undefined' 
+    ? localStorage.getItem('neuvia_client_id')
+    : null
+    
+  if (storedId) {
+    clientId = storedId
+    return clientId
+  }
+  
+  // Generate a new ID if not found
+  clientId = crypto.randomUUID()
+  
+  // Store in localStorage for persistence across page loads
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('neuvia_client_id', clientId)
+  }
+  
+  return clientId
 }
 
 // Define Zustand store with both state and actions
@@ -293,6 +326,53 @@ export const useChatStore = create<ChatStore>()(
       // Workflow actions
       updateWorkflowStep: (step, metadata) =>
         set((state) => {
+          // Use the imported validation functions
+          
+          // Current step from state
+          const currentStep = state.workflow.currentStep
+          
+          // Check if this is a remote update from Supabase sync
+          const isRemoteUpdate = metadata?._syncedFromRemote === true
+          
+          // Don't validate remote updates - these are already validated on another client
+          // or during the transition if we're in the same step (metadata update only)
+          if (!isRemoteUpdate && currentStep !== step) {
+            // Validate the transition
+            const validation = validateWorkflowTransition(currentStep, step, metadata)
+            
+            // If the transition is invalid, log the error but continue (to avoid breaking UI)
+            // In development, you might want to throw an error instead
+            if (!validation.isValid) {
+              console.error(
+                `Invalid workflow transition from '${currentStep}' to '${step}':`, 
+                validation.error,
+                { details: validation.details, metadata }
+              )
+              
+              // In development, throw an error to catch invalid transitions early
+              if (process.env.NODE_ENV === 'development') {
+                // This is caught by the error boundary
+                setTimeout(() => {
+                  throw new WorkflowStateError(
+                    validation.error || 'Invalid workflow transition',
+                    { from: currentStep, to: step },
+                    { 
+                      ...metadata,
+                      validationDetails: validation.details
+                    }
+                  )
+                }, 0)
+              }
+              
+              // Add to error log for tracking
+              if (metadata) {
+                metadata.transitionWarning = validation.error
+                metadata.invalidTransition = true
+                metadata.validationDetails = validation.details
+              }
+            }
+          }
+          
           // Helper to map workflow steps to chat modes
           const mapStepToMode = (
             step: WorkflowStep,
@@ -300,6 +380,8 @@ export const useChatStore = create<ChatStore>()(
           ): ChatMode => {
             switch (step) {
               case 'verification':
+              case 'verification_pending':
+              case 'verification_in_progress':
                 return 'verification'
               case 'report_generation':
                 return 'default' // Use default mode for reports
@@ -316,8 +398,29 @@ export const useChatStore = create<ChatStore>()(
 
           const mode = mapStepToMode(step, state.mode)
 
-          // Update database workflow state if needed
-          updateDatabaseWorkflowState(step, metadata)
+          // For error steps, set the error state too
+          if (step === 'error' && metadata?.error) {
+            // Set the error in the workflow and main error state
+            const errorMessage = metadata.error as string;
+            state.error = errorMessage;
+            state.workflow.workflowError = errorMessage;
+          }
+
+          // Track the transition in metadata for diagnostics
+          const enrichedMetadata = {
+            ...(metadata || {}),
+            _transition: {
+              from: currentStep,
+              to: step,
+              timestamp: new Date().toISOString()
+            }
+          }
+
+          // Only update the database if this is a local change (not a remote sync)
+          // This prevents endless loops of updates between clients
+          if (!isRemoteUpdate) {
+            updateDatabaseWorkflowState(step, enrichedMetadata)
+          }
 
           return {
             workflow: {
@@ -325,10 +428,12 @@ export const useChatStore = create<ChatStore>()(
               currentStep: step,
               data: {
                 ...state.workflow.data,
-                ...(metadata || {}),
+                ...enrichedMetadata,
               },
             },
             mode,
+            // If transitioning to error, also set the error state
+            ...(step === 'error' && metadata?.error ? { error: metadata.error } : {}),
           }
         }),
 
@@ -1398,26 +1503,84 @@ export function useChatDispatch(): React.Dispatch<ChatAction> {
 
 // Hook for handling errors with toast notifications
 export function useErrorHandler() {
-  const { toast } = useToast()
   const setError = useChatStore((state) => state.setError)
-
+  const updateWorkflowStep = useChatStore((state) => state.updateWorkflowStep)
+  const currentStep = useChatStore((state) => state.workflow.currentStep)
+  
+  // Import the workflow error handler
+  const { 
+    workflowErrorHandler, 
+    useWorkflowErrorHandler 
+  } = require('@/lib/errors/workflow-error-handler')
+  
+  // Get API client for error recovery
+  const { apiClient } = require('@/lib/api/client/api-client')
+  
+  // Initialize the workflow error handler with API client
+  const errorHandler = useWorkflowErrorHandler(apiClient)
+  
   return {
-    handleError: (error: unknown, fallbackMessage = 'An error occurred') => {
-      const errorMsg = error instanceof Error ? error.message : fallbackMessage
-
-      // Set error in state
-      setError(errorMsg)
-
-      // Show toast notification
-      toast({
-        title: 'Error',
-        description: errorMsg,
-        variant: 'destructive',
-      })
-
-      // Update the database if needed
-      updateDatabaseWorkflowState('error', { error: errorMsg })
+    // Enhanced error handler that preserves workflow transition context
+    handleError: async (
+      error: unknown, 
+      fallbackMessage = 'An error occurred',
+      options?: {
+        step?: string,
+        details?: Record<string, any>,
+        showToast?: boolean,
+        attemptRecovery?: boolean
+      }
+    ) => {
+      // Use the specialized workflow error handler
+      const metadata = await errorHandler.handleError(
+        error,
+        currentStep as any,
+        {
+          previousStep: options?.step as any || currentStep as any,
+          details: options?.details,
+          showToast: options?.showToast,
+          attemptRecovery: options?.attemptRecovery
+        }
+      )
+      
+      return metadata
     },
+    
+    // Attempt recovery from an error with a specific strategy
+    recoverFromError: async (
+      targetStage: string,
+      metadata?: Record<string, any>
+    ) => {
+      try {
+        return await errorHandler.recoverFromError(
+          targetStage as any,
+          {
+            errorMessage: metadata?.error || 'Unknown error',
+            workflowStep: currentStep as any,
+            previousStep: metadata?.previousStep as any,
+            timestamp: new Date().toISOString(),
+            details: metadata,
+          }
+        )
+      } catch (error) {
+        console.error('Error recovery failed:', error)
+        return false
+      }
+    },
+    
+    // Get recovery paths for current workflow step
+    getRecoveryPaths: () => {
+      return errorHandler.getRecoveryPaths(currentStep as any)
+    },
+    
+    // Clear any error state
+    clearError: (returnToStep?: string) => {
+      setError(null)
+      
+      if (returnToStep) {
+        updateWorkflowStep(returnToStep as any)
+      }
+    }
   }
 }
 

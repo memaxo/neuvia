@@ -45,8 +45,9 @@ import {
   Tag,
 } from 'lucide-react'
 
-import { DocumentUploader } from '@/components/upload/document-uploader'
+import { UnifiedDocumentUploader } from '@/components/upload/unified-document-uploader'
 import { useDocumentUpload, useDocumentProcess } from '@/lib/api/client/hooks'
+import { useChatStore } from '@/stores/chat-store'
 
 // Type definitions - since the imported types may not be available
 type DocumentCategory =
@@ -594,21 +595,44 @@ export default function DocumentUploadPage() {
 
               <Separator />
 
-              {/* Document Uploader */}
+              {/* Unified Document Uploader */}
               <div className="space-y-4">
                 <Label>Upload File</Label>
-                <DocumentUploader
-                  description="Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG"
+                <UnifiedDocumentUploader
+                  patientId={params.id as string}
                   documentType={{
                     category: selectedCategory,
                     type: selectedType || 'document',
                   }}
+                  documentCategory={selectedCategory}
+                  storageContext="patient"
+                  initiateProcessing={true}
+                  autoVerify={false}
+                  showProgressTracker={true}
+                  showWorkflowStatus={true}
+                  description="Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG"
+                  title=""
                   onComplete={(fileUpload) => {
-                    // Handle successful upload
+                    // Handle successful upload notification - the uploader will handle its own processing
+                    toast({
+                      title: 'Document Uploaded',
+                      description: 'Document has been successfully uploaded.',
+                    })
+                  }}
+                  onProcessingComplete={(result) => {
+                    // Document has been processed, update workflow status in store
+                    const updateWorkflowStep = useChatStore.getState().updateWorkflowStep
+                    updateWorkflowStep('verification_pending', {
+                      patientId: params.id,
+                      documentTitle: documentTitle || '',
+                      documentCategory: selectedCategory,
+                      documentType: selectedType
+                    })
+                    
+                    // Handle successful processing
                     toast({
                       title: 'Document Processed',
-                      description:
-                        'Document has been successfully uploaded and processed.',
+                      description: 'Document has been successfully processed.',
                     })
 
                     // Navigate back to the patient documents page
@@ -623,8 +647,6 @@ export default function DocumentUploadPage() {
                       variant: 'destructive',
                     })
                   }}
-                  patientId={params.id}
-                  showProgress={true}
                 />
               </div>
             </CardContent>

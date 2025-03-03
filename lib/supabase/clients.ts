@@ -3,6 +3,7 @@ import {
   createServerClient as createServerSupabaseClient,
 } from '@supabase/ssr'
 import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js'
+import type { RealtimeChannel, RealtimePostgresChangesPayload, RealtimeChannelSnapshot } from '@supabase/supabase-js'
 import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
 import { cookies } from 'next/headers'
 
@@ -15,6 +16,12 @@ let browserClient:
 let adminClient:
   | ReturnType<typeof createAdminSupabaseClient<Database>>
   | undefined
+
+// Channels tracker to help manage active subscriptions
+interface ActiveChannels {
+  [key: string]: RealtimeChannel
+}
+const activeChannels: ActiveChannels = {}
 
 // Cookie configuration following Supabase best practices
 const COOKIE_OPTIONS = {
@@ -139,6 +146,12 @@ export function createBrowserClient() {
         detectSessionInUrl: true,
       },
       cookies: clientCookies,
+      realtime: {
+        params: {
+          // Make sure we get the latest server data
+          eventsPerSecond: 10
+        }
+      }
     }
   )
 
@@ -170,6 +183,106 @@ export function createAdminClient() {
   )
 
   return adminClient
+}
+
+// Type helper for Supabase real-time subscriptions
+export type SubscriptionHandler<T = any> = (payload: RealtimePostgresChangesPayload<T>) => void
+export type SubscriptionStatusHandler = (status: RealtimeChannelSnapshot<string, string>) => void
+
+/**
+ * Subscribes to changes on a specific table and row
+ * 
+ * @param table The table to subscribe to
+ * @param id The row ID to filter on
+ * @param events The events to listen for (default: UPDATE)
+ * @param handler The handler function for changes
+ * @param statusHandler Optional handler for subscription status changes
+ * @returns The channel object for unsubscribing
+ */
+export function subscribeToRow<T = any>(
+  table: string,
+  id: string,
+  events: ('INSERT' | 'UPDATE' | 'DELETE')[] = ['UPDATE'],
+  handler: SubscriptionHandler<T>,
+  statusHandler?: SubscriptionStatusHandler
+): RealtimeChannel {
+  const supabase = createBrowserClient()
+  const channelKey = `${table}:${id}`
+  
+  // Reuse existing channel if possible
+  if (activeChannels[channelKey]) {
+    return activeChannels[channelKey]
+  }
+  
+  // Create a channel for this subscription
+  const channel = supabase
+    .channel(channelKey)
+    
+  // Add listeners for each event type
+  events.forEach(event => {
+    channel.on(
+      'postgres_changes',
+      {
+        event: event,
+        schema: 'public',
+        table: table,
+        filter: `id=eq.${id}`
+      },
+      handler
+    )
+  })
+  
+  // Subscribe and handle status
+  const subscription = channel.subscribe(status => {
+    if (statusHandler) {
+      statusHandler(status)
+    }
+  })
+  
+  // Store the channel for cleanup
+  activeChannels[channelKey] = subscription
+  
+  return subscription
+}
+
+/**
+ * Unsubscribes from a real-time channel
+ * 
+ * @param channelName The name of the channel to unsubscribe from
+ * @returns True if successfully unsubscribed, false otherwise
+ */
+export function unsubscribe(channelName: string): boolean {
+  const supabase = createBrowserClient()
+  
+  if (activeChannels[channelName]) {
+    supabase.removeChannel(activeChannels[channelName])
+    delete activeChannels[channelName]
+    return true
+  }
+  
+  return false
+}
+
+/**
+ * Subscribes to workflow state changes
+ * 
+ * @param workflowId The workflow ID to subscribe to
+ * @param handler The handler function for changes
+ * @param statusHandler Optional handler for subscription status
+ * @returns The channel object for unsubscribing
+ */
+export function subscribeToWorkflow<T = any>(
+  workflowId: string,
+  handler: SubscriptionHandler<T>,
+  statusHandler?: SubscriptionStatusHandler
+): RealtimeChannel {
+  return subscribeToRow<T>(
+    'workflow_states',
+    workflowId,
+    ['UPDATE'],
+    handler,
+    statusHandler
+  )
 }
 
 // Export auth admin client for convenience

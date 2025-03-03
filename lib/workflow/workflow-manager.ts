@@ -11,12 +11,19 @@ import {
 } from '@/lib/errors'
 
 /**
- * Database Workflow Service
+ * Workflow State Machine Manager
  *
- * Simplified utilities for tracking workflow state in the database
+ * Provides centralized management of workflow state transitions,
+ * validation, and persistence to the database.
  */
 import { createBrowserClient } from '@/lib/supabase/clients'
-import type { WorkflowStep } from '@/lib/workflow/types'
+import { 
+  ALLOWED_TRANSITIONS, 
+  type WorkflowStep, 
+  type WorkflowTransition,
+  type ProcessingPhase
+} from './types'
+import { apiClient } from '@/lib/api/client/api-client'
 
 // Type alias for database workflow step enum
 type DBWorkflowStep = Database['public']['Enums']['workflow_step']
@@ -487,4 +494,154 @@ export const workflowService = {
   updateWorkflowState,
   createWorkflow,
   getWorkflowState
+}
+
+/**
+ * WorkflowStateError class for specific workflow transition errors
+ */
+export class WorkflowStateError extends Error {
+  public transition: { from: WorkflowStep; to: WorkflowStep }
+  public metadata?: Record<string, any>
+  public readonly code: string
+  
+  constructor(
+    message: string, 
+    transition: { from: WorkflowStep; to: WorkflowStep }, 
+    metadata?: Record<string, any>
+  ) {
+    super(message)
+    this.name = 'WorkflowStateError'
+    this.transition = transition
+    this.metadata = metadata
+    this.code = 'INVALID_WORKFLOW_TRANSITION'
+  }
+}
+
+/**
+ * Options for workflow transitions
+ */
+export interface WorkflowTransitionOptions {
+  /**
+   * Skip validation for this transition (use with caution)
+   */
+  skipValidation?: boolean
+  
+  /**
+   * Skip database update for this transition
+   */
+  skipPersistence?: boolean
+  
+  /**
+   * Force transition even if metadata requirements aren't met
+   */
+  force?: boolean
+  
+  /**
+   * Custom transition ID for logging or tracking
+   */
+  transitionId?: string
+}
+
+/**
+ * Result of state transition validation
+ */
+export interface ValidationResult {
+  isValid: boolean
+  error?: string
+  transition?: WorkflowTransition
+  details?: Record<string, any>
+}
+
+/**
+ * Validate if a transition is allowed according to the state machine rules
+ * 
+ * @param fromStep Current step
+ * @param toStep Target step
+ * @param metadata Optional metadata for the transition
+ * @returns Validation result
+ */
+export function validateWorkflowTransition(
+  fromStep: WorkflowStep, 
+  toStep: WorkflowStep, 
+  metadata?: Record<string, any>
+): ValidationResult {
+  const moduleLogger = logger.withMetadata({
+    module: 'WorkflowManager',
+    method: 'validateWorkflowTransition',
+    fromStep,
+    toStep
+  })
+  
+  moduleLogger.debug('Validating workflow transition')
+  
+  // Special case: always allow transition to the same state with metadata updates
+  if (fromStep === toStep) {
+    return { 
+      isValid: true,
+      details: { sameState: true }
+    }
+  }
+  
+  // Find the transition in allowed transitions
+  const transition = ALLOWED_TRANSITIONS.find(
+    t => t.from === fromStep && t.to === toStep
+  )
+  
+  // If transition not found, it's invalid
+  if (!transition) {
+    moduleLogger.warn('Invalid transition - not found in allowed transitions')
+    return { 
+      isValid: false, 
+      error: `Invalid transition from '${fromStep}' to '${toStep}'`,
+      details: { reason: 'transition_not_allowed' }
+    }
+  }
+  
+  // Check if metadata is required but not provided
+  if (transition.requireData && !metadata) {
+    moduleLogger.warn('Invalid transition - requires metadata but none provided')
+    return { 
+      isValid: false, 
+      error: `Transition from '${fromStep}' to '${toStep}' requires metadata`,
+      transition,
+      details: { reason: 'metadata_required' }
+    }
+  }
+  
+  // Check if metadata is provided but not allowed
+  if (metadata && !transition.allowData) {
+    moduleLogger.warn('Invalid transition - metadata provided but not allowed')
+    return { 
+      isValid: false, 
+      error: `Transition from '${fromStep}' to '${toStep}' does not allow metadata`,
+      transition,
+      details: { reason: 'metadata_not_allowed' }
+    }
+  }
+  
+  // Specific validation for error transitions
+  if (toStep === 'error' && transition.requireData) {
+    // Error transitions require error metadata
+    if (!metadata?.error) {
+      moduleLogger.warn('Invalid error transition - missing error information')
+      return {
+        isValid: false,
+        error: 'Error transitions require error information in metadata',
+        transition,
+        details: { reason: 'missing_error_info' }
+      }
+    }
+  }
+  
+  // Valid transition
+  moduleLogger.debug('Transition validation successful')
+  return { 
+    isValid: true, 
+    transition,
+    details: { 
+      description: transition.description,
+      requiresData: transition.requireData,
+      allowsData: transition.allowData
+    }
+  }
 }

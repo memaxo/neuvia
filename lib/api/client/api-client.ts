@@ -12,6 +12,10 @@ import { Research } from './services/research-service'
 import { Documents } from './services/documents-service'
 import { Chat } from './services/chat-service'
 import { Patients } from './services/patients-service'
+import { Workflows } from './services/workflows-service'
+
+// Create a singleton instance for global use
+let instance: ApiClient | null = null;
 
 /**
  * Centralized API client that exposes all API services
@@ -29,11 +33,14 @@ export class ApiClient {
   public documents: Documents
   public chat: Chat
   public patients: Patients
+  public workflows: Workflows
 
   constructor(config: { baseUrl?: string } = {}) {
     // Initialize HTTP client
     this.httpClient = new HttpClient({
-      baseUrl: config.baseUrl !== undefined ? config.baseUrl : '/api'
+      baseUrl: config.baseUrl !== undefined ? config.baseUrl : '/api',
+      retries: 2, // Add retry capability for network issues
+      timeout: 30000 // 30 second timeout
     })
 
     // Initialize all API services
@@ -46,6 +53,7 @@ export class ApiClient {
     this.documents = new Documents(this.httpClient)
     this.chat = new Chat(this.httpClient)
     this.patients = new Patients(this.httpClient)
+    this.workflows = new Workflows(this.httpClient)
   }
 
   /**
@@ -62,5 +70,33 @@ export class ApiClient {
   public clearAuthToken() {
     this.httpClient.setSecurityData(null)
   }
+  
+  /**
+   * Add global error handler for all API requests
+   * @param handler Error handler function
+   */
+  public setGlobalErrorHandler(handler: (error: Error) => void) {
+    this.httpClient.setErrorHandler(handler)
+  }
+  
+  /**
+   * Enable request/response logging for debugging
+   */
+  public enableLogging(enabled: boolean = true) {
+    this.httpClient.setLogging(enabled)
+  }
 }
+
+/**
+ * Get the global API client instance
+ */
+export function getApiClient(config: { baseUrl?: string } = {}): ApiClient {
+  if (!instance) {
+    instance = new ApiClient(config)
+  }
+  return instance
+}
+
+// Create and export default instance
+export const apiClient = getApiClient()
 

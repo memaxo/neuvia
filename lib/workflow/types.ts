@@ -21,6 +21,82 @@ export type WorkflowStep =
   | 'error' // General error state
 
 /**
+ * Workflow transition type for state machine validation
+ */
+export interface WorkflowTransition {
+  from: WorkflowStep
+  to: WorkflowStep
+  allowData?: boolean // Whether this transition can include additional metadata
+  requireData?: boolean // Whether this transition requires additional metadata
+  description?: string // Human-readable description of this transition
+}
+
+/**
+ * All allowed workflow transitions in the application
+ * This forms the basis of our state machine validation
+ */
+export const ALLOWED_TRANSITIONS: WorkflowTransition[] = [
+  // Initial state transitions
+  { from: 'idle', to: 'uploading', allowData: true, description: 'Start document upload' },
+  { from: 'idle', to: 'chat_started', allowData: true, description: 'Start chat without document' },
+  { from: 'idle', to: 'research', allowData: true, description: 'Start research mode' },
+  
+  // Upload flow
+  { from: 'uploading', to: 'extracting', allowData: true, description: 'Document uploaded, starting extraction' },
+  { from: 'extracting', to: 'verification', allowData: true, description: 'Extraction complete, ready for verification' },
+  { from: 'extracting', to: 'verification_pending', allowData: true, description: 'Extraction complete, waiting for verification' },
+  
+  // Verification flow
+  { from: 'verification', to: 'verification_pending', allowData: true, description: 'Preparing verification' },
+  { from: 'verification_pending', to: 'verification_in_progress', allowData: true, description: 'User reviewing verification' },
+  { from: 'verification_in_progress', to: 'verification_completed', allowData: true, description: 'User completed verification' },
+  { from: 'verification_in_progress', to: 'verification_failed', allowData: true, description: 'Verification rejected' },
+  { from: 'verification_completed', to: 'report_generation', allowData: true, description: 'Starting report generation' },
+  { from: 'verification_failed', to: 'verification_in_progress', allowData: true, description: 'Retry verification' },
+  
+  // Report generation flow
+  { from: 'report_generation', to: 'complete', allowData: true, description: 'Report generated successfully' },
+  { from: 'report_generation', to: 'report_presentation', allowData: true, description: 'Showing generated report' },
+  { from: 'report_presentation', to: 'complete', allowData: true, description: 'Workflow complete' },
+  
+  // Chat flow
+  { from: 'chat_started', to: 'chat_in_progress', allowData: true, description: 'Processing chat message' },
+  { from: 'chat_in_progress', to: 'chat_completed', allowData: true, description: 'Chat message processed' },
+  { from: 'chat_completed', to: 'chat_in_progress', allowData: true, description: 'Processing another message' },
+  
+  // Research flow
+  { from: 'research', to: 'report_generation', allowData: true, description: 'Research complete, generating report' },
+  
+  // Complete state can transition back to several states for new operations
+  { from: 'complete', to: 'idle', description: 'Reset workflow' },
+  { from: 'complete', to: 'chat_in_progress', allowData: true, description: 'Continue with chat after completion' },
+  { from: 'complete', to: 'uploading', allowData: true, description: 'Upload new document after completion' },
+  
+  // Error recovery paths
+  { from: 'error', to: 'idle', description: 'Reset after error' },
+  { from: 'error', to: 'uploading', allowData: true, description: 'Retry upload after error' },
+  { from: 'error', to: 'extracting', allowData: true, description: 'Retry extraction after error' },
+  { from: 'error', to: 'verification', allowData: true, description: 'Return to verification after error' },
+  { from: 'error', to: 'report_generation', allowData: true, description: 'Retry report generation after error' },
+  
+  // Any state can transition to error
+  { from: 'idle', to: 'error', requireData: true, description: 'Error in idle state' },
+  { from: 'uploading', to: 'error', requireData: true, description: 'Error during upload' },
+  { from: 'extracting', to: 'error', requireData: true, description: 'Error during extraction' },
+  { from: 'verification', to: 'error', requireData: true, description: 'Error during verification' },
+  { from: 'verification_pending', to: 'error', requireData: true, description: 'Error in verification pending' },
+  { from: 'verification_in_progress', to: 'error', requireData: true, description: 'Error during verification process' },
+  { from: 'verification_completed', to: 'error', requireData: true, description: 'Error after verification completion' },
+  { from: 'report_generation', to: 'error', requireData: true, description: 'Error during report generation' },
+  { from: 'complete', to: 'error', requireData: true, description: 'Error in completed state' },
+  { from: 'chat_started', to: 'error', requireData: true, description: 'Error starting chat' },
+  { from: 'chat_in_progress', to: 'error', requireData: true, description: 'Error during chat' },
+  { from: 'chat_completed', to: 'error', requireData: true, description: 'Error after chat completion' },
+  { from: 'research', to: 'error', requireData: true, description: 'Error during research' },
+  { from: 'report_presentation', to: 'error', requireData: true, description: 'Error during report presentation' }
+]
+
+/**
  * Processing phases for status tracking
  */
 export type ProcessingPhase =
