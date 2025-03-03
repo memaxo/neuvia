@@ -3,14 +3,14 @@ import type { ProcessingStatus } from '@/lib/processing/types/base'
 import type { ExtractedDocument } from '@/lib/processing/types/extraction'
 import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
-import type { BaseCallbackHandler } from '@langchain/core/callbacks'
+import type { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import { StringOutputParser } from '@langchain/core/output_parsers'
-import { 
-  ApplicationError, 
-  ExternalServiceError, 
-  SystemError, 
-  ValidationError, 
-  normalizeError 
+import {
+  ApplicationError,
+  ExternalServiceError,
+  SystemError,
+  ValidationError,
+  normalizeError,
 } from '@/lib/errors'
 import logger from '@/lib/logger'
 /**
@@ -163,7 +163,7 @@ function createExtractionSequence(
   if (workflowId || onProgress) {
     callbackHandlers.push(
       ...createWorkflowCallbacks(workflowId, 'extraction' as WorkflowStep, {
-        onProgress: (progress) => {
+        onProgress: (progress: number) => {
           onProgress?.(progress, 'Analyzing medical document')
         },
       })
@@ -245,7 +245,7 @@ function createCorrectionSequence(
   if (workflowId || onProgress) {
     callbackHandlers.push(
       ...createWorkflowCallbacks(workflowId, 'verification' as WorkflowStep, {
-        onProgress: (progress) => {
+        onProgress: (progress: number) => {
           onProgress?.(progress, 'Processing correction')
         },
       })
@@ -375,20 +375,20 @@ export async function extractPatientSummary(
     module: 'PatientSummary',
     method: 'extractPatientSummary',
     workflowId: workflowId || undefined,
-    documentLength: documentText?.length
+    documentLength: documentText?.length,
   })
 
   try {
     if (!documentText || documentText.trim() === '') {
       moduleLogger.warn('Empty document text provided for extraction')
-      
+
       onStatus?.({
         status: 'error',
         progress: 0,
         error: 'Empty document text provided',
-        phase: 'validation',
+        phase: 'initialization' as ProcessingPhase,
       })
-      
+
       return {
         success: false,
         summary: '',
@@ -398,7 +398,7 @@ export async function extractPatientSummary(
 
     moduleLogger.info('Starting patient summary extraction', {
       useGemini: options.useGemini ?? true,
-      temperature: options.temperature ?? 0.1
+      temperature: options.temperature ?? 0.1,
     })
 
     // Update status if callback provided
@@ -437,7 +437,8 @@ export async function extractPatientSummary(
         )
       },
       {
-        onProgress: (progress) => onProgress?.(progress, 'Processing document'),
+        onProgress: (progress: number) =>
+          onProgress?.(progress, 'Processing document'),
         workflowId,
       }
     )
@@ -448,12 +449,12 @@ export async function extractPatientSummary(
         message: 'Failed to extract patient summary - empty result returned',
         service: options.useGemini ? 'Gemini' : 'OpenAI',
         code: 'EMPTY_EXTRACTION_RESULT',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
     moduleLogger.info('Patient summary extraction completed successfully', {
-      summaryLength: result.length
+      summaryLength: result.length,
     })
 
     // Report completion
@@ -475,9 +476,9 @@ export async function extractPatientSummary(
     if (error instanceof ApplicationError) {
       // Log but don't rewrap if it's already an ApplicationError
       moduleLogger.error('Patient summary extraction failed', {}, error)
-      
+
       const errorMessage = error.message
-      
+
       // Report error
       onStatus?.({
         status: 'error',
@@ -485,7 +486,7 @@ export async function extractPatientSummary(
         error: errorMessage,
         phase: 'error',
       })
-      
+
       return {
         success: false,
         summary: '',
@@ -495,8 +496,9 @@ export async function extractPatientSummary(
 
     // For other types of errors, log and wrap in a SystemError
     const errorMessage = error instanceof Error ? error.message : String(error)
-    
-    moduleLogger.error('Error extracting patient summary', 
+
+    moduleLogger.error(
+      'Error extracting patient summary',
       { workflowId: workflowId || undefined },
       error
     )
@@ -540,7 +542,7 @@ export async function processCorrection(
     module: 'PatientSummary',
     method: 'processCorrection',
     workflowId: workflowId || undefined,
-    correctionLength: userCorrection?.length
+    correctionLength: userCorrection?.length,
   })
 
   try {
@@ -550,7 +552,7 @@ export async function processCorrection(
       throw new ValidationError({
         message: 'Current summary is required for correction processing',
         code: 'EMPTY_SUMMARY',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
@@ -559,13 +561,13 @@ export async function processCorrection(
       throw new ValidationError({
         message: 'User correction is required',
         code: 'EMPTY_CORRECTION',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
     moduleLogger.info('Starting patient summary correction processing', {
       useGemini: options.useGemini ?? false,
-      temperature: options.temperature ?? 0.1
+      temperature: options.temperature ?? 0.1,
     })
 
     // Update status if callback provided
@@ -609,7 +611,7 @@ export async function processCorrection(
         )
       },
       {
-        onProgress: (progress) =>
+        onProgress: (progress: number) =>
           onProgress?.(progress, 'Processing correction'),
         workflowId,
       }
@@ -621,12 +623,12 @@ export async function processCorrection(
         message: 'Failed to process correction - empty result returned',
         service: options.useGemini ? 'Gemini' : 'OpenAI',
         code: 'EMPTY_CORRECTION_RESULT',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
     moduleLogger.info('Patient summary correction completed successfully', {
-      summaryLength: result.length
+      summaryLength: result.length,
     })
 
     // Report completion
@@ -648,9 +650,9 @@ export async function processCorrection(
     if (error instanceof ApplicationError) {
       // Log but don't rewrap if it's already an ApplicationError
       moduleLogger.error('Patient summary correction failed', {}, error)
-      
+
       const errorMessage = error.message
-      
+
       // Report error
       onStatus?.({
         status: 'error',
@@ -658,7 +660,7 @@ export async function processCorrection(
         error: errorMessage,
         phase: 'error',
       })
-      
+
       return {
         success: false,
         summary: currentSummary,
@@ -668,8 +670,9 @@ export async function processCorrection(
 
     // For other types of errors, log and wrap in a SystemError
     const errorMessage = error instanceof Error ? error.message : String(error)
-    
-    moduleLogger.error('Error processing patient summary correction', 
+
+    moduleLogger.error(
+      'Error processing patient summary correction',
       { workflowId: workflowId || undefined },
       error
     )
@@ -705,7 +708,7 @@ export async function checkVerificationCompletion(
     module: 'PatientSummary',
     method: 'checkVerificationCompletion',
     workflowId: workflowId || undefined,
-    messageLength: userMessage?.length
+    messageLength: userMessage?.length,
   })
 
   try {
@@ -715,7 +718,7 @@ export async function checkVerificationCompletion(
       throw new ValidationError({
         message: 'User message is required for verification check',
         code: 'EMPTY_MESSAGE',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
@@ -739,10 +742,11 @@ export async function checkVerificationCompletion(
     if (!result) {
       moduleLogger.error('Verification check returned empty result')
       throw new ExternalServiceError({
-        message: 'Failed to check verification completion - empty result returned',
+        message:
+          'Failed to check verification completion - empty result returned',
         service: 'OpenAI',
         code: 'EMPTY_VERIFICATION_RESULT',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
@@ -756,9 +760,9 @@ export async function checkVerificationCompletion(
     }
 
     // Log unexpected model response
-    moduleLogger.warn('Model returned unexpected verification status', { 
+    moduleLogger.warn('Model returned unexpected verification status', {
       actualResponse: decision,
-      defaultingTo: 'UNCLEAR'
+      defaultingTo: 'UNCLEAR',
     })
 
     // Default to unclear if the model returned something unexpected
@@ -771,11 +775,12 @@ export async function checkVerificationCompletion(
     }
 
     // For other types of errors, log and normalize
-    moduleLogger.error('Error checking verification completion', 
+    moduleLogger.error(
+      'Error checking verification completion',
       { workflowId: workflowId || undefined },
       error
     )
-    
+
     return 'UNCLEAR'
   }
 }
@@ -797,7 +802,7 @@ export async function* streamPatientSummary(
     module: 'PatientSummary',
     method: 'streamPatientSummary',
     workflowId: workflowId || undefined,
-    documentLength: documentText?.length
+    documentLength: documentText?.length,
   })
 
   try {
@@ -807,13 +812,13 @@ export async function* streamPatientSummary(
       throw new ValidationError({
         message: 'Cannot stream summary from empty document',
         code: 'EMPTY_DOCUMENT',
-        data: { workflowId: workflowId || undefined }
+        data: { workflowId: workflowId || undefined },
       })
     }
 
     moduleLogger.info('Starting patient summary streaming', {
       useGemini: options.useGemini ?? true,
-      temperature: options.temperature ?? 0.1
+      temperature: options.temperature ?? 0.1,
     })
 
     // Default to Gemini Flash with streaming enabled
@@ -897,13 +902,15 @@ export async function* streamPatientSummary(
       yield `Error: ${error.message}`
     } else {
       // For other types of errors, log and normalize
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      
-      moduleLogger.error('Error streaming patient summary', 
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+
+      moduleLogger.error(
+        'Error streaming patient summary',
         { workflowId: workflowId || undefined },
         error
       )
-      
+
       yield `Error: ${errorMessage}`
     }
   }
@@ -930,54 +937,62 @@ export async function retryWithBackoff<T>(
     method: 'retryWithBackoff',
     maxRetries: retries,
     initialDelay: delay,
-    ...loggerMetadata
+    ...loggerMetadata,
   })
 
   try {
     if (typeof fn !== 'function') {
-      moduleLogger.error('Invalid retry function provided', { 
-        fnType: typeof fn
+      moduleLogger.error('Invalid retry function provided', {
+        fnType: typeof fn,
       })
       throw new ValidationError({
         message: 'Invalid function provided for retry operation',
         code: 'INVALID_RETRY_FUNCTION',
-        data: { fnType: typeof fn }
+        data: { fnType: typeof fn },
       })
     }
 
     moduleLogger.debug('Executing function with retry capability', {
-      remainingRetries: retries
+      remainingRetries: retries,
     })
-    
+
     return await fn()
   } catch (error) {
     // Check if we should retry
     if (retries <= 0) {
-      moduleLogger.error('Retry attempts exhausted', {
-        remainingRetries: 0
-      }, error)
-      
+      moduleLogger.error(
+        'Retry attempts exhausted',
+        {
+          remainingRetries: 0,
+        },
+        error
+      )
+
       // Use normalizeError to ensure we're returning an ApplicationError
       const normalizedError = normalizeError(error)
-      
-      // Add retry metadata to the error
-      normalizedError.data = {
-        ...normalizedError.data,
-        retryExhausted: true,
-        maxRetries: retries
-      }
-      
-      throw normalizedError
+
+      // Create a new error with the retry metadata instead of modifying the read-only data property
+      throw new SystemError({
+        message: normalizedError.message,
+        code: normalizedError.code,
+        statusCode: normalizedError.statusCode,
+        data: {
+          ...normalizedError.data,
+          retryExhausted: true,
+          maxRetries: retries,
+        },
+        cause: normalizedError,
+      })
     }
 
     // Determine if we should retry based on error type
     const normalizedError = normalizeError(error)
     const shouldRetry = determineRetryability(normalizedError)
-    
+
     if (!shouldRetry) {
       moduleLogger.info('Error not retriable, failing immediately', {
         errorCode: normalizedError.code,
-        errorType: normalizedError.name
+        errorType: normalizedError.name,
       })
       throw normalizedError
     }
@@ -988,7 +1003,7 @@ export async function retryWithBackoff<T>(
       currentDelay: delay,
       nextDelay: delay * 2,
       errorMessage: normalizedError.message,
-      errorCode: normalizedError.code
+      errorCode: normalizedError.code,
     })
 
     // Wait with exponential backoff
@@ -1001,7 +1016,7 @@ export async function retryWithBackoff<T>(
 
 /**
  * Determine if an error should be retried
- * 
+ *
  * @param error The normalized application error
  * @returns boolean indicating if retry should be attempted
  */
@@ -1010,26 +1025,29 @@ function determineRetryability(error: ApplicationError): boolean {
   if (error instanceof ValidationError) {
     return false
   }
-  
+
   // Don't retry 4xx errors (except specific retriable ones)
   if (error.statusCode >= 400 && error.statusCode < 500) {
     // Some 4xx errors might be retriable (like 429 Too Many Requests)
     const retriable4xxCodes = ['TOO_MANY_REQUESTS', 'RATE_LIMITED']
     return retriable4xxCodes.includes(error.code || '')
   }
-  
+
   // Server errors (5xx) are generally retriable
   if (error.statusCode >= 500) {
     return true
   }
-  
+
   // ExternalServiceErrors are generally retriable
   if (error instanceof ExternalServiceError) {
     // Unless they have specific non-retriable codes
-    const nonRetriableServiceCodes = ['SERVICE_UNAVAILABLE', 'UNAUTHORIZED_SERVICE']
+    const nonRetriableServiceCodes = [
+      'SERVICE_UNAVAILABLE',
+      'UNAUTHORIZED_SERVICE',
+    ]
     return !nonRetriableServiceCodes.includes(error.code || '')
   }
-  
+
   // Default to allowing retry for other error types
   return true
 }
