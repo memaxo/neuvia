@@ -10,16 +10,31 @@ import { ValidationError } from '@/lib/errors'
 import { openAPISpec } from './openapi'
 
 /**
- * Type for request method
+ * Type for HTTP request methods
+ * 
+ * Represents the standard HTTP methods supported by the API validation system.
  */
-type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch'
+export type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch'
 
 /**
- * Type for validation errors
+ * Detailed information about a validation error
+ * 
+ * Used to track specific field-level validation failures.
  */
-interface ValidationErrorDetail {
+export interface ValidationErrorDetail {
+  /**
+   * JSON path to the field with the error
+   */
   path: string
+  
+  /**
+   * Human-readable error message
+   */
   message: string
+  
+  /**
+   * Additional validation context parameters
+   */
   params?: Record<string, any>
 }
 

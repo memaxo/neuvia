@@ -69,13 +69,17 @@ export interface PaginationMeta {
 
 /**
  * UUID identifier
+ * 
  * @format uuid
+ * @description Standard UUID format used throughout the API
  */
 export type UUID = string;
 
 /**
  * ISO 8601 formatted timestamp
+ * 
  * @format date-time
+ * @description Standard ISO-8601 timestamp used throughout the API
  */
 export type Timestamp = string;
 

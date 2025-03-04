@@ -38,7 +38,10 @@
       "**/.contentlayer"
     ]
   },
-  "organizeImports": { "enabled": true },
+  "organizeImports": { 
+    "enabled": true,
+    "groupStyle": "groups"
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -109,6 +112,28 @@
         "noSkippedTests": "warn",
         "noUnsafeDeclarationMerging": "error",
         "useNamespaceKeyword": "error"
+      },
+      "import": {
+        "recommended": true,
+        "useImportType": "error",
+        "noUnusedImports": "warn",
+        "noExtraneousImports": "warn",
+        "noImportNamespaceAsDefault": "error",
+        "noDefaultExport": "warn",
+        "noExtensionlessImports": "error",
+        "noRestricted": ["warn", [{
+          "importNames": ["*"],
+          "patterns": [
+            {
+              "name": "@/lib/workflow/types",
+              "message": "Import from canonical @/lib/types instead"
+            },
+            {
+              "name": "@/lib/processing/types/*",
+              "message": "Import from canonical @/lib/types instead"
+            }
+          ]
+        }]]
       }
     },
     "ignore": [

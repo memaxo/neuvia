@@ -26,6 +26,24 @@
 - Follow accessibility standards (WCAG)
 - Create proper prop interfaces for components
 
+## TypeScript Type System
+- Use PascalCase for interfaces, types, and enums
+- Use UPPERCASE for enum values
+- Use camelCase for properties and functions
+- Place canonical type definitions in `/lib/types/{domain}.ts`
+- Import types from their canonical source (e.g., `import { DocumentType } from '@/lib/types'`)
+- Use Zod schemas for runtime validation in `/lib/schemas/{domain}.ts`
+- Avoid using `any` - use `unknown` with type guards instead
+- Use discriminated unions for better type safety
+- Add JSDoc comments to all exported types
+- Follow naming patterns:
+  - `{Domain}Type` for main domain objects (e.g., `DocumentType`)
+  - `{Domain}Schema` for Zod schemas (e.g., `DocumentTypeSchema`)
+  - `Base{Domain}` for abstract base types (e.g., `BaseEntity`)
+  - `Db{Domain}` for database representations (e.g., `DbDocument`)
+  - `is{Type}` for type guards (e.g., `isDocumentType`)
+- See `/docs/typescript/` for detailed type system documentation
+
 ## Project Structure
 - App router in `app/` directory
 - Reusable UI in `components/`
@@ -33,3 +51,4 @@
 - Custom hooks in `hooks/`
 - Context providers in `contexts/`
 - Configuration in `config/`
+- Type definitions in `lib/types/`

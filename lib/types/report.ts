@@ -1,187 +1,241 @@
-import type { DocumentBase, DocumentType } from '@/lib/processing/types/base'
-import type { ResearchDocument, ResearchResult, ResearchSource } from '@/lib/processing/types/research'
-import type { Database } from '@/lib/supabase'
+/**
+ * @fileoverview Canonical report types for the application
+ * 
+ * This file defines the standard report types used throughout the application,
+ * including report structures, generation options, and formatting settings.
+ */
+
+import type { UUID, Timestamp, BaseEntity } from './base';
+import type { DocumentType } from './document';
+import type { ProcessingPhase } from './workflow';
+
+// ==========================================================================
+// Core Report Types
+// ==========================================================================
 
 /**
- * Database types from Supabase
+ * Report type enum
  */
-export type Report = Database['public']['Tables']['reports']['Row']
-export type ReportInsert = Database['public']['Tables']['reports']['Insert']
-export type ReportUpdate = Database['public']['Tables']['reports']['Update']
-export type ReportAuditLog = Database['public']['Tables']['report_audit_logs']['Row']
-export type ReportAuditLogInsert = Database['public']['Tables']['report_audit_logs']['Insert']
-export type ReportAuditLogUpdate = Database['public']['Tables']['report_audit_logs']['Update']
-export type ReportStatus = Report['status'] // 'processing' | 'completed' | 'failed'
-export type ReportType = Report['type'] // 'diagnostic' | 'progress' | 'analytics'
-
-/**
- * Report data format
- */
-export type ReportFormat = 'markdown' | 'html' | 'pdf'
-
-/**
- * Report sections
- */
-export interface ReportSections {
+export enum ReportType {
   /**
-   * Findings section of the report
+   * Brief summary report
    */
-  findings?: string
-
+  SUMMARY = 'summary',
+  
   /**
-   * Diagnoses section
+   * Comprehensive detailed report
    */
-  diagnoses?: string
-
+  COMPREHENSIVE = 'comprehensive',
+  
   /**
-   * Recommendations section
+   * Timeline-based report
    */
-  recommendations?: string
-
+  TIMELINE = 'timeline',
+  
   /**
-   * References section
+   * Custom report format
    */
-  references?: string
-
-  /**
-   * Background section
-   */
-  background?: string
-
-  /**
-   * Summary section
-   */
-  summary?: string
-
-  /**
-   * Additional sections
-   */
-  [key: string]: string | undefined
+  CUSTOM = 'custom'
 }
 
 /**
- * Metadata for a generated report
+ * Report generation status enum
  */
-export interface ReportMetadata {
+export enum ReportStatus {
   /**
-   * Model used for generation
+   * Report generation pending
    */
-  modelName: string
-
+  PENDING = 'pending',
+  
   /**
-   * Confidence score of the generation (0-1)
+   * Report is being generated
    */
-  confidence: number
-
+  GENERATING = 'generating',
+  
   /**
-   * Time taken to generate the report (in seconds or milliseconds)
+   * Report generation completed successfully
    */
-  generationTime: number
-
+  COMPLETED = 'completed',
+  
   /**
-   * Version of the report generator
+   * Report generation failed
    */
-  version?: string
-
+  FAILED = 'failed',
+  
   /**
-   * Flags for any issues or concerns
+   * Report requires review
    */
-  flags?: string[]
-
+  REVIEW_REQUIRED = 'review_required',
+  
   /**
-   * Report type (e.g., 'medical-diagnosis', 'research', 'standard')
+   * Report has been reviewed and approved
    */
-  reportType?: string
+  APPROVED = 'approved'
+}
 
+/**
+ * Report format enum
+ */
+export enum ReportFormat {
   /**
-   * Title of the report
+   * HTML format
    */
-  title?: string
+  HTML = 'html',
+  
+  /**
+   * Plain text format
+   */
+  TEXT = 'text',
+  
+  /**
+   * PDF format
+   */
+  PDF = 'pdf',
+  
+  /**
+   * JSON format
+   */
+  JSON = 'json',
+  
+  /**
+   * Markdown format
+   */
+  MARKDOWN = 'markdown'
+}
 
+/**
+ * Report interface with common properties
+ */
+export interface Report extends BaseEntity {
+  /**
+   * Report title
+   */
+  title: string;
+  
+  /**
+   * Patient ID this report is for
+   */
+  patientId: UUID;
+  
   /**
    * User who created the report
    */
-  createdBy?: string | null
-
+  createdBy?: UUID;
+  
   /**
-   * Department ID associated with the report
+   * Organization ID
    */
-  departmentId?: string | null
-
+  organizationId?: UUID;
+  
   /**
-   * Additional context data used in report generation
+   * Report type
    */
-  contextData?: Record<string, any>
-
+  reportType: ReportType;
+  
   /**
-   * Verification metadata if report is based on verified data
+   * Current report status
    */
-  verification?: {
-    /**
-     * When the document was verified
-     */
-    verifiedAt: Date
-
-    /**
-     * User who verified the document
-     */
-    verifiedBy?: string
-
-    /**
-     * Average confidence score of verification items (0-1)
-     */
-    verificationConfidence: number
-
-    /**
-     * Number of verified items
-     */
-    verifiedItemCount: number
-
-    /**
-     * Number of corrections made during verification
-     */
-    correctionCount: number
-  }
+  status: ReportStatus;
+  
+  /**
+   * Report content organized by sections
+   */
+  sections: ReportSections;
+  
+  /**
+   * Document IDs used as sources
+   */
+  sourceDocuments: UUID[];
+  
+  /**
+   * Report metadata
+   */
+  metadata: ReportMetadata;
 }
 
 /**
- * Data for a generated report
+ * Report sections organized by key
  */
-export interface ReportData {
+export interface ReportSections {
   /**
-   * Full content of the report
+   * Each key is a section identifier
    */
-  content: string
+  [sectionKey: string]: {
+    /**
+     * Section title
+     */
+    title: string;
+    
+    /**
+     * Section content
+     */
+    content: string;
+    
+    /**
+     * Section order in the report
+     */
+    order: number;
+    
+    /**
+     * Whether this section can be edited
+     */
+    editable?: boolean;
+    
+    /**
+     * Whether this section is required
+     */
+    required?: boolean;
+    
+    /**
+     * Section metadata
+     */
+    metadata?: Record<string, unknown>;
+  };
+}
 
+/**
+ * Report metadata
+ */
+export interface ReportMetadata {
   /**
-   * Sources used in the report
+   * Report generation date
    */
-  sources: ResearchSource[]
-
+  generatedAt: Timestamp;
+  
   /**
-   * Patient ID the report is for
+   * Last modified date
    */
-  patientId: string
-
+  modifiedAt?: Timestamp;
+  
   /**
-   * When the report was generated
+   * Last modified by
    */
-  generatedAt: Date
-
+  modifiedBy?: UUID;
+  
   /**
-   * Metadata about the report generation
+   * Report generation time in milliseconds
    */
-  metadata: ReportMetadata
-
+  generationTimeMs?: number;
+  
   /**
-   * Structured sections of the report
+   * Custom report parameters
    */
-  sections?: ReportSections
-
+  parameters?: Record<string, unknown>;
+  
   /**
-   * Verified data that was used to generate the report
+   * Report version
    */
-  verifiedData?: Record<string, any>
+  version?: string;
+  
+  /**
+   * Document types included in this report
+   */
+  documentTypes?: DocumentType[];
+  
+  /**
+   * Custom metadata
+   */
+  [key: string]: unknown;
 }
 
 /**
@@ -189,49 +243,44 @@ export interface ReportData {
  */
 export interface ReportGenerationParams {
   /**
-   * Report type (e.g., 'medical-diagnosis', 'research', 'standard')
+   * Patient ID
    */
-  type: string
-
+  patientId: UUID;
+  
   /**
-   * Patient ID (if applicable)
+   * Document IDs to include
    */
-  patientId: string
-
+  documentIds?: UUID[];
+  
   /**
-   * Research query (if not providing pre-researched data)
+   * Report type
    */
-  researchQuery?: string
-
+  reportType: ReportType;
+  
   /**
-   * Pre-researched data (if available)
+   * Sections to include in custom report
    */
-  researchData?: ResearchResult
-
+  includeSections?: string[];
+  
   /**
-   * Depth of research
+   * Custom prompt for report generation
    */
-  researchDepth?: 'basic' | 'standard' | 'comprehensive'
-
+  customPrompt?: string;
+  
   /**
-   * Maximum number of sources to include
+   * Additional parameters
    */
-  sourcesLimit?: number
-
+  parameters?: Record<string, unknown>;
+  
   /**
-   * Whether to include source content in results
+   * Desired output format
    */
-  includeSourceContent?: boolean
-
+  outputFormat?: ReportFormat;
+  
   /**
-   * Whether to save the report to the database
+   * Target language
    */
-  saveToDatabase?: boolean
-
-  /**
-   * Additional context data for the report
-   */
-  contextData?: Record<string, any>
+  language?: string;
 }
 
 /**
@@ -239,69 +288,276 @@ export interface ReportGenerationParams {
  */
 export interface ReportOptions {
   /**
-   * Patient ID (if applicable)
+   * Whether to include patient demographics
    */
-  patientId?: string
-
-  /**
-   * Progress callback for report generation
-   * @param phase Current generation phase
-   * @param progress Progress percentage (0-100)
-   */
-  onProgress?: (
-    phase: 'initialization' | 'research' | 'generation' | 'complete',
-    progress: number
-  ) => void
-
-  /**
-   * Success callback
-   * @param reportData Generated report data
-   */
-  onSuccess?: (reportData: ReportData) => void
-
-  /**
-   * Error callback
-   * @param error Error message
-   */
-  onError?: (error: string) => void
-
-  /**
-   * Whether to save the report to the database
-   */
-  saveToDatabase?: boolean
+  includeDemographics?: boolean;
   
   /**
-   * Whether to create a ReportDocument object
+   * Whether to include images/charts
    */
-  createReportDocument?: boolean
+  includeVisualizations?: boolean;
   
   /**
-   * Format to use for the report
+   * Whether to include source citations
    */
-  reportFormat?: ReportFormat
+  includeCitations?: boolean;
   
   /**
-   * Additional context data
+   * Maximum report length (characters)
    */
-  contextData?: Record<string, any>
+  maxLength?: number;
+  
+  /**
+   * Formatting options
+   */
+  formatting?: {
+    /**
+     * Font size
+     */
+    fontSize?: string;
+    
+    /**
+     * Font family
+     */
+    fontFamily?: string;
+    
+    /**
+     * Line spacing
+     */
+    lineSpacing?: number;
+    
+    /**
+     * Custom CSS for HTML reports
+     */
+    customCss?: string;
+  };
+  
+  /**
+   * Whether to include a table of contents
+   */
+  includeTableOfContents?: boolean;
+  
+  /**
+   * Whether to include timestamps
+   */
+  includeTimestamps?: boolean;
+  
+  /**
+   * Callback for progress updates
+   */
+  onProgress?: (phase: ProcessingPhase, progress: number) => void;
 }
 
 /**
- * A document with generated report
+ * Report generation progress
  */
-export interface ReportDocument extends DocumentBase {
+export interface ReportGenerationProgress {
   /**
-   * The research document that the report is based on
+   * Progress percentage (0-100)
    */
-  researchDocument: ResearchDocument
+  progress: number;
+  
+  /**
+   * Current phase
+   */
+  phase: ProcessingPhase;
+  
+  /**
+   * Current operation description
+   */
+  operation: string;
+  
+  /**
+   * Estimated time remaining in milliseconds
+   */
+  estimatedTimeRemainingMs?: number;
+  
+  /**
+   * Additional progress metadata
+   */
+  metadata?: Record<string, unknown>;
+}
 
+/**
+ * Report document reference
+ */
+export interface ReportDocument {
   /**
-   * The generated report data
+   * Document ID
    */
-  reportData: ReportData
+  id: UUID;
+  
+  /**
+   * Document title
+   */
+  title: string;
+  
+  /**
+   * Document type
+   */
+  documentType: DocumentType;
+  
+  /**
+   * Document date
+   */
+  documentDate?: Timestamp;
+  
+  /**
+   * Citation text
+   */
+  citation?: string;
+  
+  /**
+   * Relevant page numbers
+   */
+  pages?: number[];
+  
+  /**
+   * Relevance score (0-1)
+   */
+  relevanceScore?: number;
+}
 
+/**
+ * Report audit log entry
+ */
+export interface ReportAuditLogEntry {
   /**
-   * The format of the report
+   * Log entry ID
    */
-  format: ReportFormat
+  id: UUID;
+  
+  /**
+   * Report ID
+   */
+  reportId: UUID;
+  
+  /**
+   * User ID who made the change
+   */
+  userId: UUID;
+  
+  /**
+   * Action performed
+   */
+  action: 'create' | 'update' | 'delete' | 'export' | 'share' | 'view';
+  
+  /**
+   * When the action was performed
+   */
+  timestamp: Timestamp;
+  
+  /**
+   * Changes made (if applicable)
+   */
+  changes?: {
+    /**
+     * Previous state
+     */
+    before?: Record<string, unknown>;
+    
+    /**
+     * New state
+     */
+    after?: Record<string, unknown>;
+  };
+  
+  /**
+   * Additional context
+   */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Report data for frontend display
+ */
+export interface ReportData {
+  /**
+   * Report information
+   */
+  report: Report;
+  
+  /**
+   * Patient information
+   */
+  patient?: {
+    /**
+     * Patient ID
+     */
+    id: UUID;
+    
+    /**
+     * First name
+     */
+    firstName: string;
+    
+    /**
+     * Last name
+     */
+    lastName: string;
+    
+    /**
+     * Date of birth
+     */
+    dateOfBirth?: string;
+    
+    /**
+     * Medical record number
+     */
+    mrn?: string;
+  };
+  
+  /**
+   * Source documents
+   */
+  sourceDocuments: ReportDocument[];
+  
+  /**
+   * Formatted content for display
+   */
+  formattedContent?: {
+    /**
+     * HTML content
+     */
+    html?: string;
+    
+    /**
+     * Markdown content
+     */
+    markdown?: string;
+    
+    /**
+     * Plain text content
+     */
+    text?: string;
+  };
+}
+
+/**
+ * Create a new report with default values
+ */
+export function createEmptyReport(
+  patientId: UUID,
+  reportType: ReportType = ReportType.SUMMARY,
+  createdBy?: UUID
+): Report {
+  const now = new Date().toISOString();
+  const id = `report-${Date.now()}`;
+  
+  return {
+    id,
+    patientId,
+    title: `${reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report`,
+    reportType,
+    status: ReportStatus.PENDING,
+    sections: {},
+    sourceDocuments: [],
+    createdBy,
+    createdAt: now,
+    updatedAt: now,
+    metadata: {
+      generatedAt: now,
+      version: '1.0'
+    }
+  };
 }

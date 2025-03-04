@@ -1,6 +1,30 @@
+/**
+ * Document Service Implementation
+ *
+ * Centralized service for document processing, extraction, and storage
+ * 
+ * Note: This service now uses the specialized extraction, storage, and analysis
+ * services internally for improved separation of concerns. For new code, consider
+ * using the specialized services directly through the module exports.
+ */
+
+// Import specialized services
+import {
+  DocumentExtractionService,
+  DocumentStorageService,
+  DocumentAnalysisService
+} from './index'
+
 import { getDbCompatibleMetadata } from '@/lib/processing/types/verification'
 import logger from '@/lib/logger'
-import { ExternalServiceError, SystemError, ValidationError, NotFoundError, normalizeError } from '@/lib/errors'
+import {
+  ExternalServiceError,
+  SystemError,
+  ValidationError,
+  NotFoundError,
+  normalizeError,
+  ApplicationError,
+} from '@/lib/errors'
 
 /**
  * Document Service Implementation
@@ -19,13 +43,45 @@ import * as pdfjsLib from 'pdfjs-dist'
 import type {
   DocumentType,
   ProcessingStatus,
-} from '@/lib/processing/types/base'
-import type {
-  DocumentMetadata,
   ExtractedData,
   ExtractedDocument,
-} from '@/lib/processing/types/extraction'
+  DocumentMetadata
+} from '@/lib/types'
+import { 
+  documentFromDb, 
+  documentToDb, 
+  extractedDocumentFromDb, 
+  extractedDocumentToDb,
+  DbExtractedDocument
+} from '@/lib/types/db-adapters'
 import type { Json } from '@/lib/supabase'
+import { uploadService } from '@/lib/services/upload/upload-service'
+
+// Create instances of specialized services for internal use
+const extractionService = new DocumentExtractionService()
+const storageService = new DocumentStorageService()
+const analysisService = new DocumentAnalysisService()
+
+/**
+ * Custom error class for document service errors
+ */
+class DocumentServiceError extends ApplicationError {
+  constructor(
+    message: string,
+    code: string,
+    isRetryable: boolean = false,
+    data?: Record<string, unknown>
+  ) {
+    super({
+      message,
+      code,
+      data: {
+        ...data,
+        isRetryable,
+      },
+    })
+  }
+}
 
 /**
  * Document processing options with enhanced metadata
@@ -86,8 +142,6 @@ interface UploadDocumentResult {
   fileName: string
   extractionStatus?: string
 }
-
-// Document service now uses the standard ApplicationError hierarchy from lib/errors.ts
 
 /**
  * Document Service with centralized functionality for
@@ -249,123 +303,22 @@ export class DocumentService {
     options: EnhancedExtractionOptions = this.defaultExtractionOptions
   ): Promise<ExtractedData> {
     try {
-      const fileType = file.type
-      let rawText = ''
-      const chunks: {
-        content: string
-        pageNumber?: number
-        metadata?: Record<string, any>
-      }[] = []
-      const metadata: DocumentMetadata = {
-        filename: file.name,
-        fileFormat: file.type,
-        fileSize: file.size,
-        extractedAt: new Date(),
-      }
-
-      // Create a blob from the file for processing
-      const blob = new Blob([await file.arrayBuffer()], { type: fileType })
-
-      // Determine appropriate extraction method
-      switch (fileType) {
-        case 'application/pdf': {
-          // Enhanced PDF extraction with page splitting and table detection
-          const result = await this.extractPdfWithEnhancement(blob, options)
-          rawText = result.text
-          chunks.push(...result.chunks)
-
-          // Add PDF-specific metadata
-          metadata.pageCount = result.pageCount
-          metadata.hasImages = result.hasImages
-          metadata.hasTables = result.hasTables
-          metadata.detectedSections = result.detectedSections
-          metadata.textQuality = result.textQuality
-          break
-        }
-
-        case 'text/plain': {
-          // Simple text extraction
-          const textContent = await file.text()
-
-          // Process the text to detect sections
-          const processedText = await this.processTextDocument(
-            textContent,
-            options
-          )
-          rawText = processedText.text
-          chunks.push(...processedText.chunks)
-
-          // Add text-specific metadata
-          metadata.lineCount = textContent.split('\n').length
-          metadata.detectedSections = processedText.detectedSections
-          break
-        }
-
-        case 'application/msword':
-        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
-          // Enhanced Word document extraction
-          const result = await this.extractWordDocument(blob, options)
-          rawText = result.text
-          chunks.push(...result.chunks)
-
-          // Add Word-specific metadata
-          metadata.pageCount = result.pageCount
-          metadata.hasTables = result.hasTables
-          metadata.detectedSections = result.detectedSections
-          break
-        }
-
-        case 'image/jpeg':
-        case 'image/png': {
-          // Process images with OCR if enabled
-          if (options.ocrImages) {
-            const result = await this.performOcrOnImage(blob)
-            rawText = result.text
-
-            // Add image-specific metadata
-            metadata.imageWidth = result.width
-            metadata.imageHeight = result.height
-            metadata.ocrConfidence = result.confidence
-          } else {
-            throw new ValidationError({
-              message: 'OCR is required for image processing but is disabled',
-              code: 'OCR_DISABLED',
-              data: { fileType }
-            })
-          }
-          break
-        }
-
-        default:
-          throw new ValidationError({
-            message: `Unsupported file type: ${fileType}`,
-            code: 'UNSUPPORTED_FILE_TYPE',
-            data: { fileType }
-          })
-      }
-
-      // Create the extracted data object
-      const extractedData: ExtractedData = {
-        rawText,
-        metadata,
-        chunks: chunks.length > 0 ? chunks : undefined,
-      }
-
-      return extractedData
+      // Forward to the specialized extraction service
+      return await extractionService.extractText(file, options)
     } catch (error) {
       // Enhanced error handling with structured logging
-      const moduleLogger = logger.withMetadata({ 
+      const moduleLogger = logger.withMetadata({
         module: 'DocumentService',
         method: 'extractText',
         fileType: file.type,
-        fileName: file.name
-      });
-      
-      moduleLogger.error('Failed to extract text from document', {}, error);
-      
+        fileName: file.name,
+      })
+
+      moduleLogger.error('Failed to extract text from document', {}, error)
+
       // If it's already a normalized error, rethrow it
       if (error instanceof ValidationError || error instanceof SystemError) {
-        throw error;
+        throw error
       }
 
       // Otherwise, normalize the error with the appropriate context
@@ -376,8 +329,8 @@ export class DocumentService {
           fileType: file.type,
           fileName: file.name,
         },
-        cause: error
-      });
+        cause: error,
+      })
     }
   }
 
@@ -842,162 +795,140 @@ export class DocumentService {
   async detectDocumentType(
     content: string
   ): Promise<DocumentTypeDetectionResult> {
-    // Default document type
-    const defaultType: DocumentTypeDetectionResult = {
-      type: { category: 'clinical', type: 'note' },
-      confidence: 0.5,
-    }
-
-    // If no content, return default
-    if (!content || content.length < 50) {
-      return defaultType
-    }
-
-    // Extract the first ~1000 characters for analysis
-    const sampleText = content.substring(0, 1000).toLowerCase()
-
-    // Detect document sections
-    const detectedSections = this.detectSectionsInText(content)
-
-    // Calculate scores for each document type based on keyword matching
-    const scores: Record<string, number> = {}
-
-    const typePatterns: Record<string, RegExp[]> = {
-      PROGRESS_NOTE: [/progress\s+note/i, /soap\s+note/i, /office\s+visit/i],
-      HISTORY_AND_PHYSICAL: [
-        /history\s+and\s+physical/i,
-        /h\s*&\s*p/i,
-        /admission\s+note/i,
-      ],
-      DISCHARGE_SUMMARY: [
-        /discharge\s+summary/i,
-        /discharge\s+note/i,
-        /hospital\s+course/i,
-      ],
-      OPERATIVE_REPORT: [
-        /operative\s+report/i,
-        /operation\s+note/i,
-        /surgical\s+procedure/i,
-      ],
-      CONSULTATION: [/consultation/i, /consult\s+note/i, /referred\s+for/i],
-      PATHOLOGY_REPORT: [/pathology/i, /specimen/i, /histology/i, /biopsy/i],
-      RADIOLOGY_REPORT: [
-        /radiology/i,
-        /impression:/i,
-        /findings:/i,
-        /x-ray/i,
-        /ct\s+scan/i,
-        /mri/i,
-      ],
-      LAB_RESULTS: [
-        /laboratory/i,
-        /lab\s+results/i,
-        /test\s+results/i,
-        /chemistry/i,
-        /hematology/i,
-      ],
-      MEDICATION_LIST: [
-        /medication\s+list/i,
-        /current\s+medications/i,
-        /prescriptions/i,
-      ],
-      IMMUNIZATION_RECORD: [/immunization/i, /vaccination/i, /vaccine/i],
-    }
-
-    // Score each document type
-    for (const [type, patterns] of Object.entries(typePatterns)) {
-      scores[type] = 0
-      for (const pattern of patterns) {
-        if (pattern.test(sampleText)) {
-          scores[type] += 1
-        }
-      }
-    }
-
-    // Find the type with the highest score
-    let bestType = ''
-    let bestScore = 0
-
-    for (const [type, score] of Object.entries(scores)) {
-      if (score > bestScore) {
-        bestScore = score
-        bestType = type
-      }
-    }
-
-    // Calculate confidence based on score and number of patterns
-    const maxPossibleScore = Math.max(
-      ...Object.values(typePatterns).map((patterns) => patterns.length)
-    )
-    const confidence = bestScore > 0 ? bestScore / maxPossibleScore : 0.2
-
-    // If confidence is too low, return default type
-    if (confidence < 0.3) {
-      return {
-        ...defaultType,
-        detectedSections,
-      }
-    }
-
-    // Return the detected document type
-    return {
-      type: this.medicalDocumentTypes[bestType] || defaultType.type,
-      confidence,
-      detectedSections,
-      possibleTypes: Object.entries(scores)
-        .filter(([_, score]) => score > 0)
-        .sort(([_, scoreA], [__, scoreB]) => scoreB - scoreA)
-        .slice(0, 3)
-        .map(([type, _]) => this.medicalDocumentTypes[type]),
-    }
+    // Forward to the specialized analysis service
+    return await analysisService.detectDocumentType(content)
   }
 
   /**
-   * Batch process multiple documents in parallel
+   * Batch process multiple documents in parallel with improved type safety
    *
    * @param files Array of files to process
-   * @param patientId Patient ID
+   * @param patientId Patient ID for all documents
    * @param options Document processing options
-   * @returns Array of processed document results
+   * @returns Object containing arrays of successful and failed documents
+   * @throws {ValidationError} If inputs are invalid
+   * @throws {SystemError} If there's a system-level batch processing error
    */
   async batchProcessDocuments(
     files: File[],
-    patientId: string,
+    patientId: UUID,
     options?: DocumentProcessingOptions
   ): Promise<{
-    successful: ExtractedDocument[]
-    failed: { file: File; error: Error }[]
+    successful: ExtractedDocument[];
+    failed: { file: File; error: Error }[];
   }> {
-    // Limit batch size to prevent overwhelming the system
-    const batchSize = 5
-    const successful: ExtractedDocument[] = []
-    const failed: { file: File; error: Error }[] = []
-
-    // Process files in batches
-    for (let i = 0; i < files.length; i += batchSize) {
-      const batch = files.slice(i, i + batchSize)
-
-      // Process each file in the batch in parallel
-      const results = await Promise.allSettled(
-        batch.map((file) =>
-          this.processDocument(file, {
-            ...options,
-            patientId,
-          })
-        )
-      )
-
-      // Collect results
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          successful.push(result.value)
-        } else {
-          failed.push({ file: batch[index], error: result.reason })
-        }
-      })
+    // Validate inputs
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new ValidationError({
+        message: 'Files array must contain at least one file',
+        code: 'EMPTY_FILES_ARRAY',
+        data: { fileCount: files?.length || 0 }
+      });
     }
+    
+    if (!patientId || typeof patientId !== 'string') {
+      throw new ValidationError({
+        message: 'Valid patient ID is required',
+        code: 'INVALID_PATIENT_ID',
+        data: { patientId }
+      });
+    }
+    
+    // Create logger with metadata for this operation
+    const moduleLogger = logger.withMetadata({
+      module: 'DocumentService',
+      method: 'batchProcessDocuments',
+      fileCount: files.length,
+      patientId
+    });
+    
+    moduleLogger.info('Starting batch document processing');
+    
+    // Limit batch size to prevent overwhelming the system
+    const batchSize = 5;
+    const successful: ExtractedDocument[] = [];
+    const failed: { file: File; error: Error }[] = [];
 
-    return { successful, failed }
+    try {
+      // Calculate total batches for logging
+      const totalBatches = Math.ceil(files.length / batchSize);
+      
+      // Process files in batches
+      for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        const currentBatch = Math.floor(i / batchSize) + 1;
+        
+        moduleLogger.debug(`Processing batch ${currentBatch} of ${totalBatches}`, {
+          batchSize: batch.length,
+          startIndex: i,
+          endIndex: Math.min(i + batchSize - 1, files.length - 1)
+        });
+
+        // Process each file in the batch in parallel with explicit typing
+        const results: PromiseSettledResult<ExtractedDocument>[] = await Promise.allSettled(
+          batch.map((file) =>
+            this.processDocument(file, {
+              ...options,
+              patientId,
+            })
+          )
+        );
+
+        // Collect results with explicit type checking
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            // Validate the result before adding to successful array
+            const document = result.value;
+            if (this.isValidExtractedDocument(document)) {
+              successful.push(document);
+            } else {
+              // If document is invalid, treat as failure
+              failed.push({ 
+                file: batch[index], 
+                error: new Error('Document processing returned invalid format') 
+              });
+            }
+          } else {
+            // For rejected promises, ensure we have a proper Error object
+            const error = result.reason instanceof Error 
+              ? result.reason 
+              : new Error(String(result.reason));
+            
+            failed.push({ file: batch[index], error });
+          }
+        });
+        
+        moduleLogger.info(`Completed batch ${currentBatch} of ${totalBatches}`, {
+          batchSuccessCount: results.filter(r => r.status === 'fulfilled').length,
+          batchFailureCount: results.filter(r => r.status === 'rejected').length
+        });
+      }
+
+      // Log final results
+      moduleLogger.info('Batch processing completed', {
+        totalFiles: files.length,
+        successCount: successful.length,
+        failureCount: failed.length,
+        successRate: `${(successful.length / files.length * 100).toFixed(1)}%`
+      });
+      
+      return { successful, failed };
+    } catch (error) {
+      moduleLogger.error('Unexpected error in batch processing', {}, error);
+      
+      // Normalize the error for consistent handling
+      if (!(error instanceof ApplicationError)) {
+        throw new SystemError({
+          message: `Batch processing failed: ${error instanceof Error ? error.message : String(error)}`,
+          code: 'BATCH_PROCESSING_FAILED',
+          data: { fileCount: files.length, patientId },
+          cause: error
+        });
+      }
+      
+      // Rethrow if it's already an ApplicationError
+      throw error;
+    }
   }
 
   /**
@@ -1005,39 +936,52 @@ export class DocumentService {
    *
    * @param file Document file to process
    * @param options Document processing options
-   * @returns ExtractedDocument
+   * @returns ExtractedDocument with processing results
+   * @throws {ValidationError} If file type or size is invalid
+   * @throws {SystemError} If there's a system-level error
    */
   async processDocument(
     file: File,
     options?: DocumentProcessingOptions
   ): Promise<ExtractedDocument> {
+    if (!file) {
+      throw new ValidationError({
+        message: 'File is required',
+        code: 'MISSING_FILE'
+      });
+    }
+    
     // Provide default status callback if none supplied
-    const onStatusUpdate = options?.onStatusUpdate ?? (() => {})
-    onStatusUpdate({
+    const onStatusUpdate = options?.onStatusUpdate ?? (() => {});
+    
+    // Initialize processing status
+    const initialStatus: ProcessingStatus = {
       status: 'processing',
       progress: 0,
       currentStep: 'Starting document processing',
       phase: 'initialization',
-    })
+    };
+    onStatusUpdate(initialStatus);
+
+    // Create logger for this operation
+    const moduleLogger = logger.withMetadata({
+      module: 'DocumentService',
+      method: 'processDocument',
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      patientId: options?.patientId,
+    });
 
     try {
-      const moduleLogger = logger.withMetadata({ 
-        module: 'DocumentService', 
-        method: 'processDocument',
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        patientId: options?.patientId
-      });
-      
       moduleLogger.info('Starting document processing');
-      
-      // Validate file type and size
+
+      // Validate file type and size with type predicates
       if (!(await this.validateFileType(file))) {
         throw new ValidationError({
           message: `Unsupported file type: ${file.type}`,
           code: 'UNSUPPORTED_FILE_TYPE',
-          data: { fileType: file.type }
+          data: { fileType: file.type },
         });
       }
 
@@ -1045,21 +989,22 @@ export class DocumentService {
         throw new ValidationError({
           message: `File size exceeds maximum allowed size of ${this.maxFileSize / (1024 * 1024)}MB`,
           code: 'FILE_TOO_LARGE',
-          data: { fileSize: file.size, maxSize: this.maxFileSize }
+          data: { fileSize: file.size, maxSize: this.maxFileSize },
         });
       }
 
       // Extract text with enhanced options
-      onStatusUpdate({
+      const extractionStatus: ProcessingStatus = {
         status: 'processing',
         progress: 10,
         currentStep: 'Extracting text from document',
         phase: 'extraction',
-      })
+      };
+      onStatusUpdate(extractionStatus);
 
       // Determine extraction level based on options or file type
-      const extractionLevel =
-        options?.extractionLevel || this.getExtractionLevelForFile(file)
+      const extractionLevel: 'basic' | 'enhanced' | 'comprehensive' =
+        options?.extractionLevel || this.getExtractionLevelForFile(file);
 
       // Configure extraction options based on extraction level
       const extractionOptions: EnhancedExtractionOptions = {
@@ -1069,101 +1014,131 @@ export class DocumentService {
         detectSections: extractionLevel !== 'basic',
         ocrImages: extractionLevel === 'comprehensive',
         preserveLayout: extractionLevel === 'comprehensive',
-      }
+      };
 
-      // Extract text with enhanced options
-      const extractedData = await this.extractText(file, extractionOptions)
+      // Use extraction service to extract text
+      const extractedData = await extractionService.extractText(file, extractionOptions);
 
-      // Update progress
-      onStatusUpdate({
+      // Update progress with explicit typing
+      const analysisStatus: ProcessingStatus = {
         status: 'processing',
         progress: 50,
         currentStep: 'Analyzing document content',
         phase: 'analysis',
-      })
+      };
+      onStatusUpdate(analysisStatus);
 
-      // Document type detection (fallback if not provided)
+      // Document type detection using analysis service
       const detectionResult = options?.documentType
         ? { type: options.documentType, confidence: 1.0 }
-        : await this.detectDocumentType(extractedData.rawText)
+        : await analysisService.detectDocumentType(extractedData.rawText);
 
       // Add detected sections to metadata if available
       if (
         detectionResult.detectedSections &&
+        Array.isArray(detectionResult.detectedSections) &&
         detectionResult.detectedSections.length > 0
       ) {
-        extractedData.metadata.detectedSections =
-          detectionResult.detectedSections
+        extractedData.metadata.detectedSections = detectionResult.detectedSections;
       }
 
       // Add document type confidence to metadata
-      extractedData.metadata.documentTypeConfidence = detectionResult.confidence
+      extractedData.metadata.documentTypeConfidence = detectionResult.confidence;
 
-      // Construct final extracted document
-      const documentId = crypto.randomUUID()
+      // Construct final extracted document with explicit typing for all properties
+      const documentId: UUID = crypto.randomUUID();
+      const timestamp = new Date().toISOString();
+      
       const extractedDocument: ExtractedDocument = {
         id: documentId,
-        createdAt: new Date(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
         documentType: detectionResult.type,
         patientId: options?.patientId,
-        extractedData,
-        isSuccessful: true,
+        extractedData: extractedData,
+        isProcessed: true,
+        processingStatus: 'completed',
+        lifecycleStage: 'EXTRACTED'
+      };
+
+      // Validate the constructed document
+      if (!this.isValidExtractedDocument(extractedDocument)) {
+        throw new SystemError({
+          message: 'Failed to create valid document from extraction result',
+          code: 'INVALID_EXTRACTION_RESULT',
+          data: { 
+            validationErrors: this.getDocumentValidationErrors(extractedDocument)
+          }
+        });
       }
 
       // Store document in database if patient ID provided
       if (options?.patientId) {
         try {
-          const dbId = await this.saveDocument(
+          const dbId = await storageService.saveDocument(
             extractedDocument,
             options.departmentId
-          )
+          );
 
           // Update with database ID if different
           if (dbId !== documentId) {
-            extractedDocument.id = dbId
+            extractedDocument.id = dbId;
           }
         } catch (saveError) {
-          console.warn(
-            `Document extracted but failed to save to database: ${saveError instanceof Error ? saveError.message : String(saveError)}`
-          )
+          moduleLogger.warn(
+            'Document extracted but failed to save to database',
+            { saveError: saveError instanceof Error ? saveError.message : String(saveError) }
+          );
           // Continue with the extracted document even if saving failed
         }
       }
 
-      onStatusUpdate({
+      // Final success status
+      const completionStatus: ProcessingStatus = {
         status: 'success',
         progress: 100,
         currentStep: 'Document extraction completed',
         phase: 'extraction',
-      })
+      };
+      onStatusUpdate(completionStatus);
 
-      return extractedDocument
+      return extractedDocument;
     } catch (error) {
       // Enhanced error handling with structured logging
       const normalizedError = normalizeError(error);
-      const moduleLogger = logger.withMetadata({ 
-        module: 'DocumentService', 
-        method: 'processDocument',
-        fileName: file.name,
-        fileType: file.type,
-        patientId: options?.patientId,
-        errorCode: normalizedError.code
-      });
       
-      moduleLogger.error('Error processing document', {}, normalizedError);
+      moduleLogger.error('Error processing document', {
+        errorCode: normalizedError.code,
+        errorMessage: normalizedError.message
+      }, normalizedError);
 
-      // Update status for the caller
-      onStatusUpdate({
+      // Update status for the caller with explicit typing
+      const errorStatus: ProcessingStatus = {
         status: 'error',
         progress: 0,
         error: normalizedError.message,
         phase: 'extraction',
-      })
+      };
+      onStatusUpdate(errorStatus);
 
-      // Return an error-labeled extracted document
+      // Return an error-labeled extracted document with explicit typing
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorCode =
+        error instanceof ApplicationError ? error.code : 'PROCESSING_ERROR';
+      const errorId: UUID = crypto.randomUUID();
+      const timestamp = new Date().toISOString();
+
       return {
-        id: crypto.randomUUID(),
-        createdAt: new Date(),
+        id: errorId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
         documentType: options?.documentType || {
           category: 'unknown',
           type: 'unknown',
@@ -1177,9 +1152,11 @@ export class DocumentService {
             errorCode,
           },
         },
-        isSuccessful: false,
-        errorMessage,
-      }
+        isProcessed: false,
+        processingError: errorMessage,
+        processingStatus: 'failed',
+        lifecycleStage: 'FAILED'
+      };
     }
   }
 
@@ -1209,97 +1186,180 @@ export class DocumentService {
    * @param extractedDocument Extracted document
    * @param departmentId Optional department ID
    * @returns Saved document ID
+   * @throws {ValidationError} If the document is invalid
+   * @throws {SystemError} If there's a database error
    */
   async saveDocument(
     extractedDocument: ExtractedDocument,
     departmentId?: string
-  ): Promise<string> {
-    // Ensure category is one of the valid enum values
-    const category = extractedDocument.documentType.category as
-      | 'clinical'
-      | 'lab'
-      | 'imaging'
-      | 'prescription'
-      | 'administrative'
-    if (
-      ![
-        'clinical',
-        'lab',
-        'imaging',
-        'prescription',
-        'administrative',
-      ].includes(category)
-    ) {
-      // Default to clinical if not a valid category
-      console.warn(`Invalid category: ${category}, defaulting to 'clinical'`)
+  ): Promise<UUID> {
+    const moduleLogger = logger.withMetadata({
+      module: 'DocumentService',
+      method: 'saveDocument',
+      documentId: extractedDocument.id,
+      patientId: extractedDocument.patientId,
+    });
+    
+    try {
+      // Validate the document with type assertion guard before saving
+      if (!this.isValidExtractedDocument(extractedDocument)) {
+        throw new ValidationError({
+          message: 'Invalid document format',
+          code: 'INVALID_DOCUMENT',
+          data: { 
+            documentId: extractedDocument.id,
+            validationErrors: this.getDocumentValidationErrors(extractedDocument)
+          }
+        });
+      }
+      
+      // First convert from application model to DB model
+      const dbDocument = extractedDocumentToDb(extractedDocument);
+      
+      // Add departmentId if provided
+      if (departmentId) {
+        dbDocument.department_id = departmentId;
+      }
+      
+      // Forward to the specialized storage service
+      const documentId = await storageService.saveDocument(dbDocument, departmentId);
+      moduleLogger.info('Document saved successfully', { documentId });
+      
+      return documentId;
+    } catch (error) {
+      moduleLogger.error('Failed to save document to database', {}, error);
+
+      // Normalize the error for consistent handling
+      if (!(error instanceof ApplicationError)) {
+        throw new SystemError({
+          message: `Failed to save document: ${error instanceof Error ? error.message : String(error)}`,
+          code: 'DOCUMENT_SAVE_FAILED',
+          data: { documentId: extractedDocument.id },
+          cause: error
+        });
+      }
+      
+      // Rethrow if it's already an ApplicationError
+      throw error;
     }
-
-    // Generate a document title that includes meaningful information
-    const documentType = extractedDocument.documentType.type || 'document'
-    const timestamp = new Date().toISOString().split('T')[0]
-    const title =
-      extractedDocument.extractedData.metadata.documentTitle ||
-      `${category.charAt(0).toUpperCase() + category.slice(1)} ${documentType} - ${timestamp}`
-
-    // Prepare data for insertion
-    const documentRecord = {
-      patient_id: extractedDocument.patientId,
-      title,
-      category:
-        (category as
-          | 'clinical'
-          | 'lab'
-          | 'imaging'
-          | 'prescription'
-          | 'administrative') || 'clinical',
-      document_type: getDbCompatibleMetadata(
-        extractedDocument.documentType
-      ) as Json,
-      file_path:
-        extractedDocument.extractedData.metadata.filename || 'unknown-file',
-      file_type:
-        extractedDocument.extractedData.metadata.fileFormat ||
-        'application/pdf',
-      file_size: extractedDocument.extractedData.metadata.fileSize || 0,
-      checksum:
-        extractedDocument.extractedData.metadata.checksum ||
-        `generated-${Date.now().toString()}`,
-      document_date: new Date().toISOString().split('T')[0],
-      content_text: extractedDocument.extractedData.rawText,
-      content_summary: this.generateContentSummary(
-        extractedDocument.extractedData.rawText
-      ),
-      metadata: getDbCompatibleMetadata({
-        ...extractedDocument.extractedData.metadata,
-        extractionDate: new Date().toISOString(),
-        departmentId,
-      }) as Json,
-      processing_status: extractedDocument.isSuccessful
-        ? 'completed'
-        : 'failed',
-      is_processed: extractedDocument.isSuccessful,
-      processing_error: extractedDocument.errorMessage,
-      department: departmentId,
+  }
+  
+  /**
+   * Validate if an extracted document is valid
+   * @param document The document to validate
+   * @returns True if the document is valid
+   */
+  private isValidExtractedDocument(document: unknown): document is ExtractedDocument {
+    if (!document || typeof document !== 'object') return false;
+    
+    const doc = document as Record<string, unknown>;
+    
+    // Check required fields
+    const hasValidId = typeof doc.id === 'string';
+    const hasValidCreatedAt = doc.createdAt instanceof Date || 
+      (typeof doc.createdAt === 'string' && !isNaN(Date.parse(doc.createdAt as string)));
+    const hasValidFileName = typeof doc.fileName === 'string';
+    const hasValidFileSize = typeof doc.fileSize === 'number' && (doc.fileSize as number) >= 0;
+    const hasValidFileType = typeof doc.fileType === 'string';
+    
+    // Check document type
+    const hasValidDocumentType = typeof doc.documentType === 'object' && doc.documentType !== null &&
+      typeof (doc.documentType as {category?: unknown, type?: unknown}).category === 'string' &&
+      typeof (doc.documentType as {category?: unknown, type?: unknown}).type === 'string';
+    
+    // Check extracted data
+    const hasValidExtractedData = typeof doc.extractedData === 'object' && doc.extractedData !== null &&
+      typeof (doc.extractedData as {rawText?: unknown}).rawText === 'string' &&
+      typeof (doc.extractedData as {metadata?: unknown}).metadata === 'object';
+    
+    // Check processing status fields
+    const hasValidProcessingStatus = typeof doc.processingStatus === 'string';
+    const hasValidIsProcessed = typeof doc.isProcessed === 'boolean';
+    
+    return (
+      hasValidId &&
+      hasValidCreatedAt &&
+      hasValidFileName &&
+      hasValidFileSize &&
+      hasValidFileType &&
+      hasValidDocumentType &&
+      hasValidExtractedData &&
+      hasValidProcessingStatus &&
+      hasValidIsProcessed
+    );
+  }
+  
+  /**
+   * Get validation errors for an invalid extracted document
+   * @param document The document to validate
+   * @returns Object mapping fields to error messages
+   */
+  private getDocumentValidationErrors(document: unknown): Record<string, string> {
+    if (!document || typeof document !== 'object') {
+      return { document: 'Document must be an object' };
     }
-
-    // Insert into database
-    const { data, error } = await this.supabase
-      .from('patient_documents')
-      .insert(documentRecord)
-      .select('id')
-      .single()
-
-    if (error) {
-      console.error('Error saving document:', error)
-      throw new DocumentServiceError(
-        `Failed to save document: ${error.message}`,
-        'DATABASE_ERROR',
-        true,
-        { error }
-      )
+    
+    const doc = document as Record<string, unknown>;
+    const errors: Record<string, string> = {};
+    
+    // Check required fields
+    if (typeof doc.id !== 'string') {
+      errors.id = 'Document ID must be a string';
     }
-
-    return data.id
+    
+    if (!(doc.createdAt instanceof Date) && 
+        !(typeof doc.createdAt === 'string' && !isNaN(Date.parse(doc.createdAt as string)))) {
+      errors.createdAt = 'Created date must be a valid date';
+    }
+    
+    if (typeof doc.fileName !== 'string') {
+      errors.fileName = 'File name must be a string';
+    }
+    
+    if (typeof doc.fileSize !== 'number' || (doc.fileSize as number) < 0) {
+      errors.fileSize = 'File size must be a non-negative number';
+    }
+    
+    if (typeof doc.fileType !== 'string') {
+      errors.fileType = 'File type must be a string';
+    }
+    
+    // Check document type
+    if (typeof doc.documentType !== 'object' || doc.documentType === null) {
+      errors.documentType = 'Document type must be an object';
+    } else {
+      const documentType = doc.documentType as {category?: unknown, type?: unknown};
+      if (typeof documentType.category !== 'string') {
+        errors['documentType.category'] = 'Document category must be a string';
+      }
+      if (typeof documentType.type !== 'string') {
+        errors['documentType.type'] = 'Document type must be a string';
+      }
+    }
+    
+    // Check extracted data
+    if (typeof doc.extractedData !== 'object' || doc.extractedData === null) {
+      errors.extractedData = 'Extracted data must be an object';
+    } else {
+      const extractedData = doc.extractedData as {rawText?: unknown, metadata?: unknown};
+      if (typeof extractedData.rawText !== 'string') {
+        errors['extractedData.rawText'] = 'Raw text must be a string';
+      }
+      if (typeof extractedData.metadata !== 'object') {
+        errors['extractedData.metadata'] = 'Metadata must be an object';
+      }
+    }
+    
+    // Check processing status fields
+    if (typeof doc.processingStatus !== 'string') {
+      errors.processingStatus = 'Processing status must be a string';
+    }
+    
+    if (typeof doc.isProcessed !== 'boolean') {
+      errors.isProcessed = 'isProcessed must be a boolean';
+    }
+    
+    return errors;
   }
 
   /**
@@ -1332,209 +1392,152 @@ export class DocumentService {
   /**
    * Upload a document to storage and prepare for processing
    *
-   * @param patientId Patient ID
+   * @param patientId Patient ID for the document
    * @param file File to upload
-   * @param options Upload options
-   * @returns Upload result with document ID
+   * @param options Upload options with document type and callbacks
+   * @returns Upload result with document ID and status
+   * @throws {ValidationError} If input parameters are invalid
+   * @throws {SystemError} If there's a system-level upload error
    */
   async uploadDocument(
-    patientId: string,
+    patientId: UUID,
     file: File,
-    options?: {
-      documentType?: DocumentType
-      departmentId?: string
-      priority?: 'low' | 'normal' | 'high'
-      tags?: string[]
-      onStatusUpdate?: (status: ProcessingStatus) => void
+    options: {
+      documentType: DocumentType;
+      departmentId?: UUID;
+      priority?: 'low' | 'normal' | 'high';
+      tags?: string[];
+      onStatusUpdate?: (status: ProcessingStatus) => void;
     }
   ): Promise<UploadDocumentResult> {
-    // Provide default status callback if none supplied
-    const onStatusUpdate = options?.onStatusUpdate ?? (() => {})
+    // Create logger for this operation
+    const moduleLogger = logger.withMetadata({
+      module: 'DocumentService',
+      method: 'uploadDocument',
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      patientId
+    });
     
-    try {
-      // Update status to start of upload
-      onStatusUpdate({
-        status: 'processing',
-        progress: 0,
-        currentStep: 'Starting document upload',
-        phase: 'uploading',
-      })
-
-      // Validate file
-      if (!(await this.validateFileType(file))) {
-        throw new DocumentServiceError(
-          `Unsupported file type: ${file.type}`,
-          'UNSUPPORTED_FILE_TYPE',
-          false,
-          { fileType: file.type }
-        )
-      }
-
-      if (!(await this.validateFileSize(file))) {
-        throw new DocumentServiceError(
-          `File size exceeds maximum allowed size of ${this.maxFileSize / (1024 * 1024)}MB`,
-          'FILE_TOO_LARGE',
-          false,
-          { fileSize: file.size, maxSize: this.maxFileSize }
-        )
-      }
-
-      // Upload file to Supabase storage
-      const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-      const filePath = `patient-documents/${patientId}/${fileName}`
-
-      onStatusUpdate({
-        status: 'processing',
-        progress: 10,
-        currentStep: 'Uploading file to storage',
-        phase: 'uploading',
-      })
-
-      // Log the beginning of upload
-      console.log(`Starting upload of ${fileName} for patient ${patientId}`)
-
-      const { error: uploadError } = await this.supabase.storage
-        .from('documents')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType: file.type,
-        })
-
-      if (uploadError) {
-        throw new DocumentServiceError(
-          `Upload failed: ${uploadError.message}`,
-          'STORAGE_ERROR',
-          true,
-          { uploadError }
-        )
-      }
-
-      onStatusUpdate({
-        status: 'processing',
-        progress: 50,
-        currentStep: 'Creating document record',
-        phase: 'uploading',
-      })
-
-      // Create a signed URL for later processing
-      const { data: urlData } = await this.supabase.storage
-        .from('documents')
-        .createSignedUrl(filePath, 60 * 60)
-
-      if (!urlData?.signedUrl) {
-        throw new DocumentServiceError(
-          'Failed to generate signed URL',
-          'SIGNED_URL_ERROR',
-          true
-        )
-      }
-
-      // Insert a new record in patient_documents
-      const documentType = options?.documentType || {
-        category: 'clinical',
-        type: 'note',
-      }
-
-      const { data: docData, error: docError } = await this.supabase
-        .from('patient_documents')
-        .insert({
-          patient_id: patientId,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          storage_path: filePath,
-          title: file.name,
-          category:
-            (documentType.category as
-              | 'clinical'
-              | 'lab'
-              | 'imaging'
-              | 'prescription'
-              | 'administrative') || 'clinical',
-          document_type: documentType as unknown as Json,
-          file_path: filePath,
-          document_date: new Date().toISOString().split('T')[0],
-          checksum: 'auto-generated',
-          processing_status: 'uploaded',
-          department: options?.departmentId,
-          metadata: getDbCompatibleMetadata({
-            uploadedAt: new Date().toISOString(),
-            priority: options?.priority || 'normal',
-            tags: options?.tags || [],
-          }) as Json,
-        })
-        .select('id')
-        .single()
-
-      if (docError || !docData) {
-        throw new DocumentServiceError(
-          `Document record creation failed: ${docError?.message || 'Unknown error'}`,
-          'DATABASE_ERROR',
-          true,
-          { docError }
-        )
-      }
-
-      onStatusUpdate({
-        status: 'processing',
-        progress: 80,
-        currentStep: 'Starting document extraction',
-        phase: 'uploading',
-      })
-
-      // Start extraction process asynchronously via serverless function
-      try {
-        await this.supabase.functions.invoke(
-          'document-extraction',
-          {
-            body: {
-              documentId: docData.id,
-              fileUrl: urlData.signedUrl,
-              fileName: file.name,
-              fileType: file.type,
-              options: {
-                documentType: options?.documentType,
-                departmentId: options?.departmentId,
-                priority: options?.priority || 'normal',
-                tags: options?.tags || [],
-              },
-            },
-          }
-        )
-      } catch (fnError) {
-        // Log error but don't fail - extraction will be retried later
-        console.warn(
-          `Extraction function invocation had an error. Will be retried.`,
-          fnError
-        )
-      }
-
-      onStatusUpdate({
-        status: 'success',
-        progress: 100,
-        currentStep: 'Document upload completed',
-        phase: 'uploading',
-      })
-
-      return {
-        documentId: docData.id,
-        fileName: file.name,
-        extractionStatus: 'started',
-      }
-    } catch (error) {
-      // Enhanced error handling
-      console.error('Document upload error:', error)
-
-      onStatusUpdate({
-        status: 'error',
-        progress: 0,
-        error: error instanceof Error ? error.message : String(error),
-        phase: 'uploading',
-      })
-
-      throw error
+    // Validate inputs using type predicates
+    if (!patientId || typeof patientId !== 'string') {
+      throw new ValidationError({
+        message: 'Valid patient ID is required',
+        code: 'INVALID_PATIENT_ID',
+        data: { patientId }
+      });
     }
+    
+    if (!file || !(file instanceof File)) {
+      throw new ValidationError({
+        message: 'Valid file is required',
+        code: 'INVALID_FILE',
+        data: { fileName: file?.name }
+      });
+    }
+    
+    if (!options || !options.documentType || !this.isValidDocumentType(options.documentType)) {
+      throw new ValidationError({
+        message: 'Valid document type is required',
+        code: 'MISSING_DOCUMENT_TYPE',
+        data: { 
+          fileName: file.name, 
+          patientId,
+          documentType: options?.documentType 
+        }
+      });
+    }
+    
+    // Convert progress callback format to match upload service
+    const progressHandler = options.onStatusUpdate 
+      ? (progress: number, status: string) => {
+          options.onStatusUpdate?.({
+            status: progress === 100 ? 'success' : 'processing',
+            progress,
+            currentStep: status,
+            phase: progress < 50 ? 'uploading' : 'extraction'
+          });
+        }
+      : undefined;
+      
+    try {
+      moduleLogger.info('Starting document upload', {
+        documentType: `${options.documentType.category}/${options.documentType.type}`
+      });
+      
+      // Call the upload service's patient document upload with explicit type assertions
+      const uploadResult = await uploadService.uploadPatientDocument(
+        file,
+        patientId,
+        options.documentType,
+        options.departmentId,
+        progressHandler
+      );
+      
+      if (!uploadResult || !uploadResult.id) {
+        throw new SystemError({
+          message: 'Upload service returned invalid result',
+          code: 'INVALID_UPLOAD_RESULT',
+          data: { fileName: file.name }
+        });
+      }
+      
+      moduleLogger.info('Document upload completed successfully', { 
+        documentId: uploadResult.id 
+      });
+      
+      // Return a properly typed UploadDocumentResult
+      const result: UploadDocumentResult = {
+        documentId: uploadResult.id,
+        fileName: file.name,
+        extractionStatus: 'uploaded'
+      };
+      
+      return result;
+    } catch (error) {
+      moduleLogger.error('Document upload failed', {}, error);
+      
+      // Update status for the caller with explicit typing
+      if (options.onStatusUpdate) {
+        const errorStatus: ProcessingStatus = {
+          status: 'error',
+          progress: 0,
+          error: error instanceof Error ? error.message : String(error),
+          phase: 'uploading'
+        };
+        options.onStatusUpdate(errorStatus);
+      }
+      
+      // Normalize the error for consistent handling
+      if (!(error instanceof ApplicationError)) {
+        throw new SystemError({
+          message: `Document upload failed: ${error instanceof Error ? error.message : String(error)}`,
+          code: 'UPLOAD_FAILED',
+          data: { fileName: file.name, patientId },
+          cause: error
+        });
+      }
+      
+      // Rethrow if it's already an ApplicationError
+      throw error;
+    }
+  }
+  
+  /**
+   * Type guard to validate a document type
+   * @param value The value to check
+   * @returns True if value is a valid DocumentType
+   */
+  private isValidDocumentType(value: unknown): value is DocumentType {
+    if (!value || typeof value !== 'object') return false;
+    
+    const obj = value as Record<string, unknown>;
+    
+    return (
+      typeof obj.category === 'string' && 
+      typeof obj.type === 'string'
+    );
   }
 
   /**
@@ -1556,13 +1559,13 @@ export class DocumentService {
   }> {
     try {
       // Fetch the document record
-      const { data: document, error: docError } = await this.supabase
+      const { data: dbDocument, error: docError } = await this.supabase
         .from('patient_documents')
         .select('*')
         .eq('id', documentId)
         .single()
 
-      if (docError || !document) {
+      if (docError || !dbDocument) {
         throw new DocumentServiceError(
           `Document not found: ${docError?.message || 'Unknown error'}`,
           'DOCUMENT_NOT_FOUND',
@@ -1570,9 +1573,12 @@ export class DocumentService {
           { documentId }
         )
       }
+      
+      // Convert to application model for consistent property access
+      const document = documentFromDb(dbDocument);
 
-      // Get storage path - fix schema property access
-      const storagePath = document.file_path
+      // Get storage path
+      const storagePath = dbDocument.file_path
 
       if (!storagePath) {
         throw new DocumentServiceError(
@@ -1618,11 +1624,11 @@ export class DocumentService {
         body: {
           documentId,
           fileUrl: urlData.signedUrl,
-          fileName: document.title || 'unknown',
-          fileType: document.file_type,
+          fileName: document.fileName || dbDocument.title || 'unknown',
+          fileType: document.fileType || dbDocument.file_type,
           options: {
-            documentType: document.document_type,
-            departmentId: document.department,
+            documentType: document.documentType || dbDocument.document_type,
+            departmentId: document.departmentId || dbDocument.department_id,
             forceReExtract: options?.forceReExtract || true,
             extractionLevel: options?.extractionLevel || 'comprehensive',
           },

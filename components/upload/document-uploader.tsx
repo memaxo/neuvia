@@ -10,11 +10,11 @@ import { AlertCircle, CheckCircle2, FileText } from 'lucide-react'
 import React, { useState } from 'react'
 
 import { useDocumentUpload } from '@/lib/api/client/hooks'
-import type {
-  DocumentType,
+import type { 
   DocumentUploadStatus,
-  FileUpload,
+  FileUpload
 } from '@/lib/types/upload'
+import type { DocumentType } from '@/lib/types/document'
 
 /**
  * Props for the DocumentUploader component

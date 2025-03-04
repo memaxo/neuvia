@@ -375,3 +375,25 @@ export function normalizeError(error: unknown): ApplicationError {
     code: 'UNKNOWN_ERROR'
   })
 }
+
+/**
+ * Helper function to convert Zod errors to ValidationError
+ */
+import { z } from 'zod'
+
+export function zodErrorToValidationError(
+  error: z.ZodError,
+  message = 'Validation failed',
+  code = 'VALIDATION_ERROR'
+): ValidationError {
+  const fields: Record<string, string> = {}
+  error.errors.forEach(err => {
+    fields[err.path.join('.')] = err.message
+  })
+  
+  return new ValidationError({
+    message,
+    code,
+    fields
+  })
+}

@@ -109,13 +109,22 @@ export const openAPISpec: OpenAPIV3.Document = {
 
 /**
  * Get the OpenAPI spec as a JSON string
+ * 
+ * This is useful for serving the OpenAPI specification
+ * through an API endpoint for documentation tools.
+ * 
+ * @returns Formatted JSON string of the complete OpenAPI spec
  */
 export function getOpenAPISpecAsJSON(): string {
   return JSON.stringify(openAPISpec, null, 2)
 }
 
 /**
- * Get paths from the OpenAPI spec
+ * Get all registered API paths from the OpenAPI spec
+ * 
+ * This allows for programmatic inspection of available routes.
+ * 
+ * @returns The complete paths object from the OpenAPI specification
  */
 export function getPaths(): OpenAPIV3.PathsObject {
   return openAPISpec.paths
@@ -123,6 +132,12 @@ export function getPaths(): OpenAPIV3.PathsObject {
 
 /**
  * Register a path in the OpenAPI spec
+ * 
+ * This allows for modular path registration from different modules.
+ * Each module can define its own paths and register them with the main spec.
+ * 
+ * @param path The URL path to register (e.g., '/patients/{id}')
+ * @param pathItemObject The OpenAPI path item object with operations
  */
 export function registerPath(path: string, pathItemObject: OpenAPIV3.PathItemObject): void {
   openAPISpec.paths[path] = {

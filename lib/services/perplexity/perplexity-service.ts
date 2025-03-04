@@ -12,7 +12,7 @@ import type {
 // Use string type assertion since we can't find the module
 type WorkflowStep = string
 import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
-import logger from '@/lib/logger'
+import { BaseService, ServiceDependencies, serviceRegistry } from '@/lib/services/base-service'
 import {
   ExternalServiceError,
   ValidationError,
@@ -448,13 +448,23 @@ class TextExtractionUtils {
 
 /**
  * PerplexityService class - the single source of truth for all Perplexity API interactions
+ * Extends BaseService for standardized error handling, logging, and dependency injection
  */
-export class PerplexityService {
+export class PerplexityService extends BaseService {
   // Add a cache for research results
   private researchCache = new Map<
     string,
     { result: ResearchResult; timestamp: Date }
   >()
+  
+  /**
+   * Constructor for PerplexityService
+   * 
+   * @param dependencies Optional service dependencies
+   */
+  constructor(dependencies?: ServiceDependencies) {
+    super('PerplexityService', dependencies)
+  }
 
   /**
    * Get a unique cache key for a research query and options
@@ -514,16 +524,14 @@ export class PerplexityService {
     error: unknown,
     text: string
   ): ParsedResearchOutput {
-    // Create a logger with context metadata
-    const moduleLogger = logger.withMetadata({
-      module: 'PerplexityService',
-      method: 'handleParsingError',
+    // Create a logger with method context using the BaseService method
+    const methodLogger = this.getMethodLogger('handleParsingError', {
       textLength: text.length,
       errorType: error instanceof Error ? error.name : typeof error,
     })
 
     // Log detailed error information with structured logging
-    moduleLogger.warn(
+    methodLogger.warn(
       'Structured parsing failed',
       {
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -679,59 +687,53 @@ export class PerplexityService {
   }
 
   /**
-   * Execute an async operation with retry logic
+   * Execute an operation with retry logic
+   * Uses BaseService's withRetry method for consistent implementation
    *
    * @param operation The operation to execute
-   * @param maxRetries Maximum number of retries
-   * @param delay Initial delay between retries (increases with each retry)
+   * @param methodName Method name for logging
+   * @param options Retry options
    * @returns The result of the operation
-   * @throws The last error encountered if all retries fail
    */
-  private async withRetry<T>(
+  private async retryOperation<T>(
     operation: () => Promise<T>,
-    maxRetries: number = 3,
-    delay: number = 1000
-  ): Promise<T> {
-    let lastError: unknown
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation()
-      } catch (error) {
-        lastError = error
-
-        // Don't retry if it's a validation error
-        if (error instanceof ValidationError) {
-          throw error
-        }
-
-        // Wait before retrying
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, delay * attempt))
-        }
-      }
+    methodName: string,
+    options?: {
+      maxRetries?: number
+      initialDelay?: number
+      metadata?: Record<string, any>
     }
-
-    throw lastError
+  ): Promise<T> {
+    return this.withRetry(operation, methodName, {
+      maxRetries: options?.maxRetries || 3,
+      initialDelay: options?.initialDelay || 1000,
+      backoffFactor: 2,
+      // Perplexity-specific retryable errors
+      retryableErrors: [
+        'PERPLEXITY_API_ERROR', 
+        'EXTERNAL_SERVICE_ERROR',
+        'TIMEOUT_ERROR'
+      ],
+      metadata: options?.metadata
+    })
   }
 
   /**
-   * Handle research errors
+   * Handle research errors using BaseService error handling
    */
   private handleResearchError(
     query: string,
     options: EnhancedResearchOptions | undefined,
     error: Error | unknown
   ): void {
-    const normalizedError = normalizeError(error)
-    logger
-      .withMetadata({
-        module: 'PerplexityService',
-        method: 'handleResearchError',
-        query,
-        errorCode: normalizedError.code,
-      })
-      .error('Research failed', {}, normalizedError)
+    // Use the BaseService handleError method
+    this.handleError(error, 'handleResearchError', {
+      query,
+      options: JSON.stringify(options)
+    }, {
+      rethrow: false,
+      errorMessage: 'Research operation failed'
+    })
   }
 
   /**
@@ -877,14 +879,16 @@ Additional Query: {query}`,
     const cachedResult = this.getCachedResult(query, options)
     if (cachedResult) {
       moduleLogger.debug('Using cached research result', {
-        cacheAge: new Date().getTime() - cachedResult.timestamp.getTime(),
+        cacheAge: cachedResult.timestamp
+          ? new Date().getTime() - cachedResult.timestamp.getTime()
+          : 0,
         query,
       })
       return cachedResult
     }
 
-    // Use the retry mechanism for the API call
-    return this.withRetry(async () => {
+    // Use the retry mechanism for the API call with our BaseService implementation
+    return this.retryOperation(async () => {
       // Run with workflow to track progress
       const result = await runWithWorkflow(
         'research' as WorkflowStep,
@@ -966,7 +970,8 @@ Additional Query: {query}`,
         },
         {
           onProgress: options?.onProgress,
-          onError: (error) => this.handleResearchError(query, options, error),
+          onError: (error: unknown) =>
+            this.handleResearchError(query, options, error),
         }
       )
 
@@ -977,10 +982,12 @@ Additional Query: {query}`,
   /**
    * Perform medical diagnosis using Perplexity API
    *
-   * @param query User query
-   * @param patientData Patient data
-   * @param options Research options
-   * @returns Research result
+   * @param query User query about the medical case
+   * @param patientData Patient data and medical history
+   * @param options Research configuration options
+   * @returns Structured research result with medical diagnosis
+   * @throws {ValidationError} If inputs are invalid
+   * @throws {ExternalServiceError} If there's a service error
    */
   async performMedicalDiagnosis(
     query: string,
@@ -990,25 +997,167 @@ Additional Query: {query}`,
       'isMedicalDiagnosis' | 'patientData'
     >
   ): Promise<ResearchResult> {
-    // For the new differential diagnosis format, we need to modify how we pass the query and patient data
-    const enhancedOptions = {
-      ...options,
+    // Validate inputs using type predicates
+    if (!query || typeof query !== 'string') {
+      throw new ValidationError({
+        message: 'Query must be a non-empty string',
+        code: 'INVALID_QUERY',
+        data: { queryLength: query?.length || 0 }
+      });
+    }
+    
+    if (!patientData || typeof patientData !== 'string') {
+      throw new ValidationError({
+        message: 'Patient data must be a non-empty string',
+        code: 'INVALID_PATIENT_DATA',
+        data: { dataLength: patientData?.length || 0 }
+      });
+    }
+    
+    // Create a structured logger with method context
+    const methodLogger = this.getMethodLogger('performMedicalDiagnosis', {
+      queryLength: query.length,
+      patientDataLength: patientData.length,
+      depth: options?.depth || 'comprehensive'
+    });
+    
+    methodLogger.info('Starting medical diagnosis analysis');
+    
+    // Ensure options is an object
+    const safeOptions = options || {};
+    
+    // Create properly typed enhanced options with explicit type annotations
+    const enhancedOptions: EnhancedResearchOptions = {
+      ...safeOptions,
       isMedicalDiagnosis: true,
       patientData: `${patientData}\n\n${query ? `Additional query: ${query}` : ''}`,
-      depth: options?.depth || 'comprehensive', // Use comprehensive depth for medical diagnoses
+      depth: safeOptions.depth || 'comprehensive', // Use comprehensive depth for medical diagnoses
       maxTokens:
-        options?.maxTokens ||
+        safeOptions.maxTokens ||
         this.getConfigValueForDepth('maxTokens', 'comprehensive'),
       temperature:
-        options?.temperature ||
+        safeOptions.temperature ||
         this.getConfigValueForDepth('temperature', 'comprehensive'),
+    };
+
+    try {
+      // Use a specialized query format for medical diagnosis that works with our new prompt structure
+      const diagnosticQuery: string = 
+        'Provide a comprehensive differential diagnosis based on the patient data';
+  
+      // Delegate to performDeepResearch with enhanced options
+      const result = await this.performDeepResearch(diagnosticQuery, enhancedOptions);
+      
+      // Validate the result
+      if (!this.isValidResearchResult(result)) {
+        methodLogger.warn('Invalid research result format received', {
+          hasText: !!result.text,
+          hasSources: Array.isArray(result.sources),
+          hasKeyFindings: Array.isArray(result.keyFindings),
+          resultType: typeof result
+        });
+        
+        throw new ExternalServiceError({
+          message: 'Invalid medical diagnosis result format',
+          service: 'Perplexity',
+          code: 'INVALID_RESULT_FORMAT',
+          data: { 
+            validationErrors: this.getResearchResultValidationErrors(result)
+          }
+        });
+      }
+      
+      methodLogger.info('Medical diagnosis completed successfully', {
+        responseLength: result.text.length,
+        sourcesCount: result.sources?.length || 0,
+        keyFindingsCount: result.keyFindings?.length || 0
+      });
+      
+      return result;
+    } catch (error) {
+      // Log the error with details
+      methodLogger.error('Medical diagnosis failed', {
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      }, error);
+      
+      // If it's already an ApplicationError, rethrow
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+      
+      // Otherwise wrap in an ExternalServiceError
+      throw new ExternalServiceError({
+        message: 'Medical diagnosis failed',
+        service: 'Perplexity',
+        code: 'MEDICAL_DIAGNOSIS_FAILED',
+        data: {
+          query,
+          patientDataLength: patientData.length
+        },
+        cause: error
+      });
     }
-
-    // Use a specialized query format for medical diagnosis that works with our new prompt structure
-    const diagnosticQuery =
-      'Provide a comprehensive differential diagnosis based on the patient data'
-
-    return this.performDeepResearch(diagnosticQuery, enhancedOptions)
+  }
+  
+  /**
+   * Type guard to validate research result
+   * @param value The value to check
+   * @returns True if value is a valid ResearchResult
+   */
+  private isValidResearchResult(value: unknown): value is ResearchResult {
+    if (!value || typeof value !== 'object') return false;
+    
+    const result = value as Record<string, unknown>;
+    
+    // Check required fields
+    const hasValidText = typeof result.text === 'string' && result.text.length > 0;
+    const hasValidSources = Array.isArray(result.sources);
+    const hasValidKeyFindings = Array.isArray(result.keyFindings);
+    
+    // Check timestamp (optional but should be a valid date if present)
+    const hasValidTimestamp = result.timestamp === undefined || 
+      result.timestamp instanceof Date ||
+      (typeof result.timestamp === 'string' && !isNaN(Date.parse(result.timestamp as string)));
+    
+    return hasValidText && hasValidSources && hasValidKeyFindings && hasValidTimestamp;
+  }
+  
+  /**
+   * Get validation errors for research result
+   * @param value The value to check
+   * @returns Object with validation errors
+   */
+  private getResearchResultValidationErrors(value: unknown): Record<string, string> {
+    const errors: Record<string, string> = {};
+    
+    if (!value || typeof value !== 'object') {
+      return { value: 'Research result must be an object' };
+    }
+    
+    const result = value as Record<string, unknown>;
+    
+    // Check required fields
+    if (typeof result.text !== 'string' || result.text.length === 0) {
+      errors.text = 'Research text must be a non-empty string';
+    }
+    
+    if (!Array.isArray(result.sources)) {
+      errors.sources = 'Sources must be an array';
+    }
+    
+    if (!Array.isArray(result.keyFindings)) {
+      errors.keyFindings = 'Key findings must be an array';
+    }
+    
+    // Check timestamp
+    if (result.timestamp !== undefined && 
+        !(result.timestamp instanceof Date) && 
+        !(typeof result.timestamp === 'string' && !isNaN(Date.parse(result.timestamp as string)))) {
+      errors.timestamp = 'Timestamp must be a valid date';
+    }
+    
+    return errors;
   }
 
   /**
@@ -1128,5 +1277,11 @@ ${formatInstructions}`,
   }
 }
 
+// Create singleton instance
+const perplexityServiceInstance = new PerplexityService()
+
+// Register with service registry
+serviceRegistry.register('perplexity', perplexityServiceInstance)
+
 // Export singleton instance
-export const perplexityService = new PerplexityService()
+export const perplexityService = perplexityServiceInstance

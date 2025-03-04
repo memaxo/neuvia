@@ -1,4 +1,4 @@
-export type { Database } from '@/lib/supabase'
+export type { Database } from '@/lib/types/database'
 export type { TypedSupabaseClient } from './types'
 export {
   createServerClient,

@@ -6,15 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
-import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
-
-// Validation schema for message creation
-const SendMessageSchema = z.object({
-  content: z.string().min(1, "Message content can't be empty"),
-  attachments: z.array(z.string()).optional(),
-  metadata: z.record(z.any()).optional()
-})
+import { withZodValidation, validateWithZod } from '@/lib/api/middleware/zod-validation'
+import { CreateMessageSchema } from '@/lib/schemas/chat'
+import { isChatMessage } from '@/lib/types/chat'
+import { ValidationError, zodErrorToValidationError } from '@/lib/errors'
 
 /**
  * GET /api/chat/[chatId]/messages
@@ -134,18 +130,13 @@ export async function POST(
       )
     }
     
-    // Parse and validate request body
-    const body = await req.json()
-    const validatedData = SendMessageSchema.safeParse(body)
-    
-    if (!validatedData.success) {
-      return NextResponse.json(
-        { error: 'Validation Error', message: validatedData.error.errors },
-        { status: 422 }
-      )
-    }
-    
-    const { content, attachments = [], metadata = {} } = validatedData.data
+    // We'll use our withZodValidation middleware to handle all this
+    try {
+      const body = await req.json()
+      const validatedData = validateWithZod(CreateMessageSchema, body, 'Invalid message format')
+      
+      const { content, metadata = {} } = validatedData
+      // Note: attachments are now part of metadata in our new schema
     const chatId = params.chatId
     const userId = session.user.id
     
@@ -176,7 +167,7 @@ export async function POST(
         role: 'user',
         content,
         user_id: userId,
-        attachments,
+        attachments: metadata.attachments || [],
         metadata,
         created_at: now
       })
@@ -219,33 +210,55 @@ export async function POST(
       // We'll continue even if the response fails to save
     }
     
+    // Create message objects with proper structure
+    const userMessage = {
+      id: messageId,
+      content,
+      role: 'user',
+      createdAt: now,
+      metadata
+    };
+    
+    const assistantMessage = {
+      id: responseId,
+      content: responseContent,
+      role: 'assistant',
+      createdAt: new Date().toISOString(),
+      metadata: {
+        isAutomated: true
+      }
+    };
+    
+    // Validate message objects using our type guards
+    if (!isChatMessage(userMessage)) {
+      console.error('Invalid user message format:', userMessage);
+    }
+    
+    if (!isChatMessage(assistantMessage)) {
+      console.error('Invalid assistant message format:', assistantMessage);
+    }
+    
     // Return successful response
     return NextResponse.json({
       success: true,
       data: {
         messageId,
         chatId,
-        message: {
-          id: messageId,
-          content,
-          role: 'user',
-          createdAt: now,
-          metadata
-        },
-        response: {
-          id: responseId,
-          content: responseContent,
-          role: 'assistant',
-          createdAt: new Date().toISOString(),
-          metadata: {
-            isAutomated: true
-          }
-        }
+        message: userMessage,
+        response: assistantMessage
       },
       timestamp: new Date().toISOString()
     })
   } catch (error) {
     console.error('Unexpected error in sending message:', error)
+    
+    if (error instanceof ValidationError) {
+      return NextResponse.json(
+        { error: error.code, message: error.message, details: error.data },
+        { status: error.statusCode }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Server Error', message: 'An unexpected error occurred.' },
       { status: 500 }

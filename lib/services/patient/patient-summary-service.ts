@@ -3,7 +3,7 @@ import type { Json } from '@/lib/supabase'
 import { createServerClient } from '@/lib/supabase/clients'
 import { google } from '@ai-sdk/google'
 import { openai } from '@ai-sdk/openai'
-import { ApplicationError, ExternalServiceError, NotFoundError, SystemError } from '@/lib/errors'
+import { ApplicationError, ExternalServiceError, NotFoundError, SystemError, ValidationError } from '@/lib/errors'
 import logger from '@/lib/logger'
 /**
  * Patient Summary Service
@@ -170,95 +170,162 @@ export class PatientSummaryService {
    * @param documentType Document type information
    * @param documentDate Document date
    * @returns Structured extraction of essential information
+   * @throws {ExternalServiceError} If extraction or parsing fails
+   * @throws {ValidationError} If input parameters are invalid
    */
   async extractDocumentEssentials(
-    documentId: string,
+    documentId: UUID,
     documentContent: string,
     documentType: DocumentType,
     documentDate: string
   ): Promise<DocumentExtraction> {
+    // Validate inputs using type predicates
+    if (!documentId || typeof documentId !== 'string') {
+      throw new ValidationError({
+        message: 'Valid document ID is required',
+        code: 'INVALID_DOCUMENT_ID',
+        data: { documentId }
+      });
+    }
+    
+    if (!documentContent || typeof documentContent !== 'string') {
+      throw new ValidationError({
+        message: 'Document content is required',
+        code: 'MISSING_DOCUMENT_CONTENT',
+        data: { documentId, contentLength: documentContent?.length || 0 }
+      });
+    }
+    
+    if (!this.isValidDocumentType(documentType)) {
+      throw new ValidationError({
+        message: 'Valid document type is required',
+        code: 'INVALID_DOCUMENT_TYPE',
+        data: { documentId, documentType }
+      });
+    }
+    
+    if (!documentDate || typeof documentDate !== 'string') {
+      throw new ValidationError({
+        message: 'Valid document date is required',
+        code: 'INVALID_DOCUMENT_DATE',
+        data: { documentId, documentDate }
+      });
+    }
+    
+    // Create logger with metadata for this operation
     const moduleLogger = logger.withMetadata({
       module: 'PatientSummaryService',
       method: 'extractDocumentEssentials',
       documentId,
       documentType: documentType.type
-    })
+    });
 
     try {
       moduleLogger.info('Extracting essential information from document', {
         documentCategory: documentType.category,
         documentLength: documentContent.length
-      })
+      });
       
       // Use Gemini model from the AI SDK
-      const model = google('gemini-2.0-flash-exp')
+      const model = google('gemini-2.0-flash-exp');
 
       // Format the extraction prompt
-      const prompt = DOCUMENT_EXTRACTION_PROMPT.replace(
-        '{documentType}',
-        documentType.type
-      )
+      const prompt = DOCUMENT_EXTRACTION_PROMPT
+        .replace('{documentType}', documentType.type)
         .replace('{documentCategory}', documentType.category)
         .replace('{documentDate}', documentDate)
-        .replace('{documentContent}', documentContent)
+        .replace('{documentContent}', documentContent);
 
-      // Call the Gemini model
+      // Call the Gemini model with explicit typing
       const response = await generateText({
         model,
         prompt,
         maxTokens: 2048,
         temperature: 0.3,
-      })
+      });
 
-      // Parse the response JSON
-      let extraction: any
+      // Parse the response JSON with stronger type checking
+      let extraction: Record<string, any>;
       try {
-        extraction = JSON.parse(response.text)
+        // First verify we got a response
+        if (!response || !response.text) {
+          throw new Error('Empty response from Gemini');
+        }
+        
+        // Parse as JSON
+        const parsed = JSON.parse(response.text);
+        
+        // Verify it's an object
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Response is not a valid JSON object');
+        }
+        
+        extraction = parsed;
       } catch (parseError) {
         moduleLogger.error('Failed to parse Gemini extraction response', 
           { responseLength: response.text.length }, 
           parseError
-        )
+        );
         
         throw new ExternalServiceError({
           message: 'Failed to parse document extraction response',
           service: 'Gemini',
           code: 'PARSE_ERROR',
-          data: { documentId, responseLength: response.text.length },
+          data: { 
+            documentId, 
+            responseLength: response.text.length,
+            responsePreview: response.text.substring(0, 100) + '...'
+          },
           cause: parseError
-        })
+        });
       }
 
-      // Format the extraction with proper typing
+      // Format the extraction with proper typing and validation
       const result: DocumentExtraction = {
         documentId,
         documentType,
         documentDate,
-        sections: extraction.sections || {},
+        sections: typeof extraction.sections === 'object' && extraction.sections !== null 
+          ? extraction.sections 
+          : {},
         metadata: {
-          extractionConfidence:
-            extraction.metadata?.extractionConfidence || 0.7,
+          extractionConfidence: typeof extraction.metadata?.extractionConfidence === 'number'
+            ? extraction.metadata.extractionConfidence
+            : 0.7,
           extractionDate: new Date().toISOString(),
         },
+      };
+
+      // Validate the extraction result
+      if (!this.isValidDocumentExtraction(result)) {
+        throw new ExternalServiceError({
+          message: 'Invalid extraction result format',
+          service: 'Gemini',
+          code: 'INVALID_EXTRACTION_FORMAT',
+          data: { 
+            documentId,
+            validationErrors: this.getExtractionValidationErrors(result)
+          }
+        });
       }
 
       moduleLogger.info('Document extraction successful', {
-        sectionCount: Object.keys(extraction.sections || {}).length,
-        confidence: extraction.metadata?.extractionConfidence || 0.7
-      })
+        sectionCount: Object.keys(result.sections).length,
+        confidence: result.metadata.extractionConfidence
+      });
 
-      return result
+      return result;
     } catch (error) {
       if (error instanceof ApplicationError) {
         // Already formatted appropriately, just re-throw
-        throw error
+        throw error;
       }
       
       moduleLogger.error(
-        `Failed to extract essentials from document`,
+        'Failed to extract essentials from document',
         { documentId, documentType: documentType.type },
         error
-      )
+      );
       
       throw new ExternalServiceError({
         message: 'Failed to extract document information',
@@ -266,8 +333,119 @@ export class PatientSummaryService {
         code: 'EXTRACTION_FAILED',
         data: { documentId, documentType: documentType.type },
         cause: error
-      })
+      });
     }
+  }
+  
+  /**
+   * Type guard to validate a document type
+   * @param value The value to check
+   * @returns True if value is a valid DocumentType
+   */
+  private isValidDocumentType(value: unknown): value is DocumentType {
+    if (!value || typeof value !== 'object') return false;
+    
+    const obj = value as Record<string, unknown>;
+    
+    return (
+      typeof obj.category === 'string' && 
+      typeof obj.type === 'string'
+    );
+  }
+  
+  /**
+   * Type guard to validate document extraction
+   * @param value The value to check
+   * @returns True if value is a valid DocumentExtraction
+   */
+  private isValidDocumentExtraction(value: unknown): value is DocumentExtraction {
+    if (!value || typeof value !== 'object') return false;
+    
+    const obj = value as Record<string, unknown>;
+    
+    // Check required fields
+    const hasValidDocumentId = typeof obj.documentId === 'string';
+    const hasValidDocumentType = this.isValidDocumentType(obj.documentType);
+    const hasValidDocumentDate = typeof obj.documentDate === 'string';
+    
+    // Check sections
+    const hasValidSections = typeof obj.sections === 'object' && obj.sections !== null;
+    
+    // Check metadata
+    const hasValidMetadata = typeof obj.metadata === 'object' && obj.metadata !== null;
+    
+    if (hasValidMetadata) {
+      const metadata = obj.metadata as Record<string, unknown>;
+      
+      // Check metadata fields
+      const hasValidConfidence = typeof metadata.extractionConfidence === 'number' && 
+        metadata.extractionConfidence >= 0 && 
+        metadata.extractionConfidence <= 1;
+        
+      const hasValidDate = typeof metadata.extractionDate === 'string';
+      
+      if (!hasValidConfidence || !hasValidDate) {
+        return false;
+      }
+    }
+    
+    return (
+      hasValidDocumentId &&
+      hasValidDocumentType &&
+      hasValidDocumentDate &&
+      hasValidSections &&
+      hasValidMetadata
+    );
+  }
+  
+  /**
+   * Get validation errors for document extraction
+   * @param value The value to check
+   * @returns Object with validation errors
+   */
+  private getExtractionValidationErrors(value: unknown): Record<string, string> {
+    const errors: Record<string, string> = {};
+    
+    if (!value || typeof value !== 'object') {
+      return { value: 'Extraction must be an object' };
+    }
+    
+    const obj = value as Record<string, unknown>;
+    
+    // Check required fields
+    if (typeof obj.documentId !== 'string') {
+      errors.documentId = 'Document ID must be a string';
+    }
+    
+    if (!this.isValidDocumentType(obj.documentType)) {
+      errors.documentType = 'Document type must be a valid object with category and type';
+    }
+    
+    if (typeof obj.documentDate !== 'string') {
+      errors.documentDate = 'Document date must be a string';
+    }
+    
+    if (typeof obj.sections !== 'object' || obj.sections === null) {
+      errors.sections = 'Sections must be an object';
+    }
+    
+    if (typeof obj.metadata !== 'object' || obj.metadata === null) {
+      errors.metadata = 'Metadata must be an object';
+    } else {
+      const metadata = obj.metadata as Record<string, unknown>;
+      
+      if (typeof metadata.extractionConfidence !== 'number' || 
+          metadata.extractionConfidence < 0 || 
+          metadata.extractionConfidence > 1) {
+        errors['metadata.extractionConfidence'] = 'Extraction confidence must be a number between 0 and 1';
+      }
+      
+      if (typeof metadata.extractionDate !== 'string') {
+        errors['metadata.extractionDate'] = 'Extraction date must be a string';
+      }
+    }
+    
+    return errors;
   }
 
   /**

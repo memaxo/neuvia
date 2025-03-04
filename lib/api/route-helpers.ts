@@ -8,48 +8,69 @@ import { withErrorHandling, getRequestId } from '@/lib/api-response'
 import { validateRequest } from './validation'
 import logger from '@/lib/logger'
 
-// Type for HTTP methods
-type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch'
+// Import HttpMethod type from validation module
+import { HttpMethod } from './validation'
 
 /**
- * Options for creating an API route handler
+ * Configuration options for creating a standardized API route handler
  */
-interface CreateApiRouteOptions {
+export interface CreateApiRouteOptions {
   /**
    * Path in the OpenAPI specification
+   * This should match a valid path in your OpenAPI schema document
    */
   openApiPath: string
   
   /**
-   * HTTP method
+   * HTTP method for this endpoint
    */
   method: HttpMethod
   
   /**
    * Whether to validate the request against the OpenAPI schema
+   * @default true
    */
   validate?: boolean
   
   /**
-   * Whether to log request and response
+   * Whether to enable request/response logging
+   * @default true
    */
   logging?: boolean
   
   /**
-   * Additional metadata for logging
+   * Additional metadata to include in logs
+   * This can help with filtering logs for specific endpoints
    */
   logMetadata?: Record<string, any>
 }
 
 /**
  * Create a standardized API route handler with OpenAPI validation
- * @param handler The route handler function
- * @param options Options for the route handler
+ * 
+ * This helper creates a NextJS route handler with consistent validation,
+ * error handling, and logging for all API endpoints.
+ * 
+ * @param handler The route handler function that implements the business logic
+ * @param options Configuration options for the route
+ * @returns NextJS-compatible route handler function
+ * 
+ * @example
+ * export const GET = createApiRoute(
+ *   async (req) => {
+ *     const data = await getPatientData(req.params.id);
+ *     return apiSuccess(data);
+ *   },
+ *   {
+ *     openApiPath: '/api/patients/{id}',
+ *     method: 'get'
+ *   }
+ * );
  */
 export function createApiRoute(
   handler: (req: NextRequest) => Promise<Response>,
   options: CreateApiRouteOptions
-) {
+): (req: NextRequest) => Promise<Response> {
   const { openApiPath, method, validate = true, logging = true, logMetadata = {} } = options
   
   return async function routeHandler(req: NextRequest): Promise<Response> {
