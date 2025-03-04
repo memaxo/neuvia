@@ -4,7 +4,7 @@
  */
 import type { HttpClient, RequestParams } from "../models/http-client";
 import { ContentType } from "../models/http-client"
-import type { WorkflowStep, ProcessingPhase } from "@/lib/workflow/types";
+import type { WorkflowStep, ProcessingPhase } from "@/lib/types/workflow";
 
 export class Workflows<SecurityDataType = unknown> {
   http: HttpClient<SecurityDataType>

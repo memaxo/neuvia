@@ -1,80 +1,102 @@
 /**
- * Verification-related schemas for the OpenAPI specification
+ * @fileoverview OpenAPI path definitions for verification-related endpoints,
+ * aligned with the canonical types from `lib/types/verification.ts`.
  * 
- * These schemas define the structure of verification objects used in the API,
- * closely aligning with the existing TypeScript types in verification modules
+ * Property names and status values must match "pending", "inProgress",
+ * "completed", or "failed" exactly, along with the updated VerificationItem.
  */
+
 import { OpenAPIV3 } from 'openapi-types'
 
+/**
+ * Updated verification schemas following the new canonical definitions.
+ * Where possible, examples and descriptions have been aligned with
+ * the documented interface in `lib/types/verification.ts`.
+ */
 export const verificationSchemas: Record<string, OpenAPIV3.SchemaObject> = {
   /**
-   * Verification status type
-   */
-  VerificationStatusType: {
-    type: 'string',
-    enum: ['pending', 'in_progress', 'completed', 'failed'],
-    description: 'Current status of the verification process'
-  },
-
-  /**
-   * Verification status
+   * VerificationStatus schema referencing the four states
    */
   VerificationStatus: {
-    type: 'object',
-    required: ['isVerified', 'verifiedAt'],
-    properties: {
-      isVerified: {
-        type: 'boolean',
-        description: 'Whether the item is verified'
-      },
-      verifiedAt: {
-        type: 'string',
-        format: 'date-time',
-        description: 'When the verification occurred (ISO string format)'
-      },
-      corrections: {
-        type: 'object',
-        additionalProperties: {
-          type: 'string'
-        },
-        description: 'Optional corrections to the original data'
-      },
-      verifiedBy: {
-        type: 'string',
-        description: 'User who performed the verification (if applicable)'
-      }
-    }
+    type: 'string',
+    enum: ['pending', 'inProgress', 'completed', 'failed'],
+    description: 'Overall verification status of the content',
+    example: 'inProgress',
   },
 
   /**
-   * Verification item change history entry
+   * CorrectionEntry used within verification metadata
    */
-  VerificationChangeHistoryEntry: {
+  CorrectionEntry: {
+    type: 'object',
+    required: ['id', 'text', 'timestamp'],
+    properties: {
+      id: {
+        type: 'string',
+        description: 'Unique identifier for this correction',
+      },
+      text: {
+        type: 'string',
+        description: 'The text of the correction',
+      },
+      timestamp: {
+        type: 'string',
+        format: 'date-time',
+        description: 'When the correction was submitted',
+      },
+      userId: {
+        type: 'string',
+        description: 'Who made the correction (if applicable)',
+      },
+    },
+    example: {
+      id: 'corr-123',
+      text: 'Patient name should be updated to John Smith',
+      timestamp: '2025-03-01T12:34:56.000Z',
+      userId: 'user-123',
+    },
+  },
+
+  /**
+   * VersionHistoryEntry used within a VerificationItem's changeHistory
+   */
+  VersionHistoryEntry: {
     type: 'object',
     required: ['id', 'content', 'timestamp'],
     properties: {
       id: {
         type: 'string',
-        description: 'Version ID'
+        description: 'Unique version ID',
       },
       content: {
         type: 'string',
-        description: 'Content at this version'
+        description: 'The version of content at this point',
       },
       timestamp: {
         type: 'string',
         format: 'date-time',
-        description: 'Timestamp of the change'
+        description: 'Timestamp of creation',
       },
       userId: {
         type: 'string',
-        description: 'User who made the change (if applicable)'
-      }
-    }
+        description: 'Which user (if any) made this version',
+      },
+      reason: {
+        type: 'string',
+        description: 'Optional reason for the change',
+      },
+    },
+    example: {
+      id: 'ver-abc',
+      content: 'Original content about medication X',
+      timestamp: '2025-03-01T10:00:00.000Z',
+      userId: 'user-abc',
+      reason: 'Initial extraction',
+    },
   },
 
   /**
-   * Verification item
+   * VerificationItem: updated canonical shape
    */
   VerificationItem: {
     type: 'object',
@@ -85,116 +107,71 @@ export const verificationSchemas: Record<string, OpenAPIV3.SchemaObject> = {
       'currentContent',
       'isVerified',
       'isModified',
-      'changeHistory'
+      'changeHistory',
     ],
     properties: {
       id: {
         type: 'string',
-        description: 'Unique identifier for this verification item'
+        description: 'Unique identifier for this verification item',
       },
       title: {
         type: 'string',
-        description: 'Title/label for this verification item'
+        description: 'Title or label describing the item',
       },
       description: {
         type: 'string',
-        description: 'Description of what needs to be verified'
+        description: 'Optional descriptive text about what needs verification',
       },
       originalContent: {
         type: 'string',
-        description: 'The original content extracted from the document'
+        description: 'The unmodified content extracted from the source',
       },
       currentContent: {
         type: 'string',
-        description: 'The current content after any corrections'
+        description: 'The user-corrected or current content',
       },
       isVerified: {
         type: 'boolean',
-        description: 'Whether this item has been verified by a user'
+        description: 'Whether the user has verified this item',
       },
       isModified: {
         type: 'boolean',
-        description: 'Whether this item has been modified during verification'
+        description: 'Whether this item differs from its originalContent',
       },
       changeHistory: {
         type: 'array',
-        items: {
-          $ref: '#/components/schemas/VerificationChangeHistoryEntry'
-        },
-        description: 'History of content changes'
+        items: { $ref: '#/components/schemas/VersionHistoryEntry' },
+        description: 'History of changes to this item',
       },
       metadata: {
         type: 'object',
         additionalProperties: true,
-        description: 'Metadata for this verification item'
-      }
-    }
-  },
-
-  /**
-   * Verification options
-   */
-  VerificationOptions: {
-    type: 'object',
-    required: ['isRequired'],
-    properties: {
-      isRequired: {
-        type: 'boolean',
-        description: 'Whether verification is required'
+        description: 'Arbitrary metadata (confidence, location, etc.)',
       },
-      timeoutMs: {
-        type: 'integer',
-        minimum: 0,
-        description: 'Timeout for verification (in milliseconds)'
-      },
-      autoApproveOnTimeout: {
-        type: 'boolean',
-        description: 'Whether to auto-approve after timeout'
-      },
-      userId: {
-        type: 'string',
-        description: 'User ID performing verification'
-      },
-      metadata: {
-        type: 'object',
-        additionalProperties: true,
-        description: 'Additional metadata'
-      },
-      items: {
-        type: 'array',
-        items: {
-          $ref: '#/components/schemas/VerificationItem'
+    },
+    example: {
+      id: 'item-001',
+      title: 'Patient Name',
+      description: 'Verify the patient name is correct',
+      originalContent: 'Jon Smythe',
+      currentContent: 'John Smith',
+      isVerified: false,
+      isModified: true,
+      changeHistory: [
+        {
+          id: 'ver-01',
+          content: 'Jon Smythe',
+          timestamp: '2025-03-01T09:00:00Z',
         },
-        description: 'Optional verification items to include'
-      }
-    }
+      ],
+      metadata: {
+        confidence: 0.7,
+      },
+    },
   },
 
   /**
-   * Correction entry in verification metadata
-   */
-  CorrectionEntry: {
-    type: 'object',
-    required: ['id', 'text', 'timestamp'],
-    properties: {
-      id: {
-        type: 'string',
-        description: 'Correction ID'
-      },
-      text: {
-        type: 'string',
-        description: 'Correction text'
-      },
-      timestamp: {
-        type: 'string',
-        format: 'date-time',
-        description: 'Timestamp when correction was made'
-      }
-    }
-  },
-
-  /**
-   * Verification metadata
+   * VerificationMetadata: top-level metadata about the verification process
    */
   VerificationMetadata: {
     type: 'object',
@@ -203,407 +180,145 @@ export const verificationSchemas: Record<string, OpenAPIV3.SchemaObject> = {
       'originalSummaryId',
       'currentVersionId',
       'correctionCount',
-      'corrections'
+      'corrections',
     ],
     properties: {
       verificationStatus: {
-        $ref: '#/components/schemas/VerificationStatusType',
-        description: 'Current verification status'
+        $ref: '#/components/schemas/VerificationStatus',
       },
       originalSummaryId: {
         type: 'string',
-        description: 'ID of the original summary'
+        description: 'ID of the original summary/document being verified',
       },
       currentVersionId: {
         type: 'string',
-        description: 'ID of the current version being verified'
+        description: 'ID of the current version under verification',
       },
       correctionCount: {
         type: 'integer',
         minimum: 0,
-        description: 'Number of corrections applied'
+        description: 'How many corrections have been applied so far',
       },
       verifiedAt: {
         type: 'string',
         format: 'date-time',
-        description: 'Timestamp when the summary was verified'
+        description: 'When the content was fully verified (if completed)',
       },
       verifiedBy: {
         type: 'string',
-        description: 'User ID who verified the summary'
+        description: 'Who verified the content (if known)',
       },
       corrections: {
         type: 'array',
-        items: {
-          $ref: '#/components/schemas/CorrectionEntry'
-        },
-        description: 'History of corrections applied'
+        items: { $ref: '#/components/schemas/CorrectionEntry' },
+        description: 'List of correction entries that have been applied',
       },
       extractedData: {
         type: 'object',
+        description: 'Raw or structured data extracted for verification',
         additionalProperties: true,
-        description: 'Extracted document data'
       },
       startedAt: {
         type: 'string',
         format: 'date-time',
-        description: 'Timestamp when verification started'
+        description: 'When verification began',
       },
       lastUpdated: {
         type: 'string',
         format: 'date-time',
-        description: 'Timestamp of last update'
-      }
-    }
-  },
-
-  /**
-   * Message metadata for verification
-   */
-  MessageMetadata: {
-    type: 'object',
-    properties: {
-      isSummary: {
-        type: 'boolean',
-        description: 'Whether this message contains a summary'
+        description: 'When verification metadata was last updated',
       },
-      isVerificationRequest: {
-        type: 'boolean',
-        description: 'Whether this message is requesting verification'
-      },
-      isCorrection: {
-        type: 'boolean',
-        description: 'Whether this message is a correction to a summary'
-      },
-      isProgress: {
-        type: 'boolean',
-        description: 'Whether this message is a progress update'
-      },
-      summaryVersionId: {
-        type: 'string',
-        description: 'ID of the summary version this message refers to'
-      },
-      progressValue: {
+      confidenceScore: {
         type: 'number',
-        minimum: 0,
-        maximum: 100,
-        description: 'Progress value (0-100) for progress messages'
+        description: 'Optional overall confidence measure (0-1)',
       },
-      progressPhase: {
+      rejectionReason: {
         type: 'string',
-        description: 'Current phase for progress messages'
+        description: 'If failed, why verification was rejected',
       },
-      verificationMetadata: {
-        $ref: '#/components/schemas/VerificationMetadata',
-        description: 'Reference to verification metadata if applicable'
-      }
     },
-    additionalProperties: true
+    example: {
+      verificationStatus: 'inProgress',
+      originalSummaryId: 'sum-123',
+      currentVersionId: 'sum-456',
+      correctionCount: 2,
+      corrections: [
+        {
+          id: 'corr-001',
+          text: 'Change name from Smythe to Smith',
+          timestamp: '2025-03-01T11:15:00Z',
+        },
+      ],
+      startedAt: '2025-03-01T10:00:00Z',
+      lastUpdated: '2025-03-01T11:30:00Z',
+    },
   },
 
   /**
-   * Verification result
+   * VerificationResult: the final outcome of a verification workflow
    */
   VerificationResult: {
     type: 'object',
-    required: [
-      'isCompleted',
-      'isApproved',
-      'items',
-      'verificationMetadata'
-    ],
+    required: ['isCompleted', 'isApproved', 'items', 'completedAt', 'verificationMetadata'],
     properties: {
       isCompleted: {
         type: 'boolean',
-        description: 'Whether verification was completed'
+        description: 'Whether the verification process has ended',
       },
       isApproved: {
         type: 'boolean',
-        description: 'Whether the content was approved'
+        description: 'Whether the content was accepted (true) or rejected (false)',
       },
       items: {
         type: 'array',
-        items: {
-          $ref: '#/components/schemas/VerificationItem'
-        },
-        description: 'List of verification items with their verification status'
+        items: { $ref: '#/components/schemas/VerificationItem' },
+        description: 'All items that were verified in this session',
       },
       completedAt: {
         type: 'string',
         format: 'date-time',
-        description: 'Timestamp of verification completion'
+        description: 'When verification was completed',
       },
       completedBy: {
         type: 'string',
-        description: 'User who completed verification'
+        description: 'User who completed the process (if any)',
       },
       verificationTime: {
         type: 'integer',
         minimum: 0,
-        description: 'Time taken for verification (in milliseconds)'
+        description: 'Total time spent on verification (in ms)',
+      },
+      changeSummary: {
+        type: 'object',
+        properties: {
+          totalItems: { type: 'integer', minimum: 0 },
+          modifiedItems: { type: 'integer', minimum: 0 },
+          approvedWithoutChanges: { type: 'integer', minimum: 0 },
+          failedItems: { type: 'integer', minimum: 0 },
+        },
+        description: 'Short summary of changes made during verification',
+      },
+      rejectionReason: {
+        type: 'string',
+        description: 'If not approved, a reason for the rejection',
       },
       verificationMetadata: {
         $ref: '#/components/schemas/VerificationMetadata',
-        description: 'Detailed metadata about the verification process'
-      }
-    }
+      },
+    },
+    example: {
+      isCompleted: true,
+      isApproved: false,
+      items: [],
+      completedAt: '2025-03-02T09:00:00Z',
+      completedBy: 'user-456',
+      verificationMetadata: {
+        verificationStatus: 'failed',
+        originalSummaryId: 'sum-123',
+        currentVersionId: 'sum-456',
+        correctionCount: 3,
+        corrections: [],
+      },
+    },
   },
-
-  /**
-   * Verification message
-   */
-  VerificationMessage: {
-    type: 'object',
-    required: [
-      'id',
-      'content',
-      'role',
-      'metadata',
-      'createdAt'
-    ],
-    properties: {
-      id: {
-        type: 'string',
-        description: 'Message ID'
-      },
-      content: {
-        type: 'string',
-        description: 'Message content'
-      },
-      role: {
-        type: 'string',
-        enum: ['system', 'user', 'assistant'],
-        description: 'Message role'
-      },
-      isVerificationRequest: {
-        type: 'boolean',
-        description: 'Whether this message is a verification request'
-      },
-      isSummary: {
-        type: 'boolean',
-        description: 'Whether this message contains summary content'
-      },
-      isCorrection: {
-        type: 'boolean',
-        description: 'Whether this message is a correction'
-      },
-      metadata: {
-        $ref: '#/components/schemas/MessageMetadata',
-        description: 'Metadata for this message'
-      },
-      createdAt: {
-        type: 'string',
-        format: 'date-time',
-        description: 'Creation timestamp'
-      }
-    }
-  },
-
-  /**
-   * Verified document
-   */
-  VerifiedDocument: {
-    type: 'object',
-    required: [
-      'id',
-      'extractedDocumentId',
-      'createdAt',
-      'documentType',
-      'verificationItems',
-      'verifiedData',
-      'originalData',
-      'verificationStatus'
-    ],
-    properties: {
-      id: {
-        type: 'string',
-        description: 'Unique identifier'
-      },
-      extractedDocumentId: {
-        type: 'string',
-        description: 'The original extracted document ID'
-      },
-      createdAt: {
-        type: 'string',
-        format: 'date-time',
-        description: 'Creation timestamp'
-      },
-      patientId: {
-        type: 'string',
-        format: 'uuid',
-        description: 'Patient ID'
-      },
-      documentType: {
-        $ref: '#/components/schemas/DocumentType',
-        description: 'Document type information'
-      },
-      verificationItems: {
-        type: 'array',
-        items: {
-          $ref: '#/components/schemas/VerificationItem'
-        },
-        description: 'Verification items'
-      },
-      verifiedData: {
-        type: 'object',
-        additionalProperties: true,
-        description: 'The verified data (after corrections)'
-      },
-      originalData: {
-        type: 'object',
-        additionalProperties: true,
-        description: 'Original extraction data'
-      },
-      verificationStatus: {
-        $ref: '#/components/schemas/VerificationStatus',
-        description: 'Overall verification status'
-      },
-      _uiState: {
-        type: 'object',
-        properties: {
-          isUIVerificationComplete: {
-            type: 'boolean',
-            description: 'Whether all verification steps are completed in the UI'
-          },
-          uiVerifiedAt: {
-            type: 'string',
-            format: 'date-time',
-            description: 'Timestamp when the verification was completed in the UI'
-          }
-        },
-        description: 'Optional UI state for verification tracking'
-      }
-    }
-  },
-
-  /**
-   * Start verification request
-   */
-  StartVerificationRequest: {
-    type: 'object',
-    required: ['content'],
-    properties: {
-      content: {
-        type: 'string',
-        description: 'Content to be verified'
-      },
-      options: {
-        $ref: '#/components/schemas/VerificationOptions',
-        description: 'Verification options'
-      }
-    }
-  },
-
-  /**
-   * Start verification response
-   */
-  StartVerificationResponse: {
-    type: 'object',
-    required: ['success', 'data', 'timestamp'],
-    properties: {
-      success: {
-        type: 'boolean',
-        example: true,
-        description: 'Indicates successful operation'
-      },
-      data: {
-        type: 'object',
-        required: ['verificationId', 'items', 'status'],
-        properties: {
-          verificationId: {
-            type: 'string',
-            description: 'ID of the verification process'
-          },
-          items: {
-            type: 'array',
-            items: {
-              $ref: '#/components/schemas/VerificationItem'
-            },
-            description: 'Items that need verification'
-          },
-          status: {
-            $ref: '#/components/schemas/VerificationStatusType',
-            description: 'Current verification status'
-          },
-          metadata: {
-            $ref: '#/components/schemas/VerificationMetadata',
-            description: 'Verification metadata'
-          }
-        }
-      },
-      timestamp: {
-        type: 'string',
-        format: 'date-time',
-        description: 'Server timestamp of the response'
-      }
-    }
-  },
-
-  /**
-   * Submit correction request
-   */
-  SubmitCorrectionRequest: {
-    type: 'object',
-    required: ['correction', 'verificationId'],
-    properties: {
-      correction: {
-        type: 'string',
-        description: 'Correction text'
-      },
-      verificationId: {
-        type: 'string',
-        description: 'ID of the verification process'
-      },
-      itemId: {
-        type: 'string',
-        description: 'Optional ID of the specific verification item being corrected'
-      }
-    }
-  },
-
-  /**
-   * Complete verification request
-   */
-  CompleteVerificationRequest: {
-    type: 'object',
-    required: ['verificationId', 'isApproved'],
-    properties: {
-      verificationId: {
-        type: 'string',
-        description: 'ID of the verification process'
-      },
-      isApproved: {
-        type: 'boolean',
-        description: 'Whether the content is approved'
-      },
-      comments: {
-        type: 'string',
-        description: 'Optional comments about the verification'
-      }
-    }
-  },
-
-  /**
-   * Complete verification response
-   */
-  CompleteVerificationResponse: {
-    type: 'object',
-    required: ['success', 'data', 'timestamp'],
-    properties: {
-      success: {
-        type: 'boolean',
-        example: true,
-        description: 'Indicates successful operation'
-      },
-      data: {
-        $ref: '#/components/schemas/VerificationResult',
-        description: 'Verification result'
-      },
-      timestamp: {
-        type: 'string',
-        format: 'date-time',
-        description: 'Server timestamp of the response'
-      }
-    }
-  }
 }

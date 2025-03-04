@@ -24,7 +24,9 @@ const GenerateVerificationSchema = VerificationOptionsSchema.extend({
  */
 export async function POST(req: NextRequest) {
   return withZodValidation(GenerateVerificationSchema)(req, async (data) => {
+    const correlationId = generateCorrelationId()
     try {
+      // Pull relevant fields from data
       const { 
         document, 
         workflowId, 
@@ -34,82 +36,45 @@ export async function POST(req: NextRequest) {
         patientId,
         documentId,
         items,
-        options
+        options,
       } = data
-      
-      // Generate verification
-      const extractionResult = await extractPatientSummary(document, {
+
+      // Move main logic to service layer
+      const result = await verificationService.generateVerification({
+        document,
         workflowId,
         messageId,
         summaryId,
-        patientId,
-        documentId,
         options: {
           title,
-          ...options
-        }
+          ...options,
+        },
       })
-      
-      // Create verification result
-      if (extractionResult.summary && 
-          typeof extractionResult.structuredData === 'object') {
-        
-        // Convert extraction result to verification items
-        const verificationItems = items || 
-          Object.entries(extractionResult.structuredData).map(([key, value]) => ({
-            id: key,
-            title: key.replace(/([A-Z])/g, ' $1').trim(), // Convert camelCase to words
-            content: String(value)
-          }));
-        
-        // Build verification result
-        const verificationResult = {
-          isVerified: false, // Needs user verification
-          items: verificationItems.map(item => ({
-            id: item.id,
-            title: item.title,
-            content: item.content,
-            status: 'pending' as const
-          })),
-          metadata: {
-            verificationStatus: 'pending' as const,
-            correctionCount: 0,
-            documentId: extractionResult.documentId || documentId,
-            patientId: extractionResult.patientId || patientId
-          }
-        }
-        
-        // Validate with type guard
-        if (!isVerificationResult(verificationResult)) {
-          console.warn('Invalid verification result format', verificationResult)
-        }
-      }
-      
-      // Return success response
-      return apiSuccess({
-        summaryId: extractionResult.summaryId || summaryId,
-        summary: extractionResult.summary,
-        structuredData: extractionResult.structuredData,
-        documentId: extractionResult.documentId || documentId,
-        patientId: extractionResult.patientId || patientId
-      })
-    } catch (error) {
-      console.error('Error generating verification:', error)
-      
-      if (error instanceof ValidationError) {
-        return apiError({
-          message: error.message,
-          code: error.code,
-          errors: error.data,
-          status: error.statusCode
+
+      // If needed, adapt result to the final output shape
+      // The service call returns { success, data, ... }
+      if (!result.success) {
+        throw new VerificationError({
+          message: result.error?.message || 'Failed to generate verification',
+          data: { ...result.error?.details, correlationId },
         })
       }
-      
+
+      // If success, build the final JSON response
+      return apiSuccess({
+        summaryId: result.data.summaryId,
+        summary: result.data.summary,
+        structuredData: result.data.structuredData,
+        documentId: documentId,
+        patientId: patientId,
+      })
+    } catch (error) {
+      const errInfo = handleVerificationRouteError(error, correlationId, 'Failed to generate verification')
       return apiError({
-        message: error instanceof ApplicationError 
-          ? error.message
-          : 'Failed to generate verification',
-        status: error instanceof ApplicationError ? error.statusCode : 500
+        message: errInfo.message,
+        code: errInfo.code,
+        errors: errInfo.details,
+        status: errInfo.status,
       })
     }
   })

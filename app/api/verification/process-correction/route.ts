@@ -14,82 +14,44 @@ import { isVerificationResult } from '@/lib/types/verification'
  */
 export async function POST(req: NextRequest) {
   return withZodValidation(CorrectionSubmissionSchema)(req, async (data) => {
+    const correlationId = generateCorrelationId()
     try {
       const { verificationId, items } = data
-      
-      // Get the current summary from the first item for backwards compatibility
-      // (This adapts our new schema to work with the existing processing logic)
-      const correction = items.map(item => `${item.id}: ${item.correction}`).join('\n')
-      
-      // Find current summary for this verification
-      // This is a simplification - in a real implementation we'd fetch this from the database
-      const currentSummary = "Current patient summary text from database"
-      
-      // Process the correction
-      const correctionResult = await processPatientSummaryCorrection(
+
+      // Combine correction text from items
+      const correction = items.map((item) => `${item.id}: ${item.correction}`).join('\n')
+
+      // Let service handle the logic
+      const result = await verificationService.processCorrection({
         correction,
-        currentSummary,
-        {
-          workflowId: verificationId,
-          messageId: items[0].id,
-          isInternal: true
-        }
-      )
-      
-      // Validate result with type guard
-      if (correctionResult.summary && 
-          typeof correctionResult.structuredData === 'object') {
-        
-        // Build verification result in our standardized format
-        const verificationResult = {
-          isVerified: false, // Still in progress
-          items: items.map(item => ({
-            id: item.id,
-            title: `Item ${item.id}`,
-            content: item.correction,
-            status: 'needs_correction' as const,
-            correction: item.correction,
-            reason: item.reason
-          })),
-          metadata: {
-            verificationStatus: 'needs_correction' as const,
-            correctionCount: correctionResult.correctionCount || 1,
-            documentId: correctionResult.documentId,
-            patientId: correctionResult.patientId
-          }
-        }
-        
-        // Validate with type guard before returning
-        if (!isVerificationResult(verificationResult)) {
-          console.warn('Invalid verification result format', verificationResult)
-        }
-      }
-      
-      // Return success response
-      return apiSuccess({
-        summaryId: correctionResult.summaryId,
-        summary: correctionResult.summary,
-        structuredData: correctionResult.structuredData,
-        correctionCount: correctionResult.correctionCount || 1,
-        isInternal: true
+        currentSummary: 'Current patient summary text from database',
+        workflowId: verificationId,
+        messageId: items[0].id,
+        onStatusUpdate: () => {/* could do something if needed */},
       })
-    } catch (error) {
-      console.error('Error processing correction:', error)
-      
-      if (error instanceof ValidationError) {
-        return apiError({
-          message: error.message,
-          code: error.code,
-          errors: error.data,
-          status: error.statusCode
+
+      if (!result.success) {
+        throw new CorrectionError({
+          message: result.error?.message || 'Failed to process correction',
+          data: { ...result.error?.details, correlationId },
         })
       }
-      
+
+      // Return success response
+      return apiSuccess({
+        summaryId: result.data.summaryId,
+        summary: result.data.summary,
+        structuredData: result.data.structuredData,
+        correctionCount: result.data.correctionCount || 1,
+        isInternal: true,
+      })
+    } catch (error) {
+      const errInfo = handleVerificationRouteError(error, correlationId, 'Failed to process correction')
       return apiError({
-        message: error instanceof ApplicationError 
-          ? error.message
-          : 'Failed to process correction',
-        status: error instanceof ApplicationError ? error.statusCode : 500
+        message: errInfo.message,
+        code: errInfo.code,
+        errors: errInfo.details,
+        status: errInfo.status,
       })
     }
   })

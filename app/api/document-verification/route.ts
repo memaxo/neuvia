@@ -16,90 +16,99 @@ export const POST = createApiRoute(async (req: NextRequest) => {
     requestId
   });
   
-  moduleLogger.info('Processing document verification request');
-  
-  const { documentId, workflowId } = await req.json()
+  const correlationId = generateCorrelationId()
+  moduleLogger.info(`[${correlationId}] Processing document verification request`);
 
-  // Create Supabase client
-  const supabase = await createServerClient()
+  try {
+    const { documentId, workflowId } = await req.json()
 
-  // Fetch the document from patient_documents
-  const { data: patientDocument, error: docError } = await supabase
-    .from('patient_documents')
-    .select('*, patients(*)')
-    .eq('id', documentId)
-    .single()
+    // Create Supabase client
+    const supabase = await createServerClient()
 
-  if (docError || !patientDocument) {
-    moduleLogger.error('Error fetching patient document', { documentId }, docError);
-    throw new NotFoundError({
-      message: 'Patient document not found',
-      resource: 'Document',
-      code: 'DOCUMENT_NOT_FOUND',
-      data: { documentId },
-      cause: docError
-    });
+    // Fetch the document
+    const { data: patientDocument, error: docError } = await supabase
+      .from('patient_documents')
+      .select('*, patients(*)')
+      .eq('id', documentId)
+      .single()
+
+    if (docError || !patientDocument) {
+      moduleLogger.error('Error fetching patient document', { documentId, correlationId }, docError)
+      throw new NotFoundError({
+        message: 'Patient document not found',
+        resource: 'Document',
+        code: 'DOCUMENT_NOT_FOUND',
+        data: { documentId, correlationId },
+        cause: docError,
+      })
+    }
+
+    // Get workflow state using service
+    const workflowState = await workflowService.getWorkflowState(workflowId)
+
+    if (!workflowState) {
+      moduleLogger.error('Error fetching workflow', { workflowId, correlationId })
+      throw new NotFoundError({
+        message: 'Workflow not found',
+        resource: 'Workflow',
+        code: 'WORKFLOW_NOT_FOUND',
+        data: { workflowId, correlationId },
+      })
+    }
+
+    // Format workflow data for API response
+    const workflow = {
+      id: workflowId,
+      current_step: workflowState.currentStep,
+      metadata: workflowState.metadata,
+    }
+
+    // Build the extracted document model
+    const extractedDocument = {
+      id: patientDocument.id,
+      patientId: patientDocument.patient_id,
+      documentType: {
+        category: patientDocument.category || 'clinical',
+        type: 'medical_record',
+      },
+      extractedData: {
+        rawText: patientDocument.content_text || '',
+        entities: patientDocument.key_findings || [],
+        metadata: patientDocument.metadata || {},
+        confidence: 0.7,
+      },
+      processingStatus: {
+        status: patientDocument.processing_status || 'processed',
+        processedAt: patientDocument.updated_at,
+      },
+      fileName: patientDocument.file_path?.split('/').pop() || '',
+      fileType: patientDocument.file_type,
+    }
+
+    // For demonstration, if you have a separate method for generating items:
+    const verificationItems = verificationService.generateVerificationItems(extractedDocument)
+
+    moduleLogger.info(`[${correlationId}] Successfully generated verification items`, {
+      documentId,
+      workflowId,
+      itemCount: verificationItems.length,
+    })
+
+    return apiSuccess({
+      document: extractedDocument,
+      verificationItems,
+      workflow,
+    })
+  } catch (error) {
+    moduleLogger.error(`[${correlationId}] Error in document verification route`, error)
+    const errInfo = handleVerificationRouteError(error, correlationId, 'Failed to verify document')
+    return apiError({
+      message: errInfo.message,
+      code: errInfo.code,
+      errors: errInfo.details,
+      status: errInfo.status,
+    })
   }
-
-  // Get workflow state using service
-  const workflowState = await workflowService.getWorkflowState(workflowId)
-
-  if (!workflowState) {
-    moduleLogger.error('Error fetching workflow', { workflowId });
-    throw new NotFoundError({
-      message: 'Workflow not found',
-      resource: 'Workflow',
-      code: 'WORKFLOW_NOT_FOUND',
-      data: { workflowId }
-    });
-  }
-  
-  // Format workflow data for API response
-  const workflow = {
-    id: workflowId,
-    current_step: workflowState.step,
-    metadata: workflowState.metadata
-  }
-
-  // Format the data to match the expected ExtractedDocument structure
-  // using patient_documents fields directly
-  const extractedDocument = {
-    id: patientDocument.id,
-    patientId: patientDocument.patient_id,
-    documentType: {
-      category: patientDocument.category || 'clinical',
-      type: 'medical_record', // Default document type
-    },
-    extractedData: {
-      rawText: patientDocument.content_text || '',
-      entities: patientDocument.key_findings || [],
-      metadata: patientDocument.metadata || {},
-      confidence: 0.7, // Default confidence value
-    },
-    processingStatus: {
-      status: patientDocument.processing_status || 'processed',
-      processedAt: patientDocument.updated_at,
-    },
-    fileName: patientDocument.file_path?.split('/').pop() || '',
-    fileType: patientDocument.file_type,
-  }
-
-  // Generate verification items
-  const verificationItems =
-    verificationService.generateVerificationItems(extractedDocument)
-
-  // Log success and return standardized response
-  moduleLogger.info('Successfully generated verification items', { 
-    documentId, 
-    workflowId,
-    itemCount: verificationItems.length 
-  });
-  
-  return apiSuccess({
-    document: extractedDocument,
-    verificationItems,
-    workflow,
-  });
 }, { 
   openApiPath: '/document-verification',
   method: 'post',
