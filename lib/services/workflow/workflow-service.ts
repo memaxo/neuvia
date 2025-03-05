@@ -6,7 +6,9 @@ import {
   ALLOWED_TRANSITIONS,
   WorkflowStep,
   type WorkflowTransition,
+  ProcessingPhase,
 } from '@/lib/types/workflow'
+import { WorkflowStateError } from '@/lib/errors/verification-errors'
 import { workflowStateFromDb, type DbWorkflowState } from '@/lib/types/db-adapters'
 import { normalizeError } from '@/lib/errors'
 
@@ -41,25 +43,19 @@ export interface TransactionRecord {
 }
 
 /**
- * WorkflowStateError class for invalid transitions
+ * Metadata interface for custom fields and state in the workflow.
+ * This can include progress, errors, or specialized verification data.
  */
-export class WorkflowStateError extends Error {
-  public transition: { from: WorkflowStep; to: WorkflowStep }
-  public metadata?: Record<string, unknown>
-  public readonly code: string
-
-  constructor(
-    message: string,
-    transition: { from: WorkflowStep; to: WorkflowStep },
-    metadata?: Record<string, unknown>
-  ) {
-    super(message)
-    this.name = 'WorkflowStateError'
-    this.transition = transition
-    this.metadata = metadata
-    this.code = 'INVALID_WORKFLOW_TRANSITION'
-  }
+export interface WorkflowMetadata {
+  progress?: number
+  phase?: string
+  error?: string | null
+  errorDetails?: Record<string, unknown>
+  verificationMetadata?: Record<string, unknown>
+  [key: string]: unknown
 }
+
+
 
 /**
  * Validate if a transition is allowed according to the state machine rules
@@ -112,7 +108,7 @@ export function validateWorkflowTransition(
     }
   }
 
-  // If transition is to ERROR, ensure there's some error info in metadata if it's required
+  // If transition is to ERROR, ensure there's some error info in metadata if required
   if (toStep === WorkflowStep.ERROR && transition.requireData) {
     const maybeHasError = metadata?.error
     if (typeof maybeHasError !== 'string') {
@@ -130,23 +126,35 @@ export function validateWorkflowTransition(
 
 /**
  * Convert workflow step from our canonical enum to the DB enum
+ *
+ * Database workflow_step enum:
+ *   'idle',
+ *   'uploading',
+ *   'extracting',
+ *   'verification',
+ *   'report_generation',
+ *   'complete',
+ *   'chat_started',
+ *   'chat_in_progress',
+ *   'chat_completed',
+ *   'chat_error',
+ *   'verification_pending',
+ *   'verification_in_progress',
+ *   'verification_completed',
+ *   'verification_failed'
  */
 function mapWorkflowStepToDbStep(
   step: WorkflowStep
 ): Database['public']['Enums']['workflow_step'] {
   switch (step) {
-    case WorkflowStep.ERROR:
-      return 'chat_error'
-    case WorkflowStep.CHAT_COMPLETED:
-      return 'chat_completed'
-    case WorkflowStep.CHAT_IN_PROGRESS:
-      return 'chat_in_progress'
-    case WorkflowStep.CHAT_STARTED:
-      return 'chat_started'
+    case WorkflowStep.IDLE:
+      return 'idle'
     case WorkflowStep.UPLOADING:
       return 'uploading'
     case WorkflowStep.EXTRACTING:
       return 'extracting'
+
+    // Verification states
     case WorkflowStep.VERIFICATION:
       return 'verification'
     case WorkflowStep.VERIFICATION_PENDING:
@@ -157,17 +165,32 @@ function mapWorkflowStepToDbStep(
       return 'verification_completed'
     case WorkflowStep.VERIFICATION_FAILED:
       return 'verification_failed'
+
+    // Report generation flow
     case WorkflowStep.REPORT_GENERATION:
       return 'report_generation'
-    case WorkflowStep.REPORT_PRESENTATION:
-      // We store as 'report_generation' or keep an 'appStep' in metadata
-      return 'report_generation'
-    case WorkflowStep.RESEARCH:
-      // Also store as 'chat_in_progress' or use metadata
+    // We'll map "report_presentation" to "report_generation"
+    // or we can just treat it as 'report_generation'.
+
+    // Chat states
+    case WorkflowStep.CHAT_STARTED:
+      return 'chat_started'
+    case WorkflowStep.CHAT_IN_PROGRESS:
       return 'chat_in_progress'
+    case WorkflowStep.CHAT_COMPLETED:
+      return 'chat_completed'
+
+    // "research" might be mapped to chat_in_progress or removed
+    // if we do not support it. We'll treat it as chat_in_progress
+    case WorkflowStep.RESEARCH:
+      return 'chat_in_progress'
+
+    case WorkflowStep.ERROR:
+      return 'chat_error'
+
     case WorkflowStep.COMPLETE:
       return 'complete'
-    case WorkflowStep.IDLE:
+
     default:
       return 'idle'
   }
@@ -180,14 +203,75 @@ function mapWorkflowStepToDbStep(
  */
 export class WorkflowService {
   private readonly supabase: SupabaseClient<Database>
+
+  /**
+   * Load workflow state DB record by userId + chatId.
+   * If no row found, returns null.
+   */
+  async loadWorkflowStateForUser(userId: string, chatId?: string | null) {
+    try {
+      let query = this.supabase
+        .from('workflow_states')
+        .select('*')
+        .eq('user_id', userId)
+
+      if (chatId !== undefined && chatId !== null) {
+        query = query.eq('chat_id', chatId)
+      } else {
+        query = query.is('chat_id', null)
+      }
+
+      const { data, error } = await query.maybeSingle()
+      if (error) throw error
+      return data || null
+    } catch (err) {
+      const e = normalizeError(err)
+      throw e
+    }
+  }
   private readonly clientId: string
   private readonly errorHandler: WorkflowErrorHandler
 
-  // We keep these to illustrate future expansions (optimistic updates, caching), but not used now
-  // private readonly pendingTransactions: Map<string, TransactionRecord> = new Map()
-  // private readonly stateCache: Map<string, WorkflowState> = new Map()
-
   constructor() {
+
+  }
+
+  /**
+   * Tries to load an existing workflow_states row by user+chat. If none found, creates one.
+   */
+  async getOrCreateWorkflowForUser(
+    userId: string,
+    chatId: string | null,
+    initialStep: WorkflowStep = WorkflowStep.IDLE,
+    initialMetadata: Record<string, unknown> = {}
+  ): Promise<{ id: string; data: any }> {
+    // Try to load existing
+    const existing = await this.loadWorkflowStateForUser(userId, chatId)
+    if (existing) {
+      return { id: existing.id, data: existing }
+    }
+    // Otherwise create
+    const dbStep = mapWorkflowStepToDbStep(initialStep)
+    const now = new Date().toISOString()
+    const { data, error } = await this.supabase
+      .from('workflow_states')
+      .insert({
+        user_id: userId,
+        current_step: dbStep,
+        chat_id: chatId,
+        metadata: {
+          ...initialMetadata,
+          appStep: initialStep !== WorkflowStep.IDLE ? initialStep : undefined,
+          createdAt: now,
+          updatedAt: now,
+        },
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return { id: data.id, data }
+  }
     this.supabase = createBrowserClient()
     this.clientId = this.generateClientId()
     this.errorHandler = new WorkflowErrorHandler()
@@ -220,6 +304,66 @@ export class WorkflowService {
     }) => void,
     onStatusChange?: (status: string) => void
   ): RealtimeChannel {
+    // Keep original method for workflowId usage
+    const channel = this.supabase
+      .channel(\`workflow-\${workflowId}\`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workflow_states',
+          filter: \`id=eq.\${workflowId}\`,
+        },
+        onUpdate
+      )
+      .subscribe((status) => {
+        if (onStatusChange) {
+          onStatusChange(status)
+        }
+      })
+    return channel
+  }
+
+  /**
+   * Subscribe to workflow_states changes by userId, plus optional chatId
+   */
+  subscribeToWorkflowForUser(
+    userId: string,
+    chatId: string | null,
+    onUpdate: (payload: { new: any; old: any }) => void,
+    onStatusChange?: (status: string) => void
+  ): RealtimeChannel {
+    const channelName = \`workflow-\${userId}-\${chatId ?? 'null'}\`
+    const channel = this.supabase.channel(channelName)
+
+    // Build filter
+    let filter = \`user_id=eq.\${userId}\`
+    if (chatId) {
+      filter += \` AND chat_id=eq.\${chatId}\`
+    } else {
+      filter += ' AND chat_id IS NULL'
+    }
+
+    channel
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workflow_states',
+          filter,
+        },
+        onUpdate
+      )
+      .subscribe((status) => {
+        if (onStatusChange) {
+          onStatusChange(status)
+        }
+      })
+
+    return channel
+  }
     const channel = this.supabase
       .channel(`workflow-${workflowId}`)
       .on(
@@ -300,7 +444,7 @@ export class WorkflowService {
     progress: number
     error?: string | null
     phase?: string
-    metadata?: Record<string, unknown>
+    metadata?: WorkflowMetadata
     timestamp: string
   } | null> {
     try {
@@ -323,26 +467,25 @@ export class WorkflowService {
       if (!data) return null
 
       // We do a safe parse of metadata
-      const meta = data.metadata as Record<string, unknown> | null
-      const progressVal =
-        typeof meta?.progress === 'number' ? (meta.progress as number) : 0
-      const phaseVal =
-        typeof meta?.phase === 'string' ? (meta.phase as string) : undefined
-      const errorVal =
-        typeof meta?.error === 'string' ? (meta.error as string) : null
+      const meta = data.metadata as WorkflowMetadata | null
+      const progressVal = typeof meta?.progress === 'number' ? meta.progress : 0
+      const phaseVal = typeof meta?.phase === 'string' ? meta.phase : undefined
+      const errorVal = typeof meta?.error === 'string' ? meta.error : null
       const updatedAt =
         typeof data.updated_at === 'string' ? data.updated_at : new Date().toISOString()
 
+      const stateObj = workflowStateFromDb({
+        id: data.id,
+        step: data.current_step,
+        progress: progressVal,
+        phase: phaseVal,
+        error: errorVal,
+        metadata: meta ?? {},
+        timestamp: updatedAt,
+      } as DbWorkflowState)
+
       return {
-        currentStep: workflowStateFromDb({
-          id: data.id,
-          step: data.current_step,
-          progress: progressVal,
-          phase: phaseVal,
-          error: errorVal,
-          metadata: meta ?? {},
-          timestamp: updatedAt,
-        } as DbWorkflowState).currentStep,
+        currentStep: stateObj.currentStep,
         progress: progressVal,
         error: errorVal,
         phase: phaseVal,
@@ -387,11 +530,13 @@ export class WorkflowService {
         // Validate transition
         const check = validateWorkflowTransition(oldState.currentStep, step, metadata)
         if (!check.isValid) {
-          throw new WorkflowStateError(
-            check.error || 'Invalid transition',
-            { from: oldState.currentStep, to: step },
-            { details: check.details }
-          )
+          throw new WorkflowStateError({
+            message: check.error || 'Invalid transition',
+            data: {
+              transition: { from: oldState.currentStep, to: step },
+              details: check.details
+            }
+          })
         }
       }
 
@@ -445,13 +590,13 @@ export class WorkflowService {
     const txId = this.generateTransactionId()
     try {
       if (!workflowId) return
-      const metadata = {
+      const meta = {
         error: errorMessage,
         errorDetails,
         errorAt: new Date().toISOString(),
       }
       // Validate transition from whatever state is to WorkflowStep.ERROR
-      await this.updateWorkflowState(workflowId, WorkflowStep.ERROR, metadata)
+      await this.updateWorkflowState(workflowId, WorkflowStep.ERROR, meta)
     } catch (err) {
       const e = normalizeError(err)
       await this.errorHandler.handleError(e, WorkflowStep.ERROR, {

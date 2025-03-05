@@ -1,12 +1,13 @@
 /* eslint-disable */
 /* tslint:disable */
-/*
- * ---------------------------------------------------------------
- * ## THIS FILE WAS GENERATED VIA SWAGGER-TYPESCRIPT-API        ##
- * ##                                                           ##
- * ## AUTHOR: acacode                                           ##
- * ## SOURCE: https://github.com/acacode/swagger-typescript-api ##
- * ---------------------------------------------------------------
+/**
+ * @fileoverview Verification route definitions for the application.
+ *
+ * This file contains route namespaces that map directly to each
+ * OpenAPI operation for verification-related endpoints.
+ * It has been updated to match the canonical verification types
+ * from "lib/types/verification.ts" and to unify parameter naming
+ * and statuses (pending | inProgress | completed | failed).
  */
 
 import {
@@ -14,803 +15,331 @@ import {
   VerificationMetadata,
   VerificationOptions,
   VerificationResult,
-  VerificationStatusType,
   VerifiedDocument,
-} from './data-contracts';
+} from './data-contracts'
 
+/**
+ * Namespace grouping all verification-related API operations.
+ */
 export namespace Verification {
   /**
- * @description Processes user correction on verified content like a patient summary
- * @tags verification
- * @name SubmitCorrection
- * @summary Submit a correction to verified content
- * @request POST:/verification/submit-correction
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-    data: {
-  \** ID of the updated summary *\
-    summaryId: string,
-  \** Updated summary with correction applied *\
-    summary: string,
-  \** Structured data extracted from the summary *\
-    structuredData?: Record<string,any>,
-  \**
-   * Total number of corrections applied
-   * @min 0
-   *\
-    correctionCount?: number,
-
-},
-  \** @format date-time *\
-    timestamp: string,
-
-}` Correction processed successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `422` `{
-    error: {
-  \** @example "Validation failed" *\
-    message: string,
-  \** @example "VALIDATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** Field-specific validation errors *\
-    fields?: Record<string,string>,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace SubmitCorrection
+   * @description
+   * Submits a correction for verified content (such as a patient summary).
+   */
   export namespace SubmitCorrection {
-    export type RequestParams = {};
-    export type RequestQuery = {};
+    /**
+     * Request parameters are empty, no URL segments needed
+     */
+    export type RequestParams = {}
+
+    /**
+     * Query parameters are empty
+     */
+    export type RequestQuery = {}
+
+    /**
+     * Body for submitting corrections
+     */
     export type RequestBody = {
       /** The correction text provided by the user */
-      correction: string;
+      correction: string
       /** The current summary content being corrected */
-      currentSummary: string;
+      currentSummary: string
       /**
        * The workflow ID associated with this correction
        * @format uuid
        */
-      workflowId?: string;
+      workflowId?: string
       /** Optional ID of the message associated with this correction */
-      messageId?: string;
-    };
-    export type RequestHeaders = {};
+      messageId?: string
+    }
+
+    /**
+     * No special request headers
+     */
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response includes updated summary information.
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
+      success: boolean
       data: {
         /** ID of the updated summary */
-        summaryId: string;
-        /** Updated summary with correction applied */
-        summary: string;
+        summaryId: string
+        /** Updated summary with corrections applied */
+        summary: string
         /** Structured data extracted from the summary */
-        structuredData?: Record<string, any>;
+        structuredData?: Record<string, any>
         /**
          * Total number of corrections applied
          * @min 0
          */
-        correctionCount?: number;
-      };
+        correctionCount?: number
+      }
       /** @format date-time */
-      timestamp: string;
-    };
+      timestamp: string
+    }
   }
 
   /**
- * @description Processes a correction to verified content and returns updated content
- * @tags verification
- * @name ProcessCorrection
- * @summary Process a correction to verified content
- * @request POST:/verification/process-correction
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-    data: {
-  \** ID of the updated summary *\
-    summaryId: string,
-  \** Updated summary with correction applied *\
-    summary: string,
-  \** Structured data extracted from the summary *\
-    structuredData?: Record<string,any>,
-  \**
-   * Total number of corrections applied
-   * @min 0
-   *\
-    correctionCount?: number,
-
-},
-  \** @format date-time *\
-    timestamp: string,
-
-}` Correction processed successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `422` `{
-    error: {
-  \** @example "Validation failed" *\
-    message: string,
-  \** @example "VALIDATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** Field-specific validation errors *\
-    fields?: Record<string,string>,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace ProcessCorrection
+   * @description
+   * Processes user corrections on verified content and returns updated content.
+   */
   export namespace ProcessCorrection {
-    export type RequestParams = {};
-    export type RequestQuery = {};
+    export type RequestParams = {}
+    export type RequestQuery = {}
+
+    /**
+     * Body for processing a correction
+     */
     export type RequestBody = {
       /** The correction text */
-      correction: string;
+      correction: string
       /** The current summary content */
-      currentSummary: string;
+      currentSummary: string
       /**
        * The workflow ID associated with this correction
        * @format uuid
        */
-      workflowId?: string;
-      /** Optional ID of message associated with this correction */
-      messageId?: string;
-    };
-    export type RequestHeaders = {};
+      workflowId?: string
+      /** Optional ID of the message associated with this correction */
+      messageId?: string
+    }
+
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response with updated summary information
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
+      success: boolean
       data: {
-        /** ID of the updated summary */
-        summaryId: string;
-        /** Updated summary with correction applied */
-        summary: string;
-        /** Structured data extracted from the summary */
-        structuredData?: Record<string, any>;
+        summaryId: string
+        summary: string
+        structuredData?: Record<string, any>
         /**
          * Total number of corrections applied
          * @min 0
          */
-        correctionCount?: number;
-      };
-      /** @format date-time */
-      timestamp: string;
-    };
+        correctionCount?: number
+      }
+      timestamp: string
+    }
   }
 
   /**
- * @description Generates verification items and summary for a document
- * @tags verification
- * @name GenerateVerification
- * @summary Generate verification for a document
- * @request POST:/verification/generate
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-    data: {
-  \** ID of the generated summary *\
-    summaryId: string,
-  \** Summary content generated from the document *\
-    summary: string,
-  \** Structured data extracted from the document *\
-    structuredData?: Record<string,any>,
-
-},
-  \** @format date-time *\
-    timestamp: string,
-
-}` Verification generated successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `422` `{
-    error: {
-  \** @example "Validation failed" *\
-    message: string,
-  \** @example "VALIDATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** Field-specific validation errors *\
-    fields?: Record<string,string>,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace GenerateVerification
+   * @description
+   * Generates verification items and summary for a given document.
+   */
   export namespace GenerateVerification {
-    export type RequestParams = {};
-    export type RequestQuery = {};
+    export type RequestParams = {}
+    export type RequestQuery = {}
+
+    /**
+     * Body for generating verification from a document
+     */
     export type RequestBody = {
       /** The document to be verified */
-      document: Record<string, any>;
+      document: Record<string, any>
       /**
        * The workflow ID for this verification
        * @format uuid
        */
-      workflowId?: string;
+      workflowId?: string
       /** Optional ID of message associated with this verification */
-      messageId?: string;
+      messageId?: string
       /** Optional ID for the generated summary */
-      summaryId?: string;
-    };
-    export type RequestHeaders = {};
+      summaryId?: string
+    }
+
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response with a new summary
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
+      success: boolean
       data: {
         /** ID of the generated summary */
-        summaryId: string;
+        summaryId: string
         /** Summary content generated from the document */
-        summary: string;
+        summary: string
         /** Structured data extracted from the document */
-        structuredData?: Record<string, any>;
-      };
-      /** @format date-time */
-      timestamp: string;
-    };
+        structuredData?: Record<string, any>
+      }
+      timestamp: string
+    }
   }
 
   /**
- * @description Retrieves the verification status of a patient summary
- * @tags verification, patients
- * @name GetPatientSummaryVerification
- * @summary Get patient summary verification status
- * @request GET:/patient/{patientId}/verify-summary
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-    data: {
-  \** Current verification status *\
-    verificationStatus: VerificationStatusType,
-  \** Verification items *\
-    items: (VerificationItem)[],
-  \** Verification metadata *\
-    metadata?: VerificationMetadata,
-  \** Original content being verified *\
-    originalContent?: string,
-  \** Current content after any corrections *\
-    currentContent?: string,
-
-},
-  \** @format date-time *\
-    timestamp: string,
-
-}` Summary verification status retrieved successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `404` `{
-    error: {
-  \** @example "Resource not found" *\
-    message: string,
-  \** @example "NOT_FOUND" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** The type of resource that was not found *\
-    resource?: string,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace GetPatientSummaryVerification
+   * @description
+   * Retrieves the verification status and items for a given patient summary.
+   */
   export namespace GetPatientSummaryVerification {
+    /**
+     * Path parameters: patientId
+     */
     export type RequestParams = {
       /**
        * Patient ID
        * @format uuid
        */
-      patientId: string;
-    };
-    export type RequestQuery = {};
-    export type RequestBody = never;
-    export type RequestHeaders = {};
+      patientId: string
+    }
+
+    export type RequestQuery = {}
+    export type RequestBody = never
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response with summary verification details
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
+      success: boolean
       data: {
         /** Current verification status */
-        verificationStatus: VerificationStatusType;
+        verificationStatus: 'pending' | 'inProgress' | 'completed' | 'failed'
         /** Verification items */
-        items: VerificationItem[];
+        items: VerificationItem[]
         /** Verification metadata */
-        metadata?: VerificationMetadata;
+        metadata?: VerificationMetadata
         /** Original content being verified */
-        originalContent?: string;
+        originalContent?: string
         /** Current content after any corrections */
-        currentContent?: string;
-      };
-      /** @format date-time */
-      timestamp: string;
-    };
+        currentContent?: string
+      }
+      timestamp: string
+    }
   }
 
   /**
- * @description Updates the verification status of a patient summary
- * @tags verification, patients
- * @name UpdatePatientSummaryVerification
- * @summary Update patient summary verification status
- * @request POST:/patient/{patientId}/verify-summary
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-  \** Verification result *\
-    data: VerificationResult,
-  \** @format date-time *\
-    timestamp: string,
-
-}` Verification status updated successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `404` `{
-    error: {
-  \** @example "Resource not found" *\
-    message: string,
-  \** @example "NOT_FOUND" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** The type of resource that was not found *\
-    resource?: string,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace UpdatePatientSummaryVerification
+   * @description
+   * Updates the verification status of a patient summary (e.g., completing or failing verification).
+   */
   export namespace UpdatePatientSummaryVerification {
     export type RequestParams = {
       /**
        * Patient ID
        * @format uuid
        */
-      patientId: string;
-    };
-    export type RequestQuery = {};
+      patientId: string
+    }
+    export type RequestQuery = {}
+
+    /**
+     * Body for updating verification status
+     */
     export type RequestBody = {
       /**
-       * Verification status to set
-       * @default "verified"
+       * Verification status to set, matching canonical statuses
+       * @default "pending"
        */
-      status: 'pending' | 'verified' | 'rejected';
+      status: 'pending' | 'inProgress' | 'completed' | 'failed'
       /** Optional comments about the verification */
-      comments?: string;
+      comments?: string
       /** Updated verification items */
-      items?: VerificationItem[];
-    };
-    export type RequestHeaders = {};
+      items?: VerificationItem[]
+    }
+
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response with a VerificationResult
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
-      /** Verification result */
-      data: VerificationResult;
-      /** @format date-time */
-      timestamp: string;
-    };
+      success: boolean
+      data: VerificationResult
+      timestamp: string
+    }
   }
 
   /**
- * @description Retrieves the verification status of a document
- * @tags verification, documents
- * @name GetDocumentVerification
- * @summary Get document verification status
- * @request GET:/document-verification
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-  \** Verified document data *\
-    data: VerifiedDocument,
-  \** @format date-time *\
-    timestamp: string,
-
-}` Document verification status retrieved successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `404` `{
-    error: {
-  \** @example "Resource not found" *\
-    message: string,
-  \** @example "NOT_FOUND" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** The type of resource that was not found *\
-    resource?: string,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace GetDocumentVerification
+   * @description
+   * Retrieves the verification status of a document by its ID.
+   */
   export namespace GetDocumentVerification {
-    export type RequestParams = {};
+    export type RequestParams = {}
+    /**
+     * Updated to use "documentId" instead of "extractedDocumentId"
+     */
     export type RequestQuery = {
       /**
-       * Extracted document ID
+       * Document ID
        * @format uuid
        */
-      extractedDocumentId: string;
-    };
-    export type RequestBody = never;
-    export type RequestHeaders = {};
+      documentId: string
+    }
+    export type RequestBody = never
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response includes the verified document data.
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
-      /** Verified document data */
-      data: VerifiedDocument;
-      /** @format date-time */
-      timestamp: string;
-    };
+      success: boolean
+      data: VerifiedDocument
+      timestamp: string
+    }
   }
 
   /**
- * @description Creates verification items for a document
- * @tags verification, documents
- * @name GenerateDocumentVerification
- * @summary Generate verification items for a document
- * @request POST:/document-verification
- * @secure
- * @response `200` `{
-  \** @example true *\
-    success: boolean,
-    data: {
-  \**
-   * Verification process ID
-   * @format uuid
-   *\
-    verificationId: string,
-  \**
-   * Workflow ID
-   * @format uuid
-   *\
-    workflowId?: string,
-  \** Verification items *\
-    items: (VerificationItem)[],
-  \** Verification status *\
-    status?: VerificationStatusType,
-
-},
-  \** @format date-time *\
-    timestamp: string,
-
-}` Verification items generated successfully
- * @response `400` `{
-    error: {
-  \** @example "Invalid input parameters" *\
-    message: string,
-  \** @example "INVALID_INPUT" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-  \** May contain field-specific validation errors *\
-    details?: object,
-
-},
-
-}`
- * @response `401` `{
-    error: {
-  \** @example "Authentication failed" *\
-    message: string,
-  \** @example "AUTHENTICATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
- * @response `422` `{
-    error: {
-  \** @example "Validation failed" *\
-    message: string,
-  \** @example "VALIDATION_FAILED" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-    details?: {
-  \** Field-specific validation errors *\
-    fields?: Record<string,string>,
-
-},
-
-},
-
-}`
- * @response `500` `{
-    error: {
-  \** @example "Internal server error" *\
-    message: string,
-  \** @example "SERVER_ERROR" *\
-    code: string,
-  \** @format date-time *\
-    timestamp: string,
-
-},
-
-}`
-*/
+   * @namespace GenerateDocumentVerification
+   * @description
+   * Creates verification items for a document by ID and returns verification process details.
+   */
   export namespace GenerateDocumentVerification {
-    export type RequestParams = {};
-    export type RequestQuery = {};
+    export type RequestParams = {}
+    export type RequestQuery = {}
+
+    /**
+     * Body for generating verification items for a document
+     */
     export type RequestBody = {
       /**
        * Document ID
        * @format uuid
        */
-      documentId: string;
+      documentId: string
       /**
        * Workflow ID
        * @format uuid
        */
-      workflowId: string;
+      workflowId: string
       /** Verification options */
-      options?: VerificationOptions;
-    };
-    export type RequestHeaders = {};
+      options?: VerificationOptions
+    }
+
+    export type RequestHeaders = {}
+
+    /**
+     * Successful response with verification items and status
+     */
     export type ResponseBody = {
-      /** @example true */
-      success: boolean;
+      success: boolean
       data: {
         /**
          * Verification process ID
          * @format uuid
          */
-        verificationId: string;
+        verificationId: string
         /**
          * Workflow ID
          * @format uuid
          */
-        workflowId?: string;
+        workflowId?: string
         /** Verification items */
-        items: VerificationItem[];
-        /** Verification status */
-        status?: VerificationStatusType;
-      };
-      /** @format date-time */
-      timestamp: string;
-    };
+        items: VerificationItem[]
+        /** Verification status (pending, inProgress, completed, failed) */
+        status?: 'pending' | 'inProgress' | 'completed' | 'failed'
+      }
+      timestamp: string
+    }
   }
 }

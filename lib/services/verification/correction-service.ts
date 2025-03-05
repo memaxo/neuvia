@@ -45,7 +45,7 @@ export class CorrectionService {
 
       // Handle the API response
       if (!result.success || !result.data?.summaryId) {
-        throw new ValidationError({
+        throw new CorrectionError({
           message: 'Failed to submit correction',
           code: 'CORRECTION_SUBMISSION_FAILED',
           data: { originalResult: result },
@@ -116,7 +116,7 @@ export class CorrectionService {
 
       // Handle the API response
       if (!result.success || !result.data?.summaryId) {
-        throw new ValidationError({
+        throw new CorrectionError({
           message: 'Failed to process correction',
           code: 'CORRECTION_PROCESSING_FAILED',
           data: { originalResult: result },

@@ -8,7 +8,8 @@
  * This ensures a consistent schema across TypeScript types, Zod schemas, and OpenAPI.
  */
 
-import type { UUID, Timestamp } from '@/lib/types/database'
+import type { UUID, Timestamp } from './base'
+import type { Database } from '@/lib/types/database'
 
 // -----------------------------------------------------------------------------
 // Verification status and core domain
@@ -27,6 +28,42 @@ export enum VerificationStatus {
   inProgress = 'inProgress',
   completed = 'completed',
   failed = 'failed',
+}
+
+/**
+ * Maps a DB workflow_step to a domain VerificationStatus.
+ */
+export function dbToVerificationStatus(dbStatus: Database['public']['Enums']['workflow_step']): VerificationStatus {
+  switch (dbStatus) {
+    case 'verification_in_progress':
+      return VerificationStatus.inProgress
+    case 'verification_completed':
+      return VerificationStatus.completed
+    case 'verification_failed':
+      return VerificationStatus.failed
+    case 'verification_pending':
+      return VerificationStatus.pending
+    default:
+      // Fallback to 'pending'
+      return VerificationStatus.pending
+  }
+}
+
+/**
+ * Maps a domain VerificationStatus to the corresponding DB workflow_step enum value.
+ */
+export function verificationStatusToDb(status: VerificationStatus): Database['public']['Enums']['workflow_step'] {
+  switch (status) {
+    case VerificationStatus.inProgress:
+      return 'verification_in_progress'
+    case VerificationStatus.completed:
+      return 'verification_completed'
+    case VerificationStatus.failed:
+      return 'verification_failed'
+    case VerificationStatus.pending:
+    default:
+      return 'verification_pending'
+  }
 }
 
 /**
@@ -156,7 +193,7 @@ export interface VerificationMetadata {
   /**
    * Current verification status: pending, inProgress, completed, or failed.
    */
-  verificationStatus: VerificationStatus
+  verification_status: VerificationStatus
 
   /**
    * ID of the original summary or document version being verified.

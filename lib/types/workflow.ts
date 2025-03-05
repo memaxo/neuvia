@@ -1,55 +1,86 @@
 /**
  * @fileoverview Canonical workflow types for the entire application
  * 
- 
- * from various sources into a cohesive system.
+ * This file focuses on workflow steps and transitions, unifying them with
+ * verification flows where relevant. Verification-specific domain definitions
+ * are imported from lib/types/verification to ensure consistency across the app.
  */
 
 import type { UUID, Timestamp } from './base'
+import type {
+  VerificationMetadata as CanonicalVerificationMetadata} from '@/lib/types/verification';
+import { VerificationStatus } from '@/lib/types/verification'
+import type { Database } from '@/lib/types/database'
+
+// ==========================================================================
+// Workflow Steps - DB vs. Domain
+// ==========================================================================
+
+/**
+ * DB-defined workflow steps from the Database schema.
+ * These match `Database['public']['Enums']['workflow_step']`.
+ */
+export type DbWorkflowStep = Database['public']['Enums']['workflow_step']
+
+/**
+ * Additional domain-only workflow steps not stored in the DB enum.
+ * Use these for app-level logic that doesn't map directly to the DB step enum.
+ */
+export enum DomainOnlyWorkflowStep {
+  REPORT_PRESENTATION = 'report_presentation',
+  RESEARCH = 'research',
+  ERROR = 'error',
+}
+
+/**
+ * A union of DB-backed steps and any domain-only steps that do not appear in the DB enum.
+ * Use `toDbWorkflowStep(...)` and `fromDbWorkflowStep(...)` to safely convert
+ * between domain steps and DB enum values.
+ */
+export type WorkflowStep = DbWorkflowStep | DomainOnlyWorkflowStep
+
+/**
+ * Convert a domain WorkflowStep to the corresponding database enum if possible.
+ * For domain-only steps, return a suitable fallback.
+ */
+export function toDbWorkflowStep(step: WorkflowStep): DbWorkflowStep {
+  switch (step) {
+    case DomainOnlyWorkflowStep.REPORT_PRESENTATION:
+      // No direct DB equivalent; fallback to 'complete' or your choice:
+      return 'complete'
+    case DomainOnlyWorkflowStep.RESEARCH:
+      // Not in DB enum, pick a fallback:
+      return 'chat_in_progress'
+    case DomainOnlyWorkflowStep.ERROR:
+      // DB has 'chat_error', which might serve as an "error" fallback:
+      return 'chat_error'
+    default:
+      // Step is already a valid DbWorkflowStep
+      return step
+  }
+}
+
+/**
+ * Convert a DB workflow step to the domain WorkflowStep union.
+ * If you have domain-only logic, interpret as needed.
+ * For now, we directly return the DB step unless we want to map 'chat_error' => DomainOnlyWorkflowStep.ERROR, etc.
+ */
+export function fromDbWorkflowStep(dbStep: DbWorkflowStep): WorkflowStep {
+  switch (dbStep) {
+    case 'chat_error':
+      return DomainOnlyWorkflowStep.ERROR
+    default:
+      return dbStep
+  }
+}
 
 // ==========================================================================
 // Core Workflow Types
 // ==========================================================================
 
 /**
- * Unified workflow step type for the entire application
- *
- * This type directly extends the database workflow_step enum with additional
- * application-specific steps. This ensures compatibility with the database
- * while supporting app-only operations.
- */
-export enum WorkflowStep {
-  // Core states
-  IDLE = 'idle',
-  ERROR = 'error',
-  COMPLETE = 'complete',
-
-  // Upload flow
-  UPLOADING = 'uploading',
-  EXTRACTING = 'extracting',
-
-  // Verification flow
-  VERIFICATION = 'verification',
-  VERIFICATION_PENDING = 'verification_pending',
-  VERIFICATION_IN_PROGRESS = 'verification_in_progress',
-  VERIFICATION_COMPLETED = 'verification_completed',
-  VERIFICATION_FAILED = 'verification_failed',
-
-  // Report flow
-  REPORT_GENERATION = 'report_generation',
-  REPORT_PRESENTATION = 'report_presentation',
-
-  // Chat flow
-  CHAT_STARTED = 'chat_started',
-  CHAT_IN_PROGRESS = 'chat_in_progress',
-  CHAT_COMPLETED = 'chat_completed',
-
-  // Research flow
-  RESEARCH = 'research',
-}
-
-/**
- * Processing phases for status tracking
+ * Processing phases for status tracking, which can be used in conjunction with
+ * a given WorkflowStep. For example, if step='extracting', phase might be "readingFile".
  */
 export enum ProcessingPhase {
   INITIALIZATION = 'initialization',
@@ -69,101 +100,37 @@ export enum ProcessingPhase {
  * Workflow transition for state machine validation
  */
 export interface WorkflowTransition {
-  /**
-   * Source workflow step
-   */
   from: WorkflowStep
-
-  /**
-   * Target workflow step
-   */
   to: WorkflowStep
-
-  /**
-   * Whether this transition can include additional metadata
-   */
   allowData?: boolean
-
-  /**
-   * Whether this transition requires additional metadata
-   */
   requireData?: boolean
-
-  /**
-   * Human-readable description of this transition
-   */
   description?: string
 }
 
 /**
- * Workflow state interface representing the current state of a workflow
- *
- * This is the source of truth for workflow state throughout the application.
+ * Workflow state interface representing the current state of a workflow.
+ * This is intended for short-term in-memory or ephemeral usage. The database
+ * records might store a superset of fields.
  */
 export interface WorkflowState {
-  /**
-   * Current workflow step
-   */
   currentStep: WorkflowStep
-
-  /**
-   * Progress indicator (0-100)
-   */
   progress: number
-
-  /**
-   * Current processing phase within the step
-   */
   phase?: ProcessingPhase
-
-  /**
-   * Error message if any
-   */
   error?: string | null
-
-  /**
-   * Additional metadata specific to this workflow state
-   */
   metadata?: Record<string, unknown>
-
-  /**
-   * Timestamp when this state was created/updated
-   */
   timestamp: Timestamp
 }
 
 /**
- * Processing status for workflow operations
+ * Processing status for workflow operations, which some flows use for reporting
+ * progress in real-time to the UI. Not all workflows rely on this.
  */
 export interface ProcessingStatus {
-  /**
-   * Current processing status
-   */
   status: 'idle' | 'processing' | 'success' | 'error'
-
-  /**
-   * Current progress (0-100)
-   */
   progress: number
-
-  /**
-   * Current processing phase
-   */
   phase: ProcessingPhase
-
-  /**
-   * Start time of the current operation
-   */
   startedAt?: Timestamp
-
-  /**
-   * Estimated completion time
-   */
   estimatedCompletionAt?: Timestamp
-
-  /**
-   * Error message if any
-   */
   error?: string | null
 }
 
@@ -171,37 +138,21 @@ export interface ProcessingStatus {
 // Message Types
 // ==========================================================================
 
-/**
- * Message type - categorizes messages for specialized handling
- */
 export enum MessageType {
-  SUMMARY = 'summary', // Contains summary content to be verified
-  VERIFICATION_REQUEST = 'verification_request', // Requests verification of content
-  CORRECTION = 'correction', // Contains a correction to previous content
-  PROGRESS = 'progress', // Progress update for a long-running operation
-  RESEARCH = 'research', // Research content from external sources
-  REPORT = 'report', // Formal report content
-  CHAT = 'chat', // Regular chat message
-  SYSTEM = 'system', // System notification or status message
-  ERROR = 'error', // Error message
+  SUMMARY = 'summary',
+  VERIFICATION_REQUEST = 'verification_request',
+  CORRECTION = 'correction',
+  PROGRESS = 'progress',
+  RESEARCH = 'research',
+  REPORT = 'report',
+  CHAT = 'chat',
+  SYSTEM = 'system',
+  ERROR = 'error',
 }
 
-/**
- * Canonical message metadata for the entire application
- *
- * This is the source of truth for message metadata throughout the system.
- * It provides a consistent way to categorize and track message properties.
- */
 export interface MessageMetadata {
-  /**
-   * Primary message type for categorization
-   */
   type?: MessageType
 
-  /**
-   * Legacy type flags - will be deprecated in future
- 
-   */
   isSummary?: boolean
   isVerificationRequest?: boolean
   isCorrection?: boolean
@@ -211,519 +162,34 @@ export interface MessageMetadata {
   isSystem?: boolean
   isError?: boolean
 
-  /**
-   * ID of the content version this message refers to
-   */
   contentVersionId?: UUID
-
-  /**
-   * Legacy version ID - will be standardized to contentVersionId
-   * @deprecated Use contentVersionId instead
-   */
   summaryVersionId?: UUID
 
-  /**
-   * Progress tracking for long-running operations
-   */
   progress?: {
-    /**
-     * Progress value (0-100)
-     */
     value: number
-
-    /**
-     * Current processing phase
-     */
     phase: string
-
-    /**
-     * Start timestamp
-     */
     startedAt?: Timestamp
-
-    /**
-     * Estimated completion time
-     */
     estimatedCompletionAt?: Timestamp
   }
 
-  /**
-   * Legacy progress fields - will be consolidated
-   * @deprecated Use the progress object instead
-   */
   progressValue?: number
   progressPhase?: string
 
-  /**
-   * Reference to verification metadata if applicable
-   */
-  verificationMetadata?: VerificationMetadata
+  verificationMetadata?: CanonicalVerificationMetadata
 
-  /**
-   * Associated document ID if relevant
-   */
   documentId?: UUID
-
-  /**
-   * Associated patient ID if relevant
-   */
   patientId?: UUID
-
-  /**
-   * Source documents if message contains referenced content
-   */
   sourceDocuments?: UUID[]
 
-  /**
-   * Custom metadata specific to this message
-   * This allows for extensibility without changing the interface
-   */
   [key: string]: unknown
 }
 
-// ==========================================================================
-// Verification Types
-// ==========================================================================
-
-/**
- * Verification status type used throughout the application
- */
-export enum VerificationStatusType {
-  PENDING = 'pending', // Waiting for verification to begin
-  IN_PROGRESS = 'in_progress', // Verification is actively being performed
-  COMPLETED = 'completed', // Verification has been successfully completed
-  FAILED = 'failed', // Verification has failed or been rejected
-}
-
-/**
- * Core correction entry for tracking changes during verification
- */
-export interface CorrectionEntry {
-  /**
-   * Unique identifier for this correction
-   */
-  id: UUID
-
-  /**
-   * The text of the correction request
-   */
-  text: string
-
-  /**
-   * Timestamp when the correction was made
-   */
-  timestamp: Timestamp
-
-  /**
-   * Optional user ID who made the correction
-   */
-  userId?: UUID
-}
-
-/**
- * Version entry for tracking content changes in verification items
- */
-export interface VersionHistoryEntry {
-  /**
-   * Unique identifier for this version
-   */
-  id: UUID
-
-  /**
-   * Content at this version
-   */
-  content: string
-
-  /**
-   * Timestamp of the change
-   */
-  timestamp: Timestamp
-
-  /**
-   * User who made the change (if applicable)
-   */
-  userId?: UUID
-
-  /**
-   * Optional reason for the change
-   */
-  reason?: string
-}
-
-/**
- * Canonical verification item that represents content requiring verification
- */
-export interface VerificationItem {
-  /**
-   * Unique identifier for this verification item
-   */
-  id: UUID
-
-  /**
-   * Title/label for this verification item
-   */
-  title: string
-
-  /**
-   * Description of what needs to be verified
-   */
-  description?: string
-
-  /**
-   * Category of this verification item (e.g., "demographics", "diagnosis", "medications")
-   */
-  category?: string
-
-  /**
-   * Path or key that identifies this item within a larger data structure
-   */
-  path?: string
-
-  /**
-   * The original content extracted from the document
-   */
-  originalContent: string
-
-  /**
-   * The current content after any corrections
-   */
-  currentContent: string
-
-  /**
-   * Whether this item has been verified by a user
-   */
-  isVerified: boolean
-
-  /**
-   * Whether this item has been modified during verification
-   */
-  isModified: boolean
-
-  /**
-   * Confidence score for the extraction (0-1)
-   * Higher values indicate higher confidence in the extraction
-   */
-  confidence?: number
-
-  /**
-   * History of content changes
-   */
-  changeHistory: VersionHistoryEntry[]
-
-  /**
-   * Metadata for this verification item
-   */
-  metadata?: Record<string, unknown>
-
-  /**
-   * Optional source location in the original document
-   */
-  source?: {
-    /**
-     * Document ID this item was extracted from
-     */
-    documentId: UUID
-
-    /**
-     * Page number where this content appears
-     */
-    page?: number
-
-    /**
-     * Section in the document where this content appears
-     */
-    section?: string
-
-    /**
-     * Start position in the document (character offset)
-     */
-    startPosition?: number
-
-    /**
-     * End position in the document (character offset)
-     */
-    endPosition?: number
-  }
-}
-
-/**
- * Canonical verification metadata format for tracking the verification process
- *
- * This is the source of truth for verification metadata throughout the application.
- */
-export interface VerificationMetadata {
-  /**
-   * Current verification status
-   */
-  verificationStatus: VerificationStatusType
-
-  /**
-   * ID of the original summary or content version
-   */
-  originalSummaryId: UUID
-
-  /**
-   * ID of the current version being verified
-   */
-  currentVersionId: UUID
-
-  /**
-   * Number of corrections applied
-   */
-  correctionCount: number
-
-  /**
-   * Timestamp when the content was verified
-   */
-  verifiedAt?: Timestamp
-
-  /**
-   * User ID who verified the content
-   */
-  verifiedBy?: UUID
-
-  /**
-   * History of corrections applied
-   */
-  corrections: CorrectionEntry[]
-
-  /**
-   * Extracted document data - can be any structured data
-   * that requires verification
-   */
-  extractedData?: unknown
-
-  /**
-   * Timestamp when verification started
-   */
-  startedAt?: Timestamp
-
-  /**
-   * Timestamp of last update
-   */
-  lastUpdated?: Timestamp
-
-  /**
-   * Optional confidence score for the verification (0-1)
-   */
-  confidenceScore?: number
-
-  /**
-   * Optional reason for rejection if status is 'failed'
-   */
-  rejectionReason?: string
-}
-
-/**
- * Options for the verification process
- */
-export interface VerificationOptions {
-  /**
-   * Whether verification is required to proceed
-   * If false, the system can auto-approve if needed
-   */
-  isRequired: boolean
-
-  /**
-   * Timeout for verification (in milliseconds)
-   * After this time, the system will take the action specified
-   * by autoApproveOnTimeout
-   */
-  timeoutMs?: number
-
-  /**
-   * Whether to auto-approve after timeout
-   * If true, the system will automatically approve after the timeout
-   * If false, the system will mark as failed after the timeout
-   */
-  autoApproveOnTimeout?: boolean
-
-  /**
-   * User ID performing verification
-   */
-  userId?: UUID
-
-  /**
-   * Threshold for confidence scores that require verification
-   * Items with confidence below this value will be flagged for verification
-   * Value should be between 0 and 1
-   */
-  confidenceThreshold?: number
-
-  /**
-   * Verification mode - controls how the verification is presented
-   */
-  mode?: 'full' | 'selective' | 'batch' | 'automated'
-
-  /**
-   * Additional metadata
-   */
-  metadata?: Record<string, unknown>
-
-  /**
-   * Optional verification items to include
-   */
-  items?: VerificationItem[]
-
-  /**
-   * When to save verification state to the database
-   */
-  persistenceMode?: 'immediate' | 'onComplete' | 'onApproval' | 'manual'
-
-  /**
-   * Callback when verification is complete
-   */
-  onVerificationComplete?: (result: VerificationResult) => void
-}
-
-/**
- * Canonical verification result after user review
- */
-export interface VerificationResult {
-  /**
-   * Whether verification was completed (regardless of approval status)
-   */
-  isCompleted: boolean
-
-  /**
-   * Whether the content was approved
-   * If false and isCompleted is true, the content was rejected
-   */
-  isApproved: boolean
-
-  /**
-   * List of verification items with their final verification status
-   */
-  items: VerificationItem[]
-
-  /**
-   * Timestamp of verification completion
-   */
-  completedAt: Timestamp
-
-  /**
-   * User who completed verification
-   */
-  completedBy?: UUID
-
-  /**
-   * Time taken for verification (in milliseconds)
-   */
-  verificationTime?: number
-
-  /**
-   * Summary of changes made during verification
-   */
-  changeSummary?: {
-    /**
-     * Total number of items
-     */
-    totalItems: number
-
-    /**
-     * Number of items that were modified
-     */
-    modifiedItems: number
-
-    /**
-     * Number of items that were approved without changes
-     */
-    approvedWithoutChanges: number
-
-    /**
-     * Number of items that failed verification
-     */
-    failedItems: number
-  }
-
-  /**
-   * Reason for rejection if the verification was not approved
-   */
-  rejectionReason?: string
-
-  /**
-   * Detailed metadata about the verification process
-   */
-  verificationMetadata: VerificationMetadata
-}
-
-/**
- * Options for workflow operations
- */
-export interface WorkflowOptions<T = unknown> {
-  /**
-   * Workflow identifier
-   */
-  workflowId?: string
-
-  /**
-   * Progress callback
-   */
-  onProgress?: (progress: number, phase?: string) => void
-
-  /**
-   * Status update callback
-   */
-  onStatusUpdate?: (status: string) => void
-
-  /**
-   * Success callback
-   */
-  onSuccess?: (result: T) => void
-
-  /**
-   * Error callback
-   */
-  onError?: (error: string) => void
-}
-
-/**
- * Options specific to verification workflows
- */
-export interface VerificationWorkflowOptions extends WorkflowOptions {
-  /**
-   * Original summary ID
-   */
-  originalSummaryId: UUID
-
-  /**
-   * User ID performing verification
-   */
-  verifiedBy?: UUID
-
-  /**
-   * Maximum time allowed for verification (in milliseconds)
-   */
-  timeoutMs?: number
-
-  /**
-   * Whether to automatically mark as verified after timeout
-   */
-  autoVerifyOnTimeout?: boolean
-}
-
-// ==========================================================================
-// Utility Functions
-// ==========================================================================
-
-/**
- * Get the message type from metadata
- *
- * @param metadata Message metadata to check
- * @returns The message type or undefined
- */
 export function getMessageType(
   metadata?: MessageMetadata
 ): MessageType | undefined {
   if (!metadata) return undefined
-
-  // First check for explicit type field
-  if (metadata.type !== undefined && metadata.type !== null)
-    return metadata.type
-
-  // Then check legacy flags
-  if (metadata.isVerificationRequest === true)
-    return MessageType.VERIFICATION_REQUEST
+  if (metadata.type !== undefined && metadata.type !== null) return metadata.type
+  if (metadata.isVerificationRequest === true) return MessageType.VERIFICATION_REQUEST
   if (metadata.isSummary === true) return MessageType.SUMMARY
   if (metadata.isCorrection === true) return MessageType.CORRECTION
   if (metadata.isProgress === true) return MessageType.PROGRESS
@@ -731,18 +197,9 @@ export function getMessageType(
   if (metadata.isReport === true) return MessageType.REPORT
   if (metadata.isSystem === true) return MessageType.SYSTEM
   if (metadata.isError === true) return MessageType.ERROR
-
-  // Default to regular chat message
   return MessageType.CHAT
 }
 
-/**
- * Check if a message is of a specific type
- *
- * @param metadata Message metadata to check
- * @param type Type to check for
- * @returns True if the message is of the specified type
- */
 export function isMessageOfType(
   metadata: MessageMetadata | undefined,
   type: MessageType
@@ -751,106 +208,70 @@ export function isMessageOfType(
   return getMessageType(metadata) === type
 }
 
-/**
- * Verification status checker functions for consistent status checks
- */
+// ==========================================================================
+// Verification Flow Integration
+// ==========================================================================
 
-/**
- * Check if verification is complete
- */
 export function isVerificationComplete(
-  metadata?: VerificationMetadata
+  metadata?: CanonicalVerificationMetadata
 ): boolean {
-  return metadata?.verificationStatus === VerificationStatusType.COMPLETED
+  return metadata?.verification_status === VerificationStatus.completed
 }
 
-/**
- * Check if verification is in progress
- */
 export function isVerificationInProgress(
-  metadata?: VerificationMetadata
+  metadata?: CanonicalVerificationMetadata
 ): boolean {
-  return metadata?.verificationStatus === VerificationStatusType.IN_PROGRESS
+  return metadata?.verification_status === VerificationStatus.inProgress
 }
 
-/**
- * Check if verification is pending
- */
 export function isVerificationPending(
-  metadata?: VerificationMetadata
+  metadata?: CanonicalVerificationMetadata
 ): boolean {
-  return metadata?.verificationStatus === VerificationStatusType.PENDING
+  return metadata?.verification_status === VerificationStatus.pending
+}
+
+export function isVerificationFailed(
+  metadata?: CanonicalVerificationMetadata
+): boolean {
+  return metadata?.verification_status === VerificationStatus.failed
 }
 
 /**
- * Check if verification has failed
+ * Convert a WorkflowStep into the closest matching VerificationStatus.
+ * By default, we treat non-verification steps as 'pending'.
  */
-export function isVerificationFailed(metadata?: VerificationMetadata): boolean {
-  return metadata?.verificationStatus === VerificationStatusType.FAILED
-}
-
-/**
- * Create a new verification metadata object with default values
- */
-export function createVerificationMetadata(
-  originalSummaryId: UUID,
-  currentVersionId: UUID
-): VerificationMetadata {
-  const now = new Date().toISOString()
-  return {
-    verificationStatus: VerificationStatusType.PENDING,
-    originalSummaryId,
-    currentVersionId,
-    correctionCount: 0,
-    corrections: [],
-    startedAt: now,
-    lastUpdated: now,
+export function workflowStepToVerificationStatus(step: WorkflowStep): VerificationStatus {
+  switch (step) {
+    case 'verification_in_progress':
+      return VerificationStatus.inProgress
+    case 'verification_completed':
+      return VerificationStatus.completed
+    case 'verification_failed':
+      return VerificationStatus.failed
+    case 'verification_pending':
+      return VerificationStatus.pending
+    case 'verification':
+      // Legacy step
+      return VerificationStatus.inProgress
+    default:
+      return VerificationStatus.pending
   }
 }
 
 /**
- * Update verification status with appropriate timestamps
+ * Convert a VerificationStatus to the corresponding WorkflowStep if applicable.
  */
-export function updateVerificationStatus(
-  metadata: VerificationMetadata,
-  status: VerificationStatusType
-): VerificationMetadata {
-  const now = new Date().toISOString()
-
-  return {
-    ...metadata,
-    verificationStatus: status,
-    lastUpdated: now,
-    ...(status === VerificationStatusType.COMPLETED ? { verifiedAt: now } : {}),
-    ...(status === VerificationStatusType.FAILED
-      ? { rejectionReason: metadata.rejectionReason ?? 'Verification failed' }
-      : {}),
-  }
-}
-
-/**
- * Add a correction to verification metadata
- */
-export function addCorrection(
-  metadata: VerificationMetadata,
-  correctionText: string,
-  userId?: UUID
-): VerificationMetadata {
-  const now = new Date().toISOString()
-
-  const newCorrection: CorrectionEntry = {
-    id: `correction-${Date.now()}`,
-    text: correctionText,
-    timestamp: now,
-    ...(userId !== undefined ? { userId } : {}),
-  }
-
-  return {
-    ...metadata,
-    verificationStatus: VerificationStatusType.IN_PROGRESS,
-    correctionCount: metadata.correctionCount + 1,
-    corrections: [...metadata.corrections, newCorrection],
-    lastUpdated: now,
+export function verificationStatusToWorkflowStep(status: VerificationStatus): WorkflowStep {
+  switch (status) {
+    case VerificationStatus.inProgress:
+      return 'verification_in_progress'
+    case VerificationStatus.completed:
+      return 'verification_completed'
+    case VerificationStatus.failed:
+      return 'verification_failed'
+    case VerificationStatus.pending:
+    default:
+      return 'verification_pending'
   }
 }
 
@@ -865,268 +286,268 @@ export function addCorrection(
 export const ALLOWED_TRANSITIONS: WorkflowTransition[] = [
   // Initial state transitions
   {
-    from: WorkflowStep.IDLE,
-    to: WorkflowStep.UPLOADING,
+    from: 'idle',
+    to: 'uploading',
     allowData: true,
     description: 'Start document upload',
   },
   {
-    from: WorkflowStep.IDLE,
-    to: WorkflowStep.CHAT_STARTED,
+    from: 'idle',
+    to: 'chat_started',
     allowData: true,
     description: 'Start chat without document',
   },
   {
-    from: WorkflowStep.IDLE,
-    to: WorkflowStep.RESEARCH,
+    from: 'idle',
+    to: DomainOnlyWorkflowStep.RESEARCH,
     allowData: true,
     description: 'Start research mode',
   },
 
   // Upload flow
   {
-    from: WorkflowStep.UPLOADING,
-    to: WorkflowStep.EXTRACTING,
+    from: 'uploading',
+    to: 'extracting',
     allowData: true,
     description: 'Document uploaded, starting extraction',
   },
   {
-    from: WorkflowStep.EXTRACTING,
-    to: WorkflowStep.VERIFICATION,
+    from: 'extracting',
+    to: 'verification',
     allowData: true,
     description: 'Extraction complete, ready for verification',
   },
   {
-    from: WorkflowStep.EXTRACTING,
-    to: WorkflowStep.VERIFICATION_PENDING,
+    from: 'extracting',
+    to: 'verification_pending',
     allowData: true,
     description: 'Extraction complete, waiting for verification',
   },
 
   // Verification flow
   {
-    from: WorkflowStep.VERIFICATION,
-    to: WorkflowStep.VERIFICATION_PENDING,
+    from: 'verification',
+    to: 'verification_pending',
     allowData: true,
     description: 'Preparing verification',
   },
   {
-    from: WorkflowStep.VERIFICATION_PENDING,
-    to: WorkflowStep.VERIFICATION_IN_PROGRESS,
+    from: 'verification_pending',
+    to: 'verification_in_progress',
     allowData: true,
     description: 'User reviewing verification',
   },
   {
-    from: WorkflowStep.VERIFICATION_IN_PROGRESS,
-    to: WorkflowStep.VERIFICATION_COMPLETED,
+    from: 'verification_in_progress',
+    to: 'verification_completed',
     allowData: true,
     description: 'User completed verification',
   },
   {
-    from: WorkflowStep.VERIFICATION_IN_PROGRESS,
-    to: WorkflowStep.VERIFICATION_FAILED,
+    from: 'verification_in_progress',
+    to: 'verification_failed',
     allowData: true,
     description: 'Verification rejected',
   },
   {
-    from: WorkflowStep.VERIFICATION_COMPLETED,
-    to: WorkflowStep.REPORT_GENERATION,
+    from: 'verification_completed',
+    to: 'report_generation',
     allowData: true,
     description: 'Starting report generation',
   },
   {
-    from: WorkflowStep.VERIFICATION_FAILED,
-    to: WorkflowStep.VERIFICATION_IN_PROGRESS,
+    from: 'verification_failed',
+    to: 'verification_in_progress',
     allowData: true,
     description: 'Retry verification',
   },
 
   // Report generation flow
   {
-    from: WorkflowStep.REPORT_GENERATION,
-    to: WorkflowStep.COMPLETE,
+    from: 'report_generation',
+    to: 'complete',
     allowData: true,
     description: 'Report generated successfully',
   },
   {
-    from: WorkflowStep.REPORT_GENERATION,
-    to: WorkflowStep.REPORT_PRESENTATION,
+    from: 'report_generation',
+    to: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
     allowData: true,
     description: 'Showing generated report',
   },
   {
-    from: WorkflowStep.REPORT_PRESENTATION,
-    to: WorkflowStep.COMPLETE,
+    from: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
+    to: 'complete',
     allowData: true,
     description: 'Workflow complete',
   },
 
   // Chat flow
   {
-    from: WorkflowStep.CHAT_STARTED,
-    to: WorkflowStep.CHAT_IN_PROGRESS,
+    from: 'chat_started',
+    to: 'chat_in_progress',
     allowData: true,
     description: 'Processing chat message',
   },
   {
-    from: WorkflowStep.CHAT_IN_PROGRESS,
-    to: WorkflowStep.CHAT_COMPLETED,
+    from: 'chat_in_progress',
+    to: 'chat_completed',
     allowData: true,
     description: 'Chat message processed',
   },
   {
-    from: WorkflowStep.CHAT_COMPLETED,
-    to: WorkflowStep.CHAT_IN_PROGRESS,
+    from: 'chat_completed',
+    to: 'chat_in_progress',
     allowData: true,
     description: 'Processing another message',
   },
 
   // Research flow
   {
-    from: WorkflowStep.RESEARCH,
-    to: WorkflowStep.REPORT_GENERATION,
+    from: DomainOnlyWorkflowStep.RESEARCH,
+    to: 'report_generation',
     allowData: true,
     description: 'Research complete, generating report',
   },
 
   // Complete state can transition back to several states for new operations
   {
-    from: WorkflowStep.COMPLETE,
-    to: WorkflowStep.IDLE,
+    from: 'complete',
+    to: 'idle',
     description: 'Reset workflow',
   },
   {
-    from: WorkflowStep.COMPLETE,
-    to: WorkflowStep.CHAT_IN_PROGRESS,
+    from: 'complete',
+    to: 'chat_in_progress',
     allowData: true,
     description: 'Continue with chat after completion',
   },
   {
-    from: WorkflowStep.COMPLETE,
-    to: WorkflowStep.UPLOADING,
+    from: 'complete',
+    to: 'uploading',
     allowData: true,
     description: 'Upload new document after completion',
   },
 
   // Error recovery paths
   {
-    from: WorkflowStep.ERROR,
-    to: WorkflowStep.IDLE,
+    from: DomainOnlyWorkflowStep.ERROR,
+    to: 'idle',
     description: 'Reset after error',
   },
   {
-    from: WorkflowStep.ERROR,
-    to: WorkflowStep.UPLOADING,
+    from: DomainOnlyWorkflowStep.ERROR,
+    to: 'uploading',
     allowData: true,
     description: 'Retry upload after error',
   },
   {
-    from: WorkflowStep.ERROR,
-    to: WorkflowStep.EXTRACTING,
+    from: DomainOnlyWorkflowStep.ERROR,
+    to: 'extracting',
     allowData: true,
     description: 'Retry extraction after error',
   },
   {
-    from: WorkflowStep.ERROR,
-    to: WorkflowStep.VERIFICATION,
+    from: DomainOnlyWorkflowStep.ERROR,
+    to: 'verification',
     allowData: true,
     description: 'Return to verification after error',
   },
   {
-    from: WorkflowStep.ERROR,
-    to: WorkflowStep.REPORT_GENERATION,
+    from: DomainOnlyWorkflowStep.ERROR,
+    to: 'report_generation',
     allowData: true,
     description: 'Retry report generation after error',
   },
 
   // Any state can transition to error
   {
-    from: WorkflowStep.IDLE,
-    to: WorkflowStep.ERROR,
+    from: 'idle',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error in idle state',
   },
   {
-    from: WorkflowStep.UPLOADING,
-    to: WorkflowStep.ERROR,
+    from: 'uploading',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during upload',
   },
   {
-    from: WorkflowStep.EXTRACTING,
-    to: WorkflowStep.ERROR,
+    from: 'extracting',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during extraction',
   },
   {
-    from: WorkflowStep.VERIFICATION,
-    to: WorkflowStep.ERROR,
+    from: 'verification',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during verification',
   },
   {
-    from: WorkflowStep.VERIFICATION_PENDING,
-    to: WorkflowStep.ERROR,
+    from: 'verification_pending',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error in verification pending',
   },
   {
-    from: WorkflowStep.VERIFICATION_IN_PROGRESS,
-    to: WorkflowStep.ERROR,
+    from: 'verification_in_progress',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during verification process',
   },
   {
-    from: WorkflowStep.VERIFICATION_COMPLETED,
-    to: WorkflowStep.ERROR,
+    from: 'verification_completed',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error after verification completion',
   },
   {
-    from: WorkflowStep.VERIFICATION_FAILED,
-    to: WorkflowStep.ERROR,
+    from: 'verification_failed',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error after verification failed',
   },
   {
-    from: WorkflowStep.REPORT_GENERATION,
-    to: WorkflowStep.ERROR,
+    from: 'report_generation',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during report generation',
   },
   {
-    from: WorkflowStep.COMPLETE,
-    to: WorkflowStep.ERROR,
+    from: 'complete',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error in completed state',
   },
   {
-    from: WorkflowStep.CHAT_STARTED,
-    to: WorkflowStep.ERROR,
+    from: 'chat_started',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error starting chat',
   },
   {
-    from: WorkflowStep.CHAT_IN_PROGRESS,
-    to: WorkflowStep.ERROR,
+    from: 'chat_in_progress',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during chat',
   },
   {
-    from: WorkflowStep.CHAT_COMPLETED,
-    to: WorkflowStep.ERROR,
+    from: 'chat_completed',
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error after chat completion',
   },
   {
-    from: WorkflowStep.RESEARCH,
-    to: WorkflowStep.ERROR,
+    from: DomainOnlyWorkflowStep.RESEARCH,
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during research',
   },
   {
-    from: WorkflowStep.REPORT_PRESENTATION,
-    to: WorkflowStep.ERROR,
+    from: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
+    to: DomainOnlyWorkflowStep.ERROR,
     requireData: true,
     description: 'Error during report presentation',
   },

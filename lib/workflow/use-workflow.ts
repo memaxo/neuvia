@@ -1,37 +1,21 @@
-import { randomUUID } from 'crypto'
-import { extractPatientSummary, processCorrection as processPatientSummaryCorrection } from '@/lib/langchain/patient-summary'
 import { useCallback, useEffect, useState, useMemo } from 'react'
-import type { VerificationMetadata, WorkflowOptions, WorkflowState } from '@/lib/types/workflow'
+import { randomUUID } from 'crypto'
 import {
-  ProcessingPhase,
-  VerificationStatusType,
   WorkflowStep,
+  ProcessingPhase,
+  type WorkflowOptions,
+  type WorkflowState,
+  type VerificationMetadata,
 } from '@/lib/types/workflow'
-import { createBrowserClient } from '@/lib/supabase/clients'
-import type { Database, Json } from '@/lib/types/database'
+import { workflowService } from '@/lib/services/workflow/workflow-service'
+import { extractPatientSummary, processCorrection as processPatientSummaryCorrection } from '@/lib/langchain/patient-summary'
 import { useWorkflowErrorHandler } from './workflow-error-handler'
-import type { FileUpload } from '@/lib/types/upload'
 import { normalizeError } from '@/lib/errors'
 
 interface UseWorkflowOptions {
   userId?: string
   initialStep?: WorkflowStep
   chatId?: string | null
-}
-
-// Define proper types for database responses
-interface WorkflowStateData {
-  id: string
-  user_id: string
-  current_step: string
-  chat_id?: string | null
-  correction_history?: unknown[]
-  current_summary_id?: string
-  metadata: Record<string, unknown>
-  verification_metadata?: Record<string, unknown>
-  updated_at: string
-  created_at: string
-  last_message_id?: string | null
 }
 
 export function useWorkflow(options: UseWorkflowOptions = {}) {
@@ -43,242 +27,99 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
     metadata: {}
   })
   const [workflowId, setWorkflowId] = useState<string | null>(null)
-  const supabase = createBrowserClient()
   const errorHandler = useWorkflowErrorHandler()
+  const [subscriptionChannel, setSubscriptionChannel] = useState<any>(null)
 
   /**
-   * Creates a new workflow state record in the DB if none exists.
+   * Load or create workflow state from DB using the workflowService
    */
-  const createNewWorkflowState = useCallback(async () => {
+  const loadOrCreateWorkflowState = useCallback(async () => {
     if (!userId) return null
-
     try {
-      const metadata = {
-        progress: 0,
-        currentStep: state.currentStep,
-        createdAt: new Date().toISOString(),
-      }
-
-      const { data, error } = await supabase
-        .from('workflow_states')
-        .insert({
-          user_id: userId,
-          current_step: state.currentStep as Database['public']['Enums']['workflow_step'],
-          chat_id: chatId,
-          metadata,
-          correction_history: [],
-        })
-        .select()
-        .single()
-
-      if (data && !error) {
-        setWorkflowId(data.id)
-        return data.id
-      }
-
-      if (error) throw error
-      return null
-    } catch (error) {
-      void errorHandler.handleError(
-        error,
-        state.currentStep,
-        { details: { userId, chatId }, showToast: true }
+      // This returns { id, data } where data is the row
+      const { id, data } = await workflowService.getOrCreateWorkflowForUser(
+        userId,
+        chatId ?? null,
+        initialStep,
+        { progress: 0, currentStep: initialStep, createdAt: new Date().toISOString() }
       )
+      setWorkflowId(id)
+
+      if (data && data.metadata) {
+        const meta = data.metadata as Record<string, unknown>
+        setState((old) => ({
+          ...old,
+          currentStep: (meta.currentStep as WorkflowStep) || data.current_step,
+          progress: typeof meta.progress === 'number' ? meta.progress : 0,
+          phase: typeof meta.phase === 'string' ? (meta.phase as ProcessingPhase) : undefined,
+          error: typeof meta.error === 'string' ? meta.error : null,
+          metadata: meta,
+          timestamp: new Date(data.updated_at).toISOString(),
+        }))
+      }
+      return id
+    } catch (error) {
+      await errorHandler.handleError(error, initialStep, {
+        details: { userId, chatId },
+        showToast: true,
+      })
       return null
     }
-  }, [userId, chatId, state.currentStep, supabase, errorHandler])
+  }, [userId, chatId, initialStep, errorHandler])
 
   /**
-   * Load or create workflow state on mount. Subscribe to real-time changes.
+   * Subscribe to workflow state changes for user+chat via the workflowService
    */
+  const subscribeToChanges = useCallback(() => {
+    if (!userId) return
+    const channel = workflowService.subscribeToWorkflowForUser(
+      userId,
+      chatId ?? null,
+      (payload) => {
+        try {
+          const newData = payload.new
+          if (!newData) return
+          const meta = (newData.metadata as Record<string, unknown>) ?? {}
+          setWorkflowId(newData.id)
+          setState((old) => ({
+            currentStep: (meta.currentStep as WorkflowStep) || (newData.current_step as WorkflowStep),
+            progress: typeof meta.progress === 'number' ? meta.progress : 0,
+            phase: typeof meta.phase === 'string' ? (meta.phase as ProcessingPhase) : undefined,
+            error: typeof meta.error === 'string' ? meta.error : null,
+            metadata: meta,
+            timestamp: new Date(newData.updated_at).toISOString(),
+          }))
+        } catch (err) {
+          void errorHandler.handleError(
+            err,
+            state.currentStep,
+            { details: { userId, chatId, payload }, showToast: true }
+          )
+        }
+      }
+    )
+    setSubscriptionChannel(channel)
+  }, [userId, chatId, errorHandler, state.currentStep])
+
   useEffect(() => {
     if (!userId) return
-
-    const loadWorkflowState = async (): Promise<void> => {
-      try {
-        const { data } = await supabase
-          .from('workflow_states')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-
-        // If no state, create one
-        if (!data) {
-          void createNewWorkflowState()
-          return
-        }
-
-        const newData = data as WorkflowStateData
-        const metadata: Record<string, unknown> = {}
-
-        if (newData.metadata) {
-          Object.assign(metadata, newData.metadata)
-        }
-
-        if (newData.current_step) {
-          metadata.currentStep = newData.current_step
-        }
-
-        if (newData.verification_metadata) {
-          metadata.verificationMetadata = newData.verification_metadata
-        }
-
-        if (newData.correction_history) {
-          metadata.correctionHistory = newData.correction_history
-        }
-
-        if (newData.current_summary_id) {
-          metadata.currentSummaryId = newData.current_summary_id
-        }
-
-        setState({
-          currentStep: (metadata.currentStep as WorkflowStep) || (newData.current_step as WorkflowStep),
-          progress: (metadata.progress as number) ?? 0,
-          phase: metadata.phase as ProcessingPhase | undefined,
-          error: metadata.error as string | undefined,
-          metadata,
-          timestamp: new Date(newData.updated_at).toISOString(),
-        })
-        setWorkflowId(newData.id)
-      } catch (error) {
-        void errorHandler.handleError(
-          error,
-          state.currentStep,
-          { details: { userId, chatId }, showToast: true }
-        )
-      }
-    }
-
-    void (async () => {
-      await loadWorkflowState()
-    })()
-
-    const channelName = `workflow-${userId}-${chatId ?? 'null'}`
-    const channel = supabase.channel(channelName)
-
-    channel
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workflow_states',
-          filter: chatId
-            ? `user_id=eq.${userId} AND chat_id=eq.${chatId}`
-            : `user_id=eq.${userId} AND chat_id IS NULL`,
-        },
-        (payload) => {
-          try {
-            const newData = payload.new as WorkflowStateData
-            const metadata = (newData.metadata as Record<string, unknown>) ?? {}
-
-            if (newData.verification_metadata) {
-              metadata.verificationMetadata = newData.verification_metadata
-            }
-
-            if (newData.correction_history) {
-              metadata.correctionHistory = newData.correction_history
-            }
-
-            if (newData.current_summary_id) {
-              metadata.currentSummaryId = newData.current_summary_id
-            }
-
-            setState({
-              currentStep: (metadata.currentStep as WorkflowStep) || (newData.current_step as WorkflowStep),
-              progress: (metadata.progress as number) || 0,
-              phase: metadata.phase as ProcessingPhase | undefined,
-              error: metadata.error as string | undefined,
-              metadata,
-              timestamp: new Date(newData.updated_at).toISOString(),
-            })
-            setWorkflowId(newData.id)
-          } catch (error) {
-            void errorHandler.handleError(
-              error,
-              state.currentStep,
-              { details: { userId, chatId, payload }, showToast: true }
-            )
-          }
-        }
-      )
-      .subscribe()
-
+    // Load or create the workflow row
+    void loadOrCreateWorkflowState()
+    // Then subscribe
+    subscribeToChanges()
     return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [userId, chatId, supabase, errorHandler, state.currentStep, createNewWorkflowState])
-
-  /**
-   * Helper to update database with new step/progress/etc.
-   */
-  const updateDatabase = useCallback(
-    async (
-      newStep?: WorkflowStep,
-      newProgress?: number,
-      newPhase?: ProcessingPhase,
-      newError?: string | null,
-      newMetadata?: Record<string, unknown>
-    ) => {
-      if (!userId) return
-
-      try {
-        if (!workflowId) {
-          await createNewWorkflowState()
-          return
-        }
-
-        const updates: Record<string, unknown> = {}
-
-        if (newStep !== null && newStep !== undefined) {
-          updates.current_step = newStep as Database['public']['Enums']['workflow_step']
-        }
-
-        const updatedMetadata = {
-          ...(state.metadata ?? {}),
-          ...(newMetadata ?? {}),
-        }
-
-        if (newProgress !== undefined) {
-          updatedMetadata.progress = newProgress
-        }
-        if (newPhase !== undefined) {
-          updatedMetadata.phase = newPhase
-        }
-        if (newError !== undefined) {
-          updatedMetadata.error = newError
-        }
-        if (newStep !== null && newStep !== undefined) {
-          updatedMetadata.currentStep = newStep
-        }
-
-        updatedMetadata.updatedAt = new Date().toISOString()
-        updates.metadata = updatedMetadata
-
-        const { error } = await supabase
-          .from('workflow_states')
-          .update(updates)
-          .eq('id', workflowId)
-
-        if (error) {
-          throw error
-        }
-      } catch (error) {
-        void errorHandler.handleError(
-          error,
-          state.currentStep,
-          { details: { userId, workflowId, newStep, newProgress, newPhase }, showToast: true }
-        )
+      if (subscriptionChannel) {
+        workflowService.unsubscribeFromChannel(subscriptionChannel)
       }
-    },
-    [userId, workflowId, state.metadata, createNewWorkflowState, supabase, errorHandler, state.currentStep]
-  )
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, chatId])
 
   /**
-   * Update only the step (plus optional metadata).
+   * Update workflow step (and metadata) in DB, and also update local state
    */
   const updateStep = useCallback(
-    (step: WorkflowStep, metadata?: Record<string, unknown>) => {
+    async (step: WorkflowStep, metadata?: Record<string, unknown>) => {
       try {
         const newState: WorkflowState = {
           ...state,
@@ -287,10 +128,16 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           timestamp: new Date().toISOString(),
         }
         setState(newState)
-        void updateDatabase(step, undefined, undefined, undefined, metadata)
+        if (workflowId) {
+          await workflowService.updateWorkflowState(
+            workflowId,
+            step,
+            metadata
+          )
+        }
         return newState
       } catch (error) {
-        void errorHandler.handleError(
+        await errorHandler.handleError(
           error,
           state.currentStep,
           { details: { step, metadata }, showToast: true }
@@ -298,26 +145,36 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         return state
       }
     },
-    [state, updateDatabase, errorHandler]
+    [state, workflowId, errorHandler]
   )
 
   /**
-   * Update only the progress (and optional phase).
+   * Update progress (plus optional phase) in DB
    */
   const updateProgress = useCallback(
-    (progress: number, phase?: ProcessingPhase) => {
+    async (progress: number, phase?: ProcessingPhase) => {
       try {
+        const newMeta = {
+          ...state.metadata,
+          progress,
+        } as Record<string, unknown>
+        if (phase) {
+          newMeta.phase = phase
+        }
         const newState: WorkflowState = {
           ...state,
           progress,
           phase,
+          metadata: newMeta,
           timestamp: new Date().toISOString(),
         }
         setState(newState)
-        void updateDatabase(undefined, progress, phase)
+        if (workflowId) {
+          await workflowService.updateWorkflowState(workflowId, state.currentStep, newMeta, { skipValidation: true })
+        }
         return newState
       } catch (error) {
-        void errorHandler.handleError(
+        await errorHandler.handleError(
           error,
           state.currentStep,
           { details: { progress, phase }, showToast: true }
@@ -325,11 +182,11 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         return state
       }
     },
-    [state, updateDatabase, errorHandler]
+    [state, workflowId, errorHandler]
   )
 
   /**
-   * Generic helper to run an operation while setting step, progress, error, etc.
+   * Generic helper: run an operation with set step/progress, catch errors
    */
   const runOperation = useCallback(
     async <T>(
@@ -338,35 +195,26 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       options?: WorkflowOptions<T>
     ): Promise<T> => {
       try {
-        updateStep(step, { startedAt: new Date().toISOString() })
-        updateProgress(0, ProcessingPhase.INITIALIZATION)
-
-        const handleProgress = (progress: number, phase?: string) => {
-          updateProgress(progress, phase as ProcessingPhase)
-          options?.onProgress?.(progress, phase)
-        }
-
-        handleProgress(5, ProcessingPhase.INITIALIZATION)
+        await updateStep(step, { startedAt: new Date().toISOString() })
+        await updateProgress(5, ProcessingPhase.INITIALIZATION)
 
         const result = await operation()
-
-        handleProgress(100, ProcessingPhase.COMPLETION)
+        await updateProgress(100, ProcessingPhase.COMPLETION)
         options?.onSuccess?.(result)
         return result
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        updateStep(WorkflowStep.ERROR, {
+        await updateStep(WorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
         options?.onError?.(errorMessage)
 
-        void errorHandler.handleError(
+        await errorHandler.handleError(
           error,
           step,
           { previousStep: state.currentStep, details: { step }, showToast: true }
         )
-
         throw error
       }
     },
@@ -374,7 +222,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
   )
 
   /**
-   * Initiate a verification step with extracted doc data.
+   * Initiate verification (ex: extracted doc data).
+   * Moved direct DB logic to workflow service; we'll do minimal local updates here.
    */
   const initiateVerification = useCallback(
     async (extractedDocument: unknown, messageId?: string) => {
@@ -389,101 +238,69 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
             (extractedDocument as { text?: string }).text ??
             JSON.stringify(extractedDocument)
         }
-        const newVerificationMetadata: VerificationMetadata = {
-          verificationStatus: VerificationStatusType.PENDING,
-          originalSummaryId: summaryId,
-          currentVersionId: summaryId,
-          correctionCount: 0,
-          corrections: [],
-          extractedData: extractedDocument,
-        }
-        const verificationDbMetadata = {
-          extracted_data: extractedDocument,
-          verification_started_at: new Date().toISOString(),
-          status: 'pending',
-        } as unknown as Json
-        const { data: _existingState } = await supabase
-          .from('workflow_states')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-        const { data, error } = await supabase
-          .from('workflow_states')
-          .upsert(
-            {
-              id: _existingState?.id,
-              user_id: userId,
-              current_step: WorkflowStep.VERIFICATION_PENDING as Database['public']['Enums']['workflow_step'],
-              metadata: _existingState?.metadata || {},
-              verification_metadata: verificationDbMetadata,
-              chat_id: chatId,
-              correction_history: [],
-              current_summary_id: summaryId,
-              last_message_id: messageId,
-              updated_at: new Date().toISOString(),
-              created_at: _existingState?.created_at ?? new Date().toISOString(),
-            },
-            { onConflict: 'user_id' }
-          )
-          .select()
-          .single()
-        if (error) {
-          throw new Error(`Database error: ${error.message}`)
-        }
-        updateStep(WorkflowStep.VERIFICATION_PENDING, {
-          verificationMetadata: newVerificationMetadata,
+
+        // We'll rely on server update for verification; just update local step
+        await updateStep(WorkflowStep.VERIFICATION_PENDING, {
+          verificationMetadata: {
+            verificationStatus: 'pending',
+            originalSummaryId: summaryId,
+            currentVersionId: summaryId,
+            correctionCount: 0,
+            corrections: [],
+            extractedData: extractedDocument,
+          } as VerificationMetadata,
           currentSummaryId: summaryId,
           correctionHistory: [],
         })
+
+        // Then do the actual summarization
         const result = await extractPatientSummary(
           documentText,
-          workflowId || data.id,
+          workflowId || '',
           { useGemini: true },
           (progress, phase) => {
-            updateProgress(progress, phase as ProcessingPhase)
+            // We'll call updateProgress here
+            void updateProgress(progress, phase as ProcessingPhase)
           }
         )
+
         if (result.success !== true) {
           throw new Error(result.error ?? 'Failed to extract patient summary')
         }
-        setState({
-          ...state,
-          currentStep: WorkflowStep.VERIFICATION_PENDING,
+
+        // local state updated to reflect successful extraction
+        setState((old) => ({
+          ...old,
           progress: 100,
           phase: ProcessingPhase.VERIFICATION,
           timestamp: new Date().toISOString(),
-          metadata: {
-            ...(state.metadata ?? {}),
-            verificationMetadata: newVerificationMetadata,
-            currentSummaryId: summaryId,
-            correctionHistory: [],
-          },
-        })
+        }))
+
         return {
           summaryId,
           summary: result.summary,
           structuredData: result.structuredData,
         }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        updateStep(WorkflowStep.ERROR, {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        await updateStep(WorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
-
-        void errorHandler.handleError(
-          error,
+        await errorHandler.handleError(
+          err,
           WorkflowStep.VERIFICATION_PENDING,
           { previousStep: state.currentStep, details: { extractedDocument, messageId }, showToast: true }
         )
-        throw error
+        throw err
       }
     },
-    [userId, chatId, workflowId, state, supabase, updateProgress, updateStep, errorHandler]
+    [userId, chatId, workflowId, state, updateStep, updateProgress, errorHandler]
   )
 
   /**
    * Process a correction for verification.
+   * We'll keep local state updates, but the direct DB calls happen in workflowService if needed.
    */
   const processCorrection = useCallback(
     async (correctionText: string, currentSummary: string, messageId?: string) => {
@@ -492,26 +309,9 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       }
       try {
         const newSummaryId = randomUUID()
-        const { data: currentState, error: fetchError } = await supabase
-          .from('workflow_states')
-          .select('*')
-          .eq('user_id', userId)
-          .single()
-        if (fetchError || !currentState) {
-          throw new Error('No workflow state found for user')
-        }
-        const workflowState = currentState as any
-        const currentStep = workflowState.current_step
-        if (
-          currentStep !== WorkflowStep.VERIFICATION_PENDING &&
-          currentStep !== WorkflowStep.VERIFICATION_IN_PROGRESS &&
-          currentStep !== WorkflowStep.VERIFICATION
-        ) {
-          throw new Error(`Invalid workflow step for correction: ${currentStep}`)
-        }
-        const correctionHistoryData = workflowState.correction_history || []
+        // We'll store correction in local state.
         const updatedHistory = [
-          ...correctionHistoryData,
+          ...(state.metadata?.correctionHistory as any[] || []),
           {
             correction_text: correctionText,
             timestamp: new Date().toISOString(),
@@ -519,72 +319,70 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
             message_id: messageId,
           },
         ]
-        updateStep(WorkflowStep.VERIFICATION_IN_PROGRESS, {
+
+        await updateStep(WorkflowStep.VERIFICATION_IN_PROGRESS, {
           correctionHistory: updatedHistory,
           currentSummaryId: newSummaryId,
         })
+
+        // Actually process the correction
         const result = await processPatientSummaryCorrection(
           currentSummary,
           correctionText,
           workflowId || '',
           { useGemini: false },
           (progress, phase) => {
-            updateProgress(progress, phase as ProcessingPhase)
+            void updateProgress(progress, phase as ProcessingPhase)
           }
         )
+
         if (!result.success) {
           throw new Error(result.error ?? 'Failed to process correction')
         }
-        const currentVerificationMetadata = workflowState.verification_metadata || {}
+
+        // Also reflect updated verification metadata in local state
+        const currentVerificationMetadata = (state.metadata?.verificationMetadata as VerificationMetadata) || {}
         const updatedVerificationMetadata = {
           ...currentVerificationMetadata,
-          verificationStatus: VerificationStatusType.IN_PROGRESS,
+          verificationStatus: 'inProgress',
           currentVersionId: newSummaryId,
           correctionCount: updatedHistory.length,
           lastUpdated: new Date().toISOString(),
-        }
-        const { error: updateError } = await supabase
-          .from('workflow_states')
-          .update({
-            current_step: WorkflowStep.VERIFICATION_IN_PROGRESS as Database['public']['Enums']['workflow_step'],
-            verification_metadata: {
-              ...currentVerificationMetadata,
-              status: 'in_progress',
-            },
-            current_summary_id: newSummaryId,
-            last_message_id: messageId,
-            correction_history: updatedHistory,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', userId)
-        if (updateError) {
-          throw new Error(`Database error: ${updateError.message}`)
-        }
-        updateStep(WorkflowStep.VERIFICATION_IN_PROGRESS, {
-          verificationMetadata: updatedVerificationMetadata,
-          correctionHistory: updatedHistory,
-          currentSummaryId: newSummaryId,
-        })
+        } as VerificationMetadata
+
+        setState((old) => ({
+          ...old,
+          currentStep: WorkflowStep.VERIFICATION_IN_PROGRESS,
+          metadata: {
+            ...old.metadata,
+            verificationMetadata: updatedVerificationMetadata,
+            correctionHistory: updatedHistory,
+            currentSummaryId: newSummaryId
+          },
+          timestamp: new Date().toISOString()
+        }))
+
         return {
           summaryId: newSummaryId,
           summary: result.summary,
           structuredData: result.structuredData,
           correctionCount: updatedHistory.length,
         }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        updateStep(WorkflowStep.ERROR, {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        await updateStep(WorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
-        throw error
+        throw err
       }
     },
-    [userId, chatId, workflowId, state, supabase, updateProgress, updateStep]
+    [userId, chatId, workflowId, state, updateStep, updateProgress]
   )
 
   /**
-   * Complete verification step, optionally with final summaryId.
+   * Complete verification - local state updates only here,
+   * real DB logic can be in the workflowService if needed.
    */
   const completeVerification = useCallback(
     async (finalSummaryId?: string) => {
@@ -596,107 +394,79 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         if (!summaryIdToUse) {
           throw new Error('No summary ID available for verification completion')
         }
-        const { data: currentState, error: fetchError } = await supabase
-          .from('workflow_states')
-          .select('*')
-          .eq('user_id', userId)
-          .single()
-        if (fetchError || !currentState) {
-          throw new Error('No workflow state found for user')
-        }
-        const workflowState = currentState as any
-        const currentVerificationMetadata = workflowState.verification_metadata || {}
+        const currentVerificationMetadata = (state.metadata?.verificationMetadata as VerificationMetadata) || {}
         const updatedVerificationMetadata = {
           ...currentVerificationMetadata,
-          verificationStatus: VerificationStatusType.COMPLETED,
+          verificationStatus: 'completed',
           verifiedAt: new Date().toISOString(),
           verifiedBy: userId,
-        }
-        const { error: updateError } = await supabase
-          .from('workflow_states')
-          .update({
-            current_step: WorkflowStep.VERIFICATION_COMPLETED as Database['public']['Enums']['workflow_step'],
-            verification_metadata: {
-              ...currentVerificationMetadata,
-              status: 'completed',
-            },
-            current_summary_id: summaryIdToUse,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', userId)
-        if (updateError) {
-          throw new Error(`Database error: ${updateError.message}`)
-        }
-        updateStep(WorkflowStep.VERIFICATION_COMPLETED, {
+        } as VerificationMetadata
+
+        // Just do a local step update
+        await updateStep(WorkflowStep.VERIFICATION_COMPLETED, {
           verificationMetadata: updatedVerificationMetadata,
         })
         return {
           success: true,
           summaryId: summaryIdToUse,
-          correctionCount: (workflowState.correction_history || []).length,
+          correctionCount: (state.metadata?.correctionHistory as any[])?.length || 0,
         }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        updateStep(WorkflowStep.ERROR, {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        await updateStep(WorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
-        throw error
+        throw err
       }
     },
-    [userId, state, supabase, updateStep]
+    [userId, state, updateStep]
   )
 
   /**
-   * Reset the verification-related state back to IDLE.
+   * Reset verification back to idle in local state.
+   * The DB call can be done in the workflowService if we wish to remove it from the record.
    */
   const resetVerification = useCallback(async () => {
     if (!userId) {
       throw new Error('User ID required for verification reset')
     }
     try {
-      const { data: existingState, error: fetchError } = await supabase
-        .from('workflow_states')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle()
-      if (fetchError) {
-        throw new Error(`Error fetching existing data: ${fetchError.message}`)
-      }
-      const { error: updateError } = await supabase
-        .from('workflow_states')
-        .update({
-          current_step: WorkflowStep.IDLE as Database['public']['Enums']['workflow_step'],
-          verification_metadata: null,
-          current_summary_id: null,
-          correction_history: [],
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-      if (updateError) {
-        throw new Error(`Database error: ${updateError.message}`)
-      }
-      setState({
-        ...state,
+      // We'll just set step to IDLE and clear out verification-related fields
+      setState((old) => ({
+        ...old,
         currentStep: WorkflowStep.IDLE,
         progress: 0,
         error: null,
         timestamp: new Date().toISOString(),
         metadata: {
-          ...(state.metadata ?? {}),
+          ...(old.metadata ?? {}),
           verificationMetadata: null,
           currentSummaryId: null,
           correctionHistory: []
         }
-      })
+      }))
+      if (workflowId) {
+        // We'll do a forced update
+        await workflowService.updateWorkflowState(
+          workflowId,
+          WorkflowStep.IDLE,
+          {
+            verificationMetadata: null,
+            currentSummaryId: null,
+            correctionHistory: [],
+          },
+          { forceUpdate: true }
+        )
+      }
       return { success: true }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
       // eslint-disable-next-line no-console
       console.error('Error resetting verification:', errorMessage)
-      throw error
+      throw err
     }
-  }, [userId, state, supabase])
+  }, [userId, state, workflowId])
 
   /**
    * Example function to begin a "report generation" step.
@@ -704,14 +474,14 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
   const beginReportGeneration = useCallback(
     async (generationType: string) => {
       try {
-        updateStep(WorkflowStep.REPORT_GENERATION, {
+        await updateStep(WorkflowStep.REPORT_GENERATION, {
           generationType,
           generationStartedAt: new Date().toISOString(),
         })
         return true
-      } catch (error) {
-        void errorHandler.handleError(
-          error,
+      } catch (err) {
+        await errorHandler.handleError(
+          err,
           WorkflowStep.REPORT_GENERATION,
           { previousStep: state.currentStep, details: { generationType }, showToast: true }
         )
@@ -722,56 +492,40 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
   )
 
   /**
-   * Merged logic from use-processing-workflow.ts: processes a file, updating steps accordingly.
-   * This shows a simplified example for "uploading", then marking "complete" or "error".
+   * A sample to process a doc from "uploading" to "complete" or "error".
+   * Now we rely on workflowService to do the final update too, if needed.
    */
   const processDocument = useCallback(async (file: File) => {
     try {
-      // Start by setting step to UPLOADING
-      updateStep(WorkflowStep.UPLOADING, { fileName: file.name, fileSize: file.size })
-      updateProgress(0, ProcessingPhase.UPLOADING)
+      await updateStep(WorkflowStep.UPLOADING, { fileName: file.name, fileSize: file.size })
+      await updateProgress(0, ProcessingPhase.UPLOADING)
 
-      // (Example logic) Check user
-      const user = await supabase.auth.getUser()
-      const authedUserId = user.data.user?.id
-      if (!authedUserId) {
+      // Example check
+      // (In a real app we might call an upload service, etc.)
+      if (!userId) {
         throw new Error('User not authenticated')
       }
 
-      // Create or update workflow state for demonstration
-      // In a real scenario, we might store more data, do actual file uploads, etc.
-      let currentWorkflowId = workflowId
-      if (!currentWorkflowId) {
-        currentWorkflowId = await createNewWorkflowState() // might set step or something
-      }
-
-      // Simulate some asynchronous processing, e.g. real upload
+      // Fake "upload"
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      // If everything is successful, mark step COMPLETE
-      updateStep(WorkflowStep.COMPLETE, {
+      // Mark complete
+      await updateStep(WorkflowStep.COMPLETE, {
         storedFileName: file.name,
-        completedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
       })
-      updateProgress(100, ProcessingPhase.COMPLETION)
+      await updateProgress(100, ProcessingPhase.COMPLETION)
 
       return { success: true, uploadedFileName: file.name } as const
     } catch (err) {
-      // On error, set step to ERROR with error message
       const e = normalizeError(err)
-      updateStep(WorkflowStep.ERROR, {
+      await updateStep(WorkflowStep.ERROR, {
         error: e.message,
         errorTimestamp: new Date().toISOString(),
       })
       return { success: false, error: e.message } as const
     }
-  }, [
-    updateStep,
-    updateProgress,
-    supabase,
-    workflowId,
-    createNewWorkflowState
-  ])
+  }, [updateStep, updateProgress, userId])
 
   /**
    * Computed convenience status object
@@ -797,10 +551,6 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
     completeVerification,
     resetVerification,
     beginReportGeneration,
-    /**
-     * This is the new merged function from use-processing-workflow.
-     * It sets the step to UPLOADING, simulates an upload, then sets COMPLETE or ERROR.
-     */
     processDocument,
     status,
   }

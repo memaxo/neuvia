@@ -1,7 +1,7 @@
-import { apiClient } from '@/lib/api/client/api-client'
 import logger from '@/lib/logger'
 import { normalizeError, ValidationError } from '@/lib/errors'
 import type { VerificationServiceResult, GenerateVerificationOptions } from '@/lib/types/verification'
+import { verificationAdapter } from '@/lib/api/adapters/verification-adapter'
 
 /**
  * DocumentVerificationService
@@ -32,8 +32,8 @@ export class DocumentVerificationService {
     try {
       moduleLogger.info('Generating verification for document', { workflowId: options.workflowId })
 
-      // Call the API through the client
-      const result = await apiClient.verification.generateVerification({
+      // Call the API through the adapter
+      const result = await verificationAdapter.generateVerificationRequest({
         document: options.document,
         workflowId: options.workflowId || '',
         messageId: options.messageId,
@@ -42,7 +42,7 @@ export class DocumentVerificationService {
 
       // Handle the API response
       if (!result.success || !result.data?.summaryId) {
-        throw new ValidationError({
+        throw new VerificationError({
           message: 'Failed to generate verification',
           code: 'VERIFICATION_GENERATION_FAILED',
           data: { originalResult: result },
@@ -91,9 +91,7 @@ export class DocumentVerificationService {
     try {
       moduleLogger.info('Fetching document verification status', { extractedDocumentId })
 
-      const result = await apiClient.verification.getDocumentVerification({
-        extractedDocumentId,
-      })
+      const result = await verificationAdapter.getDocumentVerification(extractedDocumentId)
 
       if (!result.success) {
         throw new ValidationError({

@@ -1,10 +1,13 @@
 import logger from '@/lib/logger'
 import { normalizeError, ValidationError } from '@/lib/errors'
-import { apiClient } from '@/lib/api/client/api-client'
-import type {
-  VerificationResult,
-  VerificationServiceResult,
-  CompleteVerificationOptions,
+import { verificationAdapter } from '@/lib/api/adapters/verification-adapter'
+import {
+  VerificationStatus,
+  verificationStatusToDb,
+  dbToVerificationStatus,
+  type VerificationResult,
+  type VerificationServiceResult,
+  type CompleteVerificationOptions,
 } from '@/lib/types/verification'
 
 /**
@@ -25,23 +28,19 @@ export class VerificationResultService {
     try {
       moduleLogger.info('Completing verification', { isApproved: options.isApproved })
 
-      // (This was local code previously. Now we rely on a direct server approach or a new endpoint
-      // If there's no direct endpoint, we can keep it local. For demonstration, we do local logic
-      // or a pseudo client call. For now, let's mimic an API call to "updatePatientSummaryVerification" if approved.)
+      const status = options.isApproved ? VerificationStatus.completed : VerificationStatus.failed
 
-      // If we do not have a separate endpoint for completeVerification, we approximate:
-      // For example, if isApproved => status=verified else => status=rejected
-      const updateResult = await apiClient.verification.updatePatientSummaryVerification(
-        options.workflowId, // treat workflowId as patientId for example
+      const updateResult = await verificationAdapter.updatePatientSummaryVerification(
+        options.workflowId,
         {
-          status: options.isApproved ? 'verified' : 'rejected',
+          status: verificationStatusToDb(status),
           items: options.items ?? [],
           comments: options.comments ?? '',
         }
       )
 
       if (!updateResult.success) {
-        throw new ValidationError({
+        throw new VerificationError({
           message: 'Failed to complete verification via patient summary update',
           code: 'VERIFICATION_COMPLETION_FAILED',
           data: { originalResult: updateResult },
@@ -72,7 +71,7 @@ export class VerificationResultService {
           items: [],
           completedAt: new Date().toISOString(),
           verificationMetadata: {
-            verificationStatus: 'failed',
+            verificationStatus: VerificationStatus.failed,
             originalSummaryId: '',
             currentVersionId: '',
             correctionCount: 0,
@@ -89,7 +88,7 @@ export class VerificationResultService {
    */
   async getPatientSummaryVerification(patientId: string): Promise<
     VerificationServiceResult<{
-      verificationStatus: string
+      verificationStatus: VerificationStatus
       items: any[]
       metadata?: any
       originalContent?: string
@@ -106,10 +105,10 @@ export class VerificationResultService {
       moduleLogger.info('Retrieving patient summary verification')
 
       // Call the API
-      const result = await apiClient.verification.getPatientSummaryVerification(patientId)
+      const result = await verificationAdapter.getPatientSummaryVerification(patientId)
 
       if (!result.success) {
-        throw new ValidationError({
+        throw new VerificationError({
           message: 'Failed to retrieve patient summary verification',
           code: 'PATIENT_SUMMARY_VERIFICATION_FAILED',
           data: { originalResult: result },
@@ -118,10 +117,26 @@ export class VerificationResultService {
 
       moduleLogger.info('Patient summary verification retrieved')
 
+      // If the server returns "verified"/"rejected"/"pending"/"in_progress",
+      // map those to the DB workflow step using verificationStatusToDb, then to domain status:
+      const mappedDbStatus = (() => {
+        switch (result.data.verificationStatus) {
+          case 'verified':
+            return verificationStatusToDb(VerificationStatus.completed)
+          case 'rejected':
+            return verificationStatusToDb(VerificationStatus.failed)
+          case 'in_progress':
+            return verificationStatusToDb(VerificationStatus.inProgress)
+          case 'pending':
+          default:
+            return verificationStatusToDb(VerificationStatus.pending)
+        }
+      })()
+
       return {
         success: true,
         data: {
-          verificationStatus: result.data.verificationStatus,
+          verificationStatus: dbToVerificationStatus(mappedDbStatus),
           items: result.data.items,
           metadata: result.data.metadata,
           originalContent: result.data.originalContent,
@@ -135,7 +150,7 @@ export class VerificationResultService {
       return {
         success: false,
         data: {
-          verificationStatus: 'pending',
+          verificationStatus: VerificationStatus.pending,
           items: [],
         },
         error: {
@@ -154,7 +169,7 @@ export class VerificationResultService {
   async updatePatientSummaryVerification(
     patientId: string,
     data: {
-      status: 'pending' | 'verified' | 'rejected'
+      status: VerificationStatus
       comments?: string
       items?: any[]
     }
@@ -169,14 +184,32 @@ export class VerificationResultService {
     try {
       moduleLogger.info('Updating patient summary verification')
 
-      // API call
-      const result = await apiClient.verification.updatePatientSummaryVerification(
+      // Convert domain → server. If the server expects strings like 'verified', 'rejected', 'in_progress', 'pending', do it here:
+      const serverStatus = (() => {
+        switch (data.status) {
+          case VerificationStatus.completed:
+            return 'verified'
+          case VerificationStatus.failed:
+            return 'rejected'
+          case VerificationStatus.inProgress:
+            return 'in_progress'
+          case VerificationStatus.pending:
+          default:
+            return 'pending'
+        }
+      })()
+
+      const result = await verificationAdapter.updatePatientSummaryVerification(
         patientId,
-        data
+        {
+          status: serverStatus,
+          comments: data.comments,
+          items: data.items,
+        }
       )
 
       if (!result.success) {
-        throw new ValidationError({
+        throw new VerificationError({
           message: 'Failed to update patient summary verification',
           code: 'PATIENT_SUMMARY_VERIFICATION_UPDATE_FAILED',
           data: { originalResult: result },
@@ -185,9 +218,27 @@ export class VerificationResultService {
 
       moduleLogger.info('Patient summary verification updated successfully')
 
+      // Convert server → domain in the returned data
+      const mappedDbStatus = (() => {
+        switch (result.data.verificationStatus) {
+          case 'verified':
+            return 'verification_completed'
+          case 'rejected':
+            return 'verification_failed'
+          case 'in_progress':
+            return 'verification_in_progress'
+          case 'pending':
+          default:
+            return 'verification_pending'
+        }
+      })()
+
       return {
         success: true,
-        data: result.data,
+        data: {
+          ...result.data,
+          verificationStatus: dbToVerificationStatus(mappedDbStatus),
+        },
         timestamp: new Date().toISOString(),
       }
     } catch (error) {
@@ -201,7 +252,7 @@ export class VerificationResultService {
           items: [],
           completedAt: new Date().toISOString(),
           verificationMetadata: {
-            verificationStatus: 'failed',
+            verificationStatus: VerificationStatus.failed,
             originalSummaryId: '',
             currentVersionId: '',
             correctionCount: 0,
