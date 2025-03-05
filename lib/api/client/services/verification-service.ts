@@ -7,16 +7,17 @@
  * ---------------------------------------------------------------
  */
 
+import { VerificationStatusType } from '../models/data-contracts'
 import type { HttpClient, RequestParams } from '../models/http-client'
 import { ContentType } from '../models/http-client'
-import type { UUID } from '@/lib/types/database'
+import type { UUID } from '@/lib/types/base'
 import type {
   SubmitCorrectionOptions,
   ProcessCorrectionOptions,
   GenerateVerificationOptions,
   VerificationItem,
   VerificationResult,
-  VerificationStatusType,
+  VerificationStatus,
   VerificationMetadata,
 } from '@/lib/types/verification'
 
@@ -83,7 +84,7 @@ interface GetPatientSummaryVerificationResponse {
   success: boolean
   data: {
     /** Current verification status */
-    verificationStatus: VerificationStatusType
+    verificationStatus: VerificationStatus
     /** Verification items */
     items: VerificationItem[]
     /** Verification metadata */

@@ -4,6 +4,7 @@ import { createBrowserClient } from '@/lib/supabase/clients'
 import type { WorkflowStep } from '../types/workflow'
 import { DomainOnlyWorkflowStep } from '../types/workflow'
 import type { ApiClient } from '@/lib/api/client/api-client'
+import type { Json } from '@/lib/types/database'
 
 /**
  * Error category for different workflow errors
@@ -53,7 +54,8 @@ export class WorkflowErrorHandler {
   private apiClient: ApiClient | null = null
 
   constructor(apiClient?: ApiClient) {
-    this.apiClient = apiClient || null
+    // Use nullish coalescing to set default
+    this.apiClient = apiClient ?? null
   }
 
   public setApiClient(apiClient: ApiClient) {
@@ -204,7 +206,7 @@ export class WorkflowErrorHandler {
         typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
       clientId:
         typeof localStorage !== 'undefined'
-          ? (localStorage.getItem('neuvia_client_id') ?? undefined)
+          ? localStorage.getItem('neuvia_client_id') ?? undefined
           : undefined,
       details: { ...normalizedError.details, ...details },
     }
@@ -230,7 +232,8 @@ export class WorkflowErrorHandler {
         typeof localStorage !== 'undefined'
           ? localStorage.getItem('current_workflow_id')
           : null
-      // Check explicitly for non-null and length
+
+      // Explicitly check for non-null and length
       if (
         workflowId !== null &&
         workflowId !== undefined &&
@@ -241,7 +244,8 @@ export class WorkflowErrorHandler {
           action: 'LOG_ERROR',
           entity_id: workflowId,
           entity_type: 'workflow',
-          changes: metadata.details ?? null,
+          // Cast details to Json to fix type error
+          changes: metadata.details as Json ?? null,
           created_at: metadata.timestamp,
           user_id: null,
         })
@@ -296,16 +300,15 @@ export class WorkflowErrorHandler {
           store.updateWorkflowStep('idle', {})
           store.setError(null)
           return true
+
         case 'uploading': {
           const currentUpload = metadata.details?.file
-          if (currentUpload == null) {
+          if (currentUpload === null || currentUpload === undefined) {
             return false
           }
           store.setError(null)
-          // Safely read a numeric retryCount
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
           store.updateWorkflowStep('uploading', {
             isRetry: true,
             previousError: metadata.errorMessage,
@@ -313,15 +316,15 @@ export class WorkflowErrorHandler {
           })
           return true
         }
+
         case 'extracting': {
           const documentId = metadata.details?.documentId
-          if (documentId == null) {
+          if (documentId === null || documentId === undefined) {
             return false
           }
           store.setError(null)
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
           store.updateWorkflowStep('extracting', {
             isRetry: true,
             documentId,
@@ -330,13 +333,13 @@ export class WorkflowErrorHandler {
           })
           return true
         }
+
         case 'verification':
         case 'verification_pending':
         case 'verification_in_progress': {
           store.setError(null)
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
           store.updateWorkflowStep(targetStage, {
             isRetry: true,
             previousError: metadata.errorMessage,
@@ -344,11 +347,11 @@ export class WorkflowErrorHandler {
           })
           return true
         }
+
         case 'report_generation': {
           store.setError(null)
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
           store.updateWorkflowStep('report_generation', {
             isRetry: true,
             previousError: metadata.errorMessage,
@@ -356,17 +359,18 @@ export class WorkflowErrorHandler {
           })
           return true
         }
+
         case 'complete':
           store.setError(null)
           store.updateWorkflowStep('complete', {})
           return true
+
         case 'chat_started':
         case 'chat_in_progress':
         case 'chat_completed': {
           store.setError(null)
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
           store.updateWorkflowStep(targetStage, {
             isRetry: true,
             previousError: metadata.errorMessage,
@@ -374,30 +378,21 @@ export class WorkflowErrorHandler {
           })
           return true
         }
-        case DomainOnlyWorkflowStep.RESEARCH: {
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep(DomainOnlyWorkflowStep.RESEARCH, {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
+
+        // Merge repeated logic for RESEARCH and REPORT_PRESENTATION
+        case DomainOnlyWorkflowStep.RESEARCH:
         case DomainOnlyWorkflowStep.REPORT_PRESENTATION: {
           store.setError(null)
           const rawRetryCount = metadata.details?.retryCount
-          const retryCount =
-            typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep(DomainOnlyWorkflowStep.REPORT_PRESENTATION, {
+          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
+          store.updateWorkflowStep(targetStage, {
             isRetry: true,
             previousError: metadata.errorMessage,
             retryCount: retryCount + 1,
           })
           return true
         }
+
         default:
           // fallback to reset
           store.resetChat()
@@ -410,7 +405,8 @@ export class WorkflowErrorHandler {
       console.error('Error during recovery attempt:', recoveryError)
       const norm = this.normalizeError(recoveryError)
       store.setError(`Recovery failed: ${norm.message}`)
-      store.updateWorkflowStep('error', {
+      // Note: 'error' is not a valid step in the DB enum, so we use DomainOnlyWorkflowStep.ERROR
+      store.updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
         error: `Recovery failed: ${norm.message}`,
         originalError: metadata.errorMessage,
         recoveryFailed: true,
@@ -425,7 +421,7 @@ export class WorkflowErrorHandler {
   public clearError(returnToStep?: WorkflowStep): void {
     const store = useChatStore.getState()
     store.setError(null)
-    if (returnToStep) {
+    if (returnToStep !== null && returnToStep !== undefined) {
       store.updateWorkflowStep(returnToStep, {})
     }
   }
@@ -454,7 +450,8 @@ export class WorkflowErrorHandler {
     const store = useChatStore.getState()
     store.setError(metadata.errorMessage)
 
-    store.updateWorkflowStep('error', {
+    // Use DomainOnlyWorkflowStep.ERROR for an error state, not 'error' string
+    store.updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
       error: metadata.errorMessage,
       errorDetails: metadata.details,
       errorType: metadata.errorType,
@@ -470,7 +467,13 @@ export class WorkflowErrorHandler {
       })
     }
 
-    if (options?.attemptRecovery && metadata.recoveryPaths && metadata.recoveryPaths.length > 0) {
+    // Explicitly check nullish
+    if (
+      options?.attemptRecovery === true &&
+      metadata.recoveryPaths !== null &&
+      metadata.recoveryPaths !== undefined &&
+      metadata.recoveryPaths.length > 0
+    ) {
       void this.attemptRecovery(metadata)
     }
 

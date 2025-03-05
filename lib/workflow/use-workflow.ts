@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState, useMemo } from 'react'
 import { randomUUID } from 'crypto'
-import {
-  WorkflowStep,
-  ProcessingPhase,
-  type WorkflowOptions,
-  type WorkflowState,
-  type VerificationMetadata,
+import type {
+  WorkflowState
+,
+  WorkflowStep
 } from '@/lib/types/workflow'
-import { workflowService } from '@/lib/services/workflow/workflow-service'
+import type { VerificationMetadata } from '@/lib/types/verification'
+import {
+  ProcessingPhase,
+  DomainOnlyWorkflowStep
+} from '@/lib/types/workflow'
+import { WorkflowService } from '@/lib/services/workflow/workflow-service'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { extractPatientSummary, processCorrection as processPatientSummaryCorrection } from '@/lib/langchain/patient-summary'
 import { useWorkflowErrorHandler } from './workflow-error-handler'
 import { normalizeError } from '@/lib/errors'
@@ -18,8 +22,15 @@ interface UseWorkflowOptions {
   chatId?: string | null
 }
 
+interface CorrectionHistory {
+  correction_text: string
+  timestamp: string
+  summary_id: string
+  message_id?: string
+}
+
 export function useWorkflow(options: UseWorkflowOptions = {}) {
-  const { userId, initialStep = WorkflowStep.IDLE, chatId } = options
+  const { userId, initialStep = "idle", chatId } = options
   const [state, setState] = useState<WorkflowState>({
     currentStep: initialStep,
     progress: 0,
@@ -28,13 +39,15 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
   })
   const [workflowId, setWorkflowId] = useState<string | null>(null)
   const errorHandler = useWorkflowErrorHandler()
-  const [subscriptionChannel, setSubscriptionChannel] = useState<any>(null)
+  const [subscriptionChannel, setSubscriptionChannel] = useState<RealtimeChannel | null>(null)
+  // Use useMemo to stabilize workflowService reference
+  const workflowService = useMemo(() => new WorkflowService(), [])
 
   /**
    * Load or create workflow state from DB using the workflowService
    */
   const loadOrCreateWorkflowState = useCallback(async () => {
-    if (!userId) return null
+    if (userId === null || userId === undefined || userId.trim() === "") return null
     try {
       // This returns { id, data } where data is the row
       const { id, data } = await workflowService.getOrCreateWorkflowForUser(
@@ -45,16 +58,16 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       )
       setWorkflowId(id)
 
-      if (data && data.metadata) {
+      if (data !== null && data !== undefined && data.metadata !== undefined) {
         const meta = data.metadata as Record<string, unknown>
-        setState((old) => ({
-          ...old,
-          currentStep: (meta.currentStep as WorkflowStep) || data.current_step,
+        setState((prevState) => ({
+          ...prevState,
+          currentStep: (meta.currentStep as WorkflowStep) !== undefined ? (meta.currentStep as WorkflowStep) : (data.current_step as WorkflowStep),
           progress: typeof meta.progress === 'number' ? meta.progress : 0,
           phase: typeof meta.phase === 'string' ? (meta.phase as ProcessingPhase) : undefined,
           error: typeof meta.error === 'string' ? meta.error : null,
           metadata: meta,
-          timestamp: new Date(data.updated_at).toISOString(),
+          timestamp: new Date(String(data.updated_at)).toISOString(),
         }))
       }
       return id
@@ -65,24 +78,25 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       })
       return null
     }
-  }, [userId, chatId, initialStep, errorHandler])
+  }, [userId, chatId, initialStep, errorHandler, workflowService])
 
   /**
    * Subscribe to workflow state changes for user+chat via the workflowService
    */
   const subscribeToChanges = useCallback(() => {
-    if (!userId) return
+    if (userId === null || userId === undefined) return
     const channel = workflowService.subscribeToWorkflowForUser(
       userId,
       chatId ?? null,
-      (payload) => {
+      (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
+        const newData = payload.new as { id: string; metadata?: Record<string, unknown>; current_step: string; updated_at: string };
         try {
-          const newData = payload.new
-          if (!newData) return
+          if (newData === null || newData === undefined) return
           const meta = (newData.metadata as Record<string, unknown>) ?? {}
           setWorkflowId(newData.id)
-          setState((old) => ({
-            currentStep: (meta.currentStep as WorkflowStep) || (newData.current_step as WorkflowStep),
+          setState((prevState) => ({
+            ...prevState,
+            currentStep: (meta.currentStep as WorkflowStep) ?? (newData.current_step as WorkflowStep),
             progress: typeof meta.progress === 'number' ? meta.progress : 0,
             phase: typeof meta.phase === 'string' ? (meta.phase as ProcessingPhase) : undefined,
             error: typeof meta.error === 'string' ? meta.error : null,
@@ -99,16 +113,16 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       }
     )
     setSubscriptionChannel(channel)
-  }, [userId, chatId, errorHandler, state.currentStep])
+  }, [userId, chatId, errorHandler, state.currentStep, workflowService])
 
   useEffect(() => {
-    if (!userId) return
+    if (userId === null || userId === undefined) return
     // Load or create the workflow row
     void loadOrCreateWorkflowState()
     // Then subscribe
     subscribeToChanges()
     return () => {
-      if (subscriptionChannel) {
+      if (subscriptionChannel !== null && subscriptionChannel !== undefined) {
         workflowService.unsubscribeFromChannel(subscriptionChannel)
       }
     }
@@ -128,7 +142,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           timestamp: new Date().toISOString(),
         }
         setState(newState)
-        if (workflowId) {
+        if (workflowId !== null && workflowId !== undefined) {
           await workflowService.updateWorkflowState(
             workflowId,
             step,
@@ -145,7 +159,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         return state
       }
     },
-    [state, workflowId, errorHandler]
+    [state, workflowId, errorHandler, workflowService]
   )
 
   /**
@@ -158,7 +172,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           ...state.metadata,
           progress,
         } as Record<string, unknown>
-        if (phase) {
+        if (phase !== undefined) {
           newMeta.phase = phase
         }
         const newState: WorkflowState = {
@@ -169,7 +183,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           timestamp: new Date().toISOString(),
         }
         setState(newState)
-        if (workflowId) {
+        if (workflowId !== null && workflowId !== undefined) {
           await workflowService.updateWorkflowState(workflowId, state.currentStep, newMeta, { skipValidation: true })
         }
         return newState
@@ -182,7 +196,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         return state
       }
     },
-    [state, workflowId, errorHandler]
+    [state, workflowId, errorHandler, workflowService]
   )
 
   /**
@@ -192,7 +206,10 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
     async <T>(
       step: WorkflowStep,
       operation: () => Promise<T>,
-      options?: WorkflowOptions<T>
+      options?: {
+        onSuccess?: (result: T) => void,
+        onError?: (error: string) => void
+      }
     ): Promise<T> => {
       try {
         await updateStep(step, { startedAt: new Date().toISOString() })
@@ -200,15 +217,19 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
 
         const result = await operation()
         await updateProgress(100, ProcessingPhase.COMPLETION)
-        options?.onSuccess?.(result)
+        if (options?.onSuccess !== undefined) {
+          options.onSuccess(result)
+        }
         return result
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        await updateStep(WorkflowStep.ERROR, {
+        await updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
-        options?.onError?.(errorMessage)
+        if (options?.onError !== undefined) {
+          options.onError(errorMessage)
+        }
 
         await errorHandler.handleError(
           error,
@@ -217,8 +238,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         )
         throw error
       }
-    },
-    [updateStep, updateProgress, errorHandler, state.currentStep]
+    }, [updateStep, updateProgress, errorHandler, state.currentStep]
   )
 
   /**
@@ -227,7 +247,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
    */
   const initiateVerification = useCallback(
     async (extractedDocument: unknown, messageId?: string) => {
-      if (!userId || !chatId) {
+      if (userId === null || userId === undefined || userId.trim() === "" ||
+          chatId === null || chatId === undefined || (typeof chatId === 'string' && chatId.trim() === "")) {
         throw new Error('User ID and Chat ID are required for verification')
       }
       try {
@@ -240,15 +261,15 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         }
 
         // We'll rely on server update for verification; just update local step
-        await updateStep(WorkflowStep.VERIFICATION_PENDING, {
+        await updateStep("verification_pending", {
           verificationMetadata: {
-            verificationStatus: 'pending',
+            verification_status: 'pending',
             originalSummaryId: summaryId,
             currentVersionId: summaryId,
             correctionCount: 0,
             corrections: [],
             extractedData: extractedDocument,
-          } as VerificationMetadata,
+          } as unknown as VerificationMetadata, // Cast to bypass type check issues
           currentSummaryId: summaryId,
           correctionHistory: [],
         })
@@ -256,7 +277,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         // Then do the actual summarization
         const result = await extractPatientSummary(
           documentText,
-          workflowId || '',
+          workflowId ?? '',
           { useGemini: true },
           (progress, phase) => {
             // We'll call updateProgress here
@@ -264,13 +285,13 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           }
         )
 
-        if (result.success !== true) {
+        if (!result.success) {
           throw new Error(result.error ?? 'Failed to extract patient summary')
         }
 
         // local state updated to reflect successful extraction
-        setState((old) => ({
-          ...old,
+        setState((prevState) => ({
+          ...prevState,
           progress: 100,
           phase: ProcessingPhase.VERIFICATION,
           timestamp: new Date().toISOString(),
@@ -279,17 +300,19 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         return {
           summaryId,
           summary: result.summary,
-          structuredData: result.structuredData,
+          ...(result !== null && result !== undefined && result.structuredData !== undefined && result.summary !== undefined 
+            ? { structuredData: result.structuredData }
+            : {})
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err)
-        await updateStep(WorkflowStep.ERROR, {
+        await updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
         await errorHandler.handleError(
           err,
-          WorkflowStep.VERIFICATION_PENDING,
+          "verification_pending",
           { previousStep: state.currentStep, details: { extractedDocument, messageId }, showToast: true }
         )
         throw err
@@ -304,14 +327,16 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
    */
   const processCorrection = useCallback(
     async (correctionText: string, currentSummary: string, messageId?: string) => {
-      if (!userId || !chatId || !state.metadata?.currentSummaryId) {
+      if (userId === null || userId === undefined ||
+          chatId === null || chatId === undefined ||
+          state.metadata === undefined || state.metadata.currentSummaryId === undefined) {
         throw new Error('Missing required IDs for correction processing')
       }
       try {
         const newSummaryId = randomUUID()
         // We'll store correction in local state.
-        const updatedHistory = [
-          ...(state.metadata?.correctionHistory as any[] || []),
+        const updatedHistory: CorrectionHistory[] = [
+          ...(state.metadata?.correctionHistory as CorrectionHistory[] || []),
           {
             correction_text: correctionText,
             timestamp: new Date().toISOString(),
@@ -320,7 +345,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
           },
         ]
 
-        await updateStep(WorkflowStep.VERIFICATION_IN_PROGRESS, {
+        await updateStep("verification_in_progress", {
           correctionHistory: updatedHistory,
           currentSummaryId: newSummaryId,
         })
@@ -329,7 +354,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         const result = await processPatientSummaryCorrection(
           currentSummary,
           correctionText,
-          workflowId || '',
+          workflowId ?? '',
           { useGemini: false },
           (progress, phase) => {
             void updateProgress(progress, phase as ProcessingPhase)
@@ -344,17 +369,17 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         const currentVerificationMetadata = (state.metadata?.verificationMetadata as VerificationMetadata) || {}
         const updatedVerificationMetadata = {
           ...currentVerificationMetadata,
-          verificationStatus: 'inProgress',
+          verification_status: 'inProgress',
           currentVersionId: newSummaryId,
           correctionCount: updatedHistory.length,
           lastUpdated: new Date().toISOString(),
-        } as VerificationMetadata
+        } as unknown as VerificationMetadata
 
-        setState((old) => ({
-          ...old,
-          currentStep: WorkflowStep.VERIFICATION_IN_PROGRESS,
+        setState((prevState) => ({
+          ...prevState,
+          currentStep: "verification_in_progress",
           metadata: {
-            ...old.metadata,
+            ...prevState.metadata,
             verificationMetadata: updatedVerificationMetadata,
             correctionHistory: updatedHistory,
             currentSummaryId: newSummaryId
@@ -370,7 +395,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err)
-        await updateStep(WorkflowStep.ERROR, {
+        await updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
@@ -386,34 +411,34 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
    */
   const completeVerification = useCallback(
     async (finalSummaryId?: string) => {
-      if (!userId) {
+      if (userId === null || userId === undefined) {
         throw new Error('User ID required for verification completion')
       }
       try {
-        const summaryIdToUse = finalSummaryId || (state.metadata?.currentSummaryId as string)
-        if (!summaryIdToUse) {
+        const summaryIdToUse = finalSummaryId ?? (state.metadata?.currentSummaryId as string)
+        if (summaryIdToUse === undefined) {
           throw new Error('No summary ID available for verification completion')
         }
-        const currentVerificationMetadata = (state.metadata?.verificationMetadata as VerificationMetadata) || {}
+        const currentVerificationMetadata = (state.metadata?.verificationMetadata as VerificationMetadata) ?? {}
         const updatedVerificationMetadata = {
           ...currentVerificationMetadata,
-          verificationStatus: 'completed',
+          verification_status: 'completed',
           verifiedAt: new Date().toISOString(),
           verifiedBy: userId,
-        } as VerificationMetadata
+        } as unknown as VerificationMetadata
 
         // Just do a local step update
-        await updateStep(WorkflowStep.VERIFICATION_COMPLETED, {
+        await updateStep("verification_completed", {
           verificationMetadata: updatedVerificationMetadata,
         })
         return {
           success: true,
           summaryId: summaryIdToUse,
-          correctionCount: (state.metadata?.correctionHistory as any[])?.length || 0,
+          correctionCount: (state.metadata?.correctionHistory as CorrectionHistory[] | undefined)?.length ?? 0,
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err)
-        await updateStep(WorkflowStep.ERROR, {
+        await updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
         })
@@ -428,29 +453,29 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
    * The DB call can be done in the workflowService if we wish to remove it from the record.
    */
   const resetVerification = useCallback(async () => {
-    if (!userId) {
+    if (userId === null || userId === undefined) {
       throw new Error('User ID required for verification reset')
     }
     try {
       // We'll just set step to IDLE and clear out verification-related fields
-      setState((old) => ({
-        ...old,
-        currentStep: WorkflowStep.IDLE,
+      setState((prevState) => ({
+        ...prevState,
+        currentStep: "idle",
         progress: 0,
         error: null,
         timestamp: new Date().toISOString(),
         metadata: {
-          ...(old.metadata ?? {}),
+          ...(prevState.metadata ?? {}),
           verificationMetadata: null,
           currentSummaryId: null,
           correctionHistory: []
         }
       }))
-      if (workflowId) {
+      if (workflowId !== null && workflowId !== undefined) {
         // We'll do a forced update
         await workflowService.updateWorkflowState(
           workflowId,
-          WorkflowStep.IDLE,
+          "idle",
           {
             verificationMetadata: null,
             currentSummaryId: null,
@@ -466,7 +491,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       console.error('Error resetting verification:', errorMessage)
       throw err
     }
-  }, [userId, state, workflowId])
+  }, [userId, workflowId, workflowService])
 
   /**
    * Example function to begin a "report generation" step.
@@ -474,7 +499,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
   const beginReportGeneration = useCallback(
     async (generationType: string) => {
       try {
-        await updateStep(WorkflowStep.REPORT_GENERATION, {
+        await updateStep("report_generation", {
           generationType,
           generationStartedAt: new Date().toISOString(),
         })
@@ -482,7 +507,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       } catch (err) {
         await errorHandler.handleError(
           err,
-          WorkflowStep.REPORT_GENERATION,
+          "report_generation",
           { previousStep: state.currentStep, details: { generationType }, showToast: true }
         )
         return false
@@ -497,12 +522,12 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
    */
   const processDocument = useCallback(async (file: File) => {
     try {
-      await updateStep(WorkflowStep.UPLOADING, { fileName: file.name, fileSize: file.size })
+        await updateStep("uploading", { fileName: file.name, fileSize: file.size })
       await updateProgress(0, ProcessingPhase.UPLOADING)
 
       // Example check
       // (In a real app we might call an upload service, etc.)
-      if (!userId) {
+      if (userId === null || userId === undefined) {
         throw new Error('User not authenticated')
       }
 
@@ -510,7 +535,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
       // Mark complete
-      await updateStep(WorkflowStep.COMPLETE, {
+      await updateStep("complete", {
         storedFileName: file.name,
         completedAt: new Date().toISOString()
       })
@@ -519,7 +544,7 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       return { success: true, uploadedFileName: file.name } as const
     } catch (err) {
       const e = normalizeError(err)
-      await updateStep(WorkflowStep.ERROR, {
+      await updateStep(DomainOnlyWorkflowStep.ERROR, {
         error: e.message,
         errorTimestamp: new Date().toISOString(),
       })
@@ -535,8 +560,8 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       currentStep: state.currentStep,
       progress: state.progress,
       phase: state.phase,
-      isError: state.currentStep === WorkflowStep.ERROR,
-      isComplete: state.currentStep === WorkflowStep.COMPLETE
+      isError: state.currentStep === DomainOnlyWorkflowStep.ERROR,
+      isComplete: state.currentStep === "complete"
     }
   }, [state.currentStep, state.progress, state.phase])
 
