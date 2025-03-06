@@ -1,11 +1,11 @@
 import type { ResearchProvider } from '@/lib/config/research'
-import type { ProcessingStatus } from '@/lib/processing/types/base'
+import type { ProcessingStatus } from '@/lib/types/base'
 import type {
   ResearchDocument,
   ResearchOptions,
   ResearchResult,
-} from '@/lib/processing/types/research'
-import type { VerifiedDocument } from '@/lib/processing/types/verification'
+} from '@/lib/types/research'
+import type { VerifiedDocument } from '@/lib/types/verification'
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 

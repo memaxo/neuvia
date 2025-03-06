@@ -1,4 +1,3 @@
-import perplexityConfig from '@/lib/config/perplexity'
 import researchConfig, {
   type ResearchDepth,
   type ResearchDepthConfig,
@@ -8,41 +7,23 @@ import type {
   ResearchOptions,
   ResearchResult,
   ResearchSource,
-} from '@/lib/processing/types/research'
-// Use string type assertion since we can't find the module
-type WorkflowStep = string
+} from '@/lib/types/research'
 import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import logger from '@/lib/logger'
 import {
   ExternalServiceError,
-  ValidationError,
-  SystemError,
-  normalizeError,
-  type ApplicationError,
+  normalizeError
 } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors/verification-errors'
 /**
  * Unified Perplexity Service
  *
  * Single entry point for all Perplexity API interactions across the application
  */
-import { perplexity } from '@ai-sdk/perplexity'
-import { generateText } from 'ai'
 import { StructuredOutputParser } from 'langchain/output_parsers'
 import { z } from 'zod'
-import {
-  RunnableSequence,
-  RunnableBranch,
-  RunnableMap,
-  RunnablePassthrough,
-} from '@langchain/core/runnables'
-
-// Extend ResearchOptions to include depth
-interface EnhancedResearchOptions extends ResearchOptions {
-  /**
-   * Research depth level
-   */
-  depth?: ResearchDepth
-}
+import { RunnableBranch } from '@langchain/core/runnables'
+import type { RunnableConfig } from '@langchain/core/runnables'
 
 /**
  * Interface for the Perplexity API source information
@@ -51,7 +32,7 @@ interface PerplexitySource {
   title?: string
   url: string
   snippet?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 /**
@@ -60,31 +41,18 @@ interface PerplexitySource {
 interface PerplexityCompletion {
   text: string
   sources?: (PerplexitySource | string)[]
-  [key: string]: any
+  [key: string]: unknown
 }
 
-// Create more specific error classes
-class PerplexityAPIError extends ExternalServiceError {
-  constructor(message: string, data?: Record<string, any>, cause?: unknown) {
-    super({
-      message,
-      code: 'PERPLEXITY_API_ERROR',
-      service: 'Perplexity API',
-      data,
-      cause,
-    })
+/**
+ * Helper function to get URL from source object or string
+ */
+function getSourceUrl(source: PerplexitySource | string): string {
+  if (typeof source === 'string') {
+    return source
   }
-}
 
-class PerplexityParsingError extends ValidationError {
-  constructor(message: string, data?: Record<string, any>, cause?: unknown) {
-    super({
-      message,
-      code: 'PERPLEXITY_PARSING_ERROR',
-      data,
-      cause,
-    })
-  }
+  return source.url
 }
 
 /**
@@ -209,16 +177,6 @@ const medicalDiagnosisParser = StructuredOutputParser.fromZodSchema(
 const DEFAULT_DEBUG = researchConfig.debug
 
 /**
- * Standard system prompt for deep research
- */
-const DEEP_RESEARCH_SYSTEM_PROMPT = `You are a research assistant specializing in analyzing information and providing comprehensive reports.
-Your task is to research the query thoroughly and provide detailed, accurate information.
-Use appropriate terminology and cite reliable sources.
-Structure your response clearly with sections, and ensure all claims are evidence-based.
-
-You MUST return your response in a structured format according to the specification below.`
-
-/**
  * Interface for parsed output from LangChain output parser
  */
 interface ParsedResearchOutput {
@@ -243,7 +201,7 @@ class TextExtractionUtils {
 
     // Look for headers indicating conditions
     const conditionRegex =
-      /(?:##?\s*|[\*\d]+\.\s*)(?:Condition|Disorder|Diagnosis)[^\n]*?:\s*([^\n]+)/gi
+      /(?:##?\s*|[*\d]+\.\s*)(?:Condition|Disorder|Diagnosis)[^\n]*?:\s*([^\n]+)/gi
     let conditionMatch
 
     while ((conditionMatch = conditionRegex.exec(text)) !== null) {
@@ -254,7 +212,7 @@ class TextExtractionUtils {
 
     // Look for confidence ratings
     const confidenceRegex =
-      /(?:##?\s*|[\*\d]+\.\s*)Confidence[^\n]*?:\s*(\d+)%/gi
+      /(?:##?\s*|[*\d]+\.\s*)Confidence[^\n]*?:\s*(\d+)%/gi
     const confidences: string[] = []
     let confidenceMatch
 
@@ -302,16 +260,15 @@ class TextExtractionUtils {
    */
   static extractSummary(text: string): string {
     // Look for a summary section
-    const summaryMatch = text.match(
-      /(?:^|\n)(?:##?\s*Summary\s*\n+|\*\*Summary\*\*\s*\n+)([^\n].*?)(?:\n+(?:##?|$))/s
-    )
-    if (summaryMatch && summaryMatch[1]) {
+    const summaryRegex = /(?:^|\n)(?:##?\s*Summary\s*\n+|\*\*Summary\*\*\s*\n+)([^\n].*?)(?:\n+(?:##?|$))/s
+    const summaryMatch = summaryRegex.exec(text)
+    if (summaryMatch?.[1]) {
       return summaryMatch[1].trim()
     }
 
     // If no explicit summary section, use the first paragraph
     const firstParagraph = text.split(/\n\n+/)[0]
-    if (firstParagraph && firstParagraph.length > 50) {
+    if (firstParagraph && firstParagraph.length > 50 && typeof firstParagraph === 'string') {
       return firstParagraph.trim()
     }
 
@@ -350,10 +307,9 @@ class TextExtractionUtils {
     }
 
     // Look for findings/key points section
-    const findingsSection = text.match(
-      /(?:##?\s*(?:Key\s*)?Findings|Observations|Results)\s*\n+([^#]+)/i
-    )
-    if (findingsSection && findingsSection[1]) {
+    const findingsSectionRegex = /(?:##?\s*(?:Key\s*)?Findings|Observations|Results)\s*\n+([^#]+)/i
+    const findingsSection = findingsSectionRegex.exec(text)
+    if (findingsSection?.[1]) {
       const sectionPoints = findingsSection[1]
         .split(/\n+/)
         .map((p) => p.trim())
@@ -364,7 +320,7 @@ class TextExtractionUtils {
     // If we found nothing or very little, extract first few sentences
     if (findings.length < 2) {
       const sentences = text.match(/[^.!?]+[.!?]+/g)
-      if (sentences && sentences.length > 0) {
+      if (sentences && Array.isArray(sentences) && sentences.length > 0) {
         const selectedSentences = sentences.slice(0, 3).map((s) => s.trim())
         findings.push(...selectedSentences)
       }
@@ -440,7 +396,8 @@ class TextExtractionUtils {
 
       // Fallback to the domain name
       return hostname.replace(/^www\./, '')
-    } catch (e) {
+    } catch (_) {
+      // Return original URL if we can't parse it
       return url
     }
   }
@@ -451,7 +408,7 @@ class TextExtractionUtils {
  */
 export class PerplexityService {
   // Add a cache for research results
-  private researchCache = new Map<
+  private readonly researchCache = new Map<
     string,
     { result: ResearchResult; timestamp: Date }
   >()
@@ -461,7 +418,7 @@ export class PerplexityService {
    */
   private getCacheKey(
     query: string,
-    options?: EnhancedResearchOptions
+    options?: ResearchOptions
   ): string {
     return `${query}|${JSON.stringify(options)}`
   }
@@ -471,12 +428,12 @@ export class PerplexityService {
    */
   private getCachedResult(
     query: string,
-    options?: EnhancedResearchOptions
+    options?: ResearchOptions
   ): ResearchResult | null {
     const key = this.getCacheKey(query, options)
     const cached = this.researchCache.get(key)
 
-    // Return null if not cached
+    // Return null if not cached or missing timestamp
     if (!cached || !cached.timestamp) {
       return null
     }
@@ -496,7 +453,7 @@ export class PerplexityService {
    */
   private cacheResult(
     query: string,
-    options: EnhancedResearchOptions | undefined,
+    options: ResearchOptions | undefined,
     result: ResearchResult
   ): void {
     const key = this.getCacheKey(query, options)
@@ -558,6 +515,8 @@ export class PerplexityService {
    * @param isMedicalDiagnosis Whether this is a medical diagnosis request
    * @returns A structured research result
    */
+  // This method is kept for future implementation of direct API integration
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async processApiResponse(
     text: string,
     completion: PerplexityCompletion,
@@ -580,24 +539,20 @@ export class PerplexityService {
         sources = medicalResult.sources || []
 
         // Extract key findings from the differential diagnosis
-        if (
-          medicalResult.differentialDiagnosis &&
-          medicalResult.differentialDiagnosis.length > 0
-        ) {
-          keyFindings = medicalResult.differentialDiagnosis.map(
+        const differentialDiagnosis = medicalResult.differentialDiagnosis;
+        if (differentialDiagnosis && differentialDiagnosis.length > 0) {
+          keyFindings = differentialDiagnosis.map(
             (diagnosis) =>
               `${diagnosis.condition} (${diagnosis.confidence}% confidence)`
-          )
+          );
 
           // Add recommendations to key findings if available
-          if (
-            medicalResult.recommendations &&
-            medicalResult.recommendations.length > 0
-          ) {
-            keyFindings = [...keyFindings, ...medicalResult.recommendations]
+          const recommendations = medicalResult.recommendations;
+          if (recommendations && recommendations.length > 0) {
+            keyFindings = [...keyFindings, ...recommendations];
           }
         } else {
-          keyFindings = medicalResult.keyFindings || []
+          keyFindings = medicalResult.keyFindings ?? [];
         }
 
         parsedOutput = {
@@ -621,23 +576,16 @@ export class PerplexityService {
           ? (completion.sources
               .filter(Boolean)
               .map((source: PerplexitySource | string) => {
-                if (!source) return null
+                if (source === null || source === undefined) return null
 
                 return {
-                  title:
-                    typeof source === 'object' && 'title' in source
-                      ? source.title
-                      : undefined,
-                  url:
-                    typeof source === 'object' && 'url' in source
-                      ? source.url
-                      : typeof source === 'string'
-                        ? source
-                        : 'unknown',
-                  snippet:
-                    typeof source === 'object' && 'snippet' in source
-                      ? source.snippet
-                      : undefined,
+                  title: (typeof source === 'object' && 'title' in source) 
+                    ? source.title 
+                    : undefined,
+                  url: getSourceUrl(source),
+                  snippet: (typeof source === 'object' && 'snippet' in source)
+                    ? source.snippet
+                    : undefined,
                 }
               })
               .filter(Boolean) as ResearchSource[])
@@ -672,7 +620,7 @@ export class PerplexityService {
     const depthConfig = researchConfig.providers.perplexity.depthConfig
 
     // Use provided depth or default from config
-    const useDepth = depth || researchConfig.defaultOptions.depth
+    const useDepth = depth ?? researchConfig.defaultOptions.depth
 
     // Return the value for the specified property and depth
     return depthConfig[property][useDepth]
@@ -717,11 +665,16 @@ export class PerplexityService {
 
   /**
    * Handle research errors
+   * 
+   * @param query The query string that was being researched
+   * @param options Research options (may be used in future for better error handling)
+   * @param error The error that occurred
    */
   private handleResearchError(
     query: string,
-    options: EnhancedResearchOptions | undefined,
-    error: Error | unknown
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    options: ResearchOptions | undefined,
+    error: unknown
   ): void {
     const normalizedError = normalizeError(error)
     logger
@@ -737,18 +690,15 @@ export class PerplexityService {
   /**
    * Create a model for Perplexity API
    */
-  private createPerplexityModel(options: {
-    modelName: string
-    temperature?: number
-    maxTokens?: number
-    callbacks?: any[]
+  private createPerplexityModel(options: { 
+    modelName: string; 
+    temperature?: number; 
+    maxTokens?: number; 
   }) {
-    // This is a placeholder - LangChain doesn't have direct Perplexity integration yet
-    // In a real implementation, we would create a custom LLM class for Perplexity
+    // Create model without callbacks
     return langChainCore.createChatOpenAI({
       modelName: options.modelName,
-      temperature: options.temperature || 0.3,
-      callbacks: options.callbacks,
+      temperature: options.temperature ?? 0.3,
     })
   }
 
@@ -756,8 +706,8 @@ export class PerplexityService {
    * Create a standard research chain
    */
   private createStandardResearchChain(
-    options?: EnhancedResearchOptions,
-    callbacks?: any[]
+    options?: ResearchOptions,
+    config?: RunnableConfig
   ) {
     return async (input: { query: string; depth?: ResearchDepth }) => {
       const formatInstructions = await outputParser.getFormatInstructions()
@@ -773,24 +723,29 @@ ${formatInstructions}`,
         ['query', 'depth']
       )
 
-      // Create the model
+      // Create model
       const model = this.createPerplexityModel({
-        modelName: options?.model || researchConfig.providers.perplexity.model,
+        modelName: options?.model ?? researchConfig.providers.perplexity.model,
         temperature:
-          options?.temperature ||
+          options?.temperature ??
           this.getConfigValueForDepth('temperature', options?.depth),
         maxTokens:
-          options?.maxTokens ||
+          options?.maxTokens ??
           this.getConfigValueForDepth('maxTokens', options?.depth),
-        callbacks,
       })
 
-      // Create and run the chain
-      const chain = researchPrompt.pipe(model).pipe(outputParser)
+      // Create chain
+      let chain = researchPrompt.pipe(model).pipe(outputParser)
+      
+      // Apply config if provided
+      if (config) {
+        chain = chain.withConfig(config)
+      }
 
+      // Invoke chain
       return chain.invoke({
         query: input.query,
-        depth: input.depth || 'standard',
+        depth: input.depth ?? 'standard',
       })
     }
   }
@@ -799,13 +754,13 @@ ${formatInstructions}`,
    * Create a medical diagnosis chain
    */
   private createMedicalDiagnosisChain(
-    options?: EnhancedResearchOptions,
-    callbacks?: any[]
+    options?: ResearchOptions,
+    config?: RunnableConfig
   ) {
     return async (input: {
-      query: string
-      patientData: string
-      depth?: ResearchDepth
+      query: string;
+      patientData: string;
+      depth?: ResearchDepth;
     }) => {
       const formatInstructions =
         await medicalDiagnosisParser.getFormatInstructions()
@@ -823,24 +778,30 @@ Additional Query: {query}`,
         ['query', 'patientData']
       )
 
-      // Create the model
+      // Create model 
       const model = this.createPerplexityModel({
-        modelName: options?.model || researchConfig.providers.perplexity.model,
+        modelName: options?.model ?? researchConfig.providers.perplexity.model,
         temperature:
-          options?.temperature ||
+          options?.temperature ??
           this.getConfigValueForDepth('temperature', 'comprehensive'),
         maxTokens:
-          options?.maxTokens ||
+          options?.maxTokens ??
           this.getConfigValueForDepth('maxTokens', 'comprehensive'),
-        callbacks,
       })
 
-      // Create and run the chain
-      const chain = researchPrompt.pipe(model).pipe(medicalDiagnosisParser)
+      // Create chain
+      let chain = researchPrompt.pipe(model).pipe(medicalDiagnosisParser)
+      
+      // Apply config if provided
+      if (config) {
+        chain = chain.withConfig(config)
+      }
 
+      // Invoke chain
       return chain.invoke({
         query: input.query,
         patientData: input.patientData,
+        depth: input.depth ?? 'comprehensive',
       })
     }
   }
@@ -855,15 +816,16 @@ Additional Query: {query}`,
    */
   async performDeepResearch(
     query: string,
-    options?: EnhancedResearchOptions,
-    debug: boolean = DEFAULT_DEBUG
+    options?: ResearchOptions,
+    debug: boolean = DEFAULT_DEBUG,
+    config?: RunnableConfig
   ): Promise<ResearchResult> {
     const moduleLogger = logger.withMetadata({
       module: 'PerplexityService',
       method: 'performDeepResearch',
       isMedicalDiagnosis: !!options?.isMedicalDiagnosis,
-      model: options?.model || researchConfig.providers.perplexity.model,
-      depth: options?.depth || 'standard',
+      model: options?.model ?? researchConfig.providers.perplexity.model,
+      depth: options?.depth ?? 'standard',
     })
 
     if (debug) {
@@ -887,44 +849,40 @@ Additional Query: {query}`,
     return this.withRetry(async () => {
       // Run with workflow to track progress
       const result = await runWithWorkflow(
-        'research' as WorkflowStep,
+        'research',
         async () => {
           // Track progress if a callback is provided
           const onProgress = options?.onProgress
-          if (onProgress) {
+          if (typeof onProgress === 'function') {
             onProgress(10) // Research started
           }
 
           // Use RunnableBranch to handle different research types
           const researchChain = RunnableBranch.from([
             [
-              (input) => !!input.isMedicalDiagnosis,
+              (input) => input.isMedicalDiagnosis === true,
               async (input) => {
                 const diagnosisChain = this.createMedicalDiagnosisChain(
                   options,
-                  createWorkflowCallbacks(null, 'research', {
-                    onProgress: options?.onProgress,
-                  })
+                  config
                 )
 
                 return diagnosisChain({
                   query,
-                  patientData: input.patientData || '',
-                  depth: options?.depth || 'comprehensive',
+                  patientData: input.patientData ?? '',
+                  depth: options?.depth ?? 'comprehensive',
                 })
               },
             ],
-            async (input) => {
+            async (_input) => {
               const standardChain = this.createStandardResearchChain(
                 options,
-                createWorkflowCallbacks(null, 'research', {
-                  onProgress: options?.onProgress,
-                })
+                config
               )
 
               return standardChain({
                 query,
-                depth: options?.depth || 'standard',
+                depth: options?.depth ?? 'standard',
               })
             },
           ])
@@ -932,13 +890,13 @@ Additional Query: {query}`,
           // Process the chain's output
           const chainResult = await researchChain.invoke({
             query,
-            isMedicalDiagnosis: !!options?.isMedicalDiagnosis,
+            isMedicalDiagnosis: options?.isMedicalDiagnosis === true,
             patientData: options?.patientData,
-            depth: options?.depth || 'standard',
-          })
+            depth: options?.depth ?? 'standard',
+          }, config)
 
           // Update progress if callback exists
-          if (onProgress) {
+          if (typeof onProgress === 'function') {
             onProgress(70) // Research completed, processing results
           }
 
@@ -951,11 +909,11 @@ Additional Query: {query}`,
             timestamp: new Date(),
             confidence: options?.isMedicalDiagnosis ? 0.9 : 0.85,
             modelName:
-              options?.model || researchConfig.providers.perplexity.model,
+              options?.model ?? researchConfig.providers.perplexity.model,
           }
 
           // Final progress update
-          if (onProgress) {
+          if (typeof onProgress === 'function') {
             onProgress(100) // Research and processing complete
           }
 
@@ -966,7 +924,7 @@ Additional Query: {query}`,
         },
         {
           onProgress: options?.onProgress,
-          onError: (error) => this.handleResearchError(query, options, error),
+          onError: (error: unknown) => this.handleResearchError(query, options, error),
         }
       )
 
@@ -986,29 +944,20 @@ Additional Query: {query}`,
     query: string,
     patientData: string,
     options?: Omit<
-      EnhancedResearchOptions,
+      ResearchOptions,
       'isMedicalDiagnosis' | 'patientData'
-    >
+    >,
+    config?: RunnableConfig
   ): Promise<ResearchResult> {
-    // For the new differential diagnosis format, we need to modify how we pass the query and patient data
-    const enhancedOptions = {
+    // Combine options with medical diagnosis specifics
+    const medicalOptions: ResearchOptions = {
       ...options,
       isMedicalDiagnosis: true,
-      patientData: `${patientData}\n\n${query ? `Additional query: ${query}` : ''}`,
-      depth: options?.depth || 'comprehensive', // Use comprehensive depth for medical diagnoses
-      maxTokens:
-        options?.maxTokens ||
-        this.getConfigValueForDepth('maxTokens', 'comprehensive'),
-      temperature:
-        options?.temperature ||
-        this.getConfigValueForDepth('temperature', 'comprehensive'),
+      patientData,
     }
 
-    // Use a specialized query format for medical diagnosis that works with our new prompt structure
-    const diagnosticQuery =
-      'Provide a comprehensive differential diagnosis based on the patient data'
-
-    return this.performDeepResearch(diagnosticQuery, enhancedOptions)
+    // Pass the config to performDeepResearch
+    return this.performDeepResearch(query, medicalOptions, DEFAULT_DEBUG, config)
   }
 
   /**
@@ -1016,78 +965,61 @@ Additional Query: {query}`,
    */
   async performResearchWithLangchain(
     query: string,
-    options?: EnhancedResearchOptions
+    options?: ResearchOptions,
+    config?: RunnableConfig
   ): Promise<ResearchResult> {
-    return runWithWorkflow(
-      'research' as WorkflowStep,
-      async () => {
-        // Create a parser for structured output
-        const researchParser = StructuredOutputParser.fromZodSchema(
-          z.object({
-            text: z
-              .string()
-              .describe('The full research text with all details'),
-            sources: z.array(
-              z.object({
-                title: z.string().optional(),
-                url: z.string(),
-                snippet: z.string().optional(),
-              })
-            ),
-            summary: z.string().describe('A concise summary of the findings'),
-            keyFindings: z.array(z.string()),
-          })
-        )
+    try {
+      // Create a parser for structured output
+      const researchParser = StructuredOutputParser.fromZodSchema(
+        ResearchResultSchema
+      )
 
-        // Get format instructions
-        const formatInstructions = await researchParser.getFormatInstructions()
+      // Get format instructions
+      const formatInstructions = await researchParser.getFormatInstructions()
 
-        // Create research prompt with single template literal
-        const researchPrompt = langChainCore.createPromptTemplate(
-          `You are a research assistant specializing in medical information analysis.
+      // Create research prompt with proper parameters - using the original pattern
+      const promptTemplate = `You are a research assistant specializing in medical information analysis.
 Research the following query thoroughly: {query}
 
 Depth: {depth}
 
-${formatInstructions}`,
-          ['query', 'depth']
-        )
+${formatInstructions}`;
 
-        // Create the model with callbacks
-        const model = langChainCore.createChatOpenAI({
-          modelName: options?.model || 'o3-mini',
-          temperature: options?.temperature || 0.3,
-          callbacks: createWorkflowCallbacks(null, 'research', {
-            onProgress: options?.onProgress,
-          }),
-        })
+      const researchPrompt = langChainCore.createPromptTemplate(
+        promptTemplate,
+        ['query', 'depth']
+      )
 
-        // Create and run the chain
-        const chain = researchPrompt.pipe(model).pipe(researchParser)
+      // Create Perplexity model (instead of OpenAI)
+      const model = langChainCore.createPerplexityChat({
+        model: 'sonar-deep-research',
+        temperature: options?.temperature ?? 0.3,
+        maxTokens: options?.maxTokens ?? 3000,
+        includeSources: true,
+      })
 
-        const result = await chain.invoke({
-          query,
-          depth: options?.depth || 'standard',
-        })
-
-        // Format as ResearchResult
-        return {
-          text: result.text,
-          sources: result.sources,
-          summary: result.summary,
-          keyFindings: result.keyFindings,
-          timestamp: new Date(),
-          confidence: 0.85,
-          modelName: options?.model || 'o3-mini',
-        }
-      },
-      {
-        onProgress: options?.onProgress,
-        onError: (error: unknown) => {
-          this.handleResearchError(query, options, error)
-        },
+      // Create chain and apply config if provided
+      let chain = researchPrompt.pipe(model).pipe(researchParser)
+      if (config) {
+        chain = chain.withConfig(config)
       }
-    )
+
+      const result = await chain.invoke({
+        query,
+        depth: options?.depth ?? 'standard',
+      })
+
+      // Format as ResearchResult ensuring all required fields
+      return {
+        ...result,
+        timestamp: new Date(),
+        confidence: 0.85,
+        modelName: options?.model ?? 'sonar-deep-research',
+      }
+    } catch (error) {
+      this.handleResearchError(query, options, error)
+      throw error
+    }
   }
 
   /**
@@ -1100,8 +1032,8 @@ ${formatInstructions}`,
    */
   async performStreamingResearch(
     query: string,
-    options?: EnhancedResearchOptions,
-    callbacks?: any[]
+    options?: ResearchOptions,
+    config?: RunnableConfig
   ): Promise<ReadableStream> {
     // This is a placeholder for streaming implementation
     // The actual implementation would depend on how LangChain
@@ -1114,7 +1046,7 @@ ${formatInstructions}`,
     })
 
     moduleLogger.info('Starting streaming research', {
-      model: options?.model || researchConfig.providers.perplexity.model,
+      model: options?.model ?? researchConfig.providers.perplexity.model,
     })
 
     // Create a new ReadableStream for sending chunks
@@ -1130,3 +1062,6 @@ ${formatInstructions}`,
 
 // Export singleton instance
 export const perplexityService = new PerplexityService()
+
+// Export types for use in other modules
+export type { ResearchOptions, ResearchResult, ResearchSource }

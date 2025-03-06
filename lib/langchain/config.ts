@@ -20,12 +20,30 @@ const EnvSchema = z.object({
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
 
   // Gemini configuration
-  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional().refine(
+    (val) => process.env.FORCE_GEMINI !== 'true' || (val && val.length > 0),
+    {
+      message: "Gemini API key is required when FORCE_GEMINI is set to 'true'",
+    }
+  ),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  FORCE_GEMINI: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((val) => val === 'true'),
 
   // Perplexity configuration
-  PERPLEXITY_API_KEY: z.string().optional(),
+  PERPLEXITY_API_KEY: z.string().optional().refine(
+    (val) => process.env.FORCE_PERPLEXITY !== 'true' || (val && val.length > 0),
+    {
+      message: "Perplexity API key is required when FORCE_PERPLEXITY is set to 'true'",
+    }
+  ),
   PERPLEXITY_MODEL: z.string().default('sonar-medium-online'),
+  FORCE_PERPLEXITY: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((val) => val === 'true'),
 })
 
 /**
@@ -67,6 +85,7 @@ export interface LangChainConfig {
     apiKey: string
     modelName: string
     temperature: number
+    forceUse?: boolean
   }
 
   /**
@@ -75,6 +94,7 @@ export interface LangChainConfig {
   perplexity?: {
     apiKey: string
     modelName: string
+    forceUse?: boolean
   }
 }
 
@@ -95,8 +115,10 @@ function loadEnvConfig(): Partial<z.infer<typeof EnvSchema>> {
     OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
     GEMINI_MODEL: process.env.GEMINI_MODEL,
+    FORCE_GEMINI: process.env.FORCE_GEMINI,
     PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY,
     PERPLEXITY_MODEL: process.env.PERPLEXITY_MODEL,
+    FORCE_PERPLEXITY: process.env.FORCE_PERPLEXITY,
   }
 }
 
@@ -148,19 +170,32 @@ export function getDefaultConfig(): LangChainConfig {
     },
   }
 
-  // Add optional configurations if available
-  if (env.GEMINI_API_KEY) {
+  // Add Gemini configuration if API key is available or if forced
+  if (env.GEMINI_API_KEY || env.FORCE_GEMINI) {
     config.gemini = {
-      apiKey: env.GEMINI_API_KEY,
+      apiKey: env.GEMINI_API_KEY || '', // Empty string if missing but forced
       modelName: env.GEMINI_MODEL,
       temperature: 0.7,
+      forceUse: env.FORCE_GEMINI || false,
+    }
+    
+    // Log warning if forced but missing API key
+    if (env.FORCE_GEMINI && !env.GEMINI_API_KEY) {
+      console.warn('WARNING: Gemini is forced but API key is missing. This will cause errors.')
     }
   }
 
-  if (env.PERPLEXITY_API_KEY) {
+  // Add Perplexity configuration if API key is available or if forced
+  if (env.PERPLEXITY_API_KEY || env.FORCE_PERPLEXITY) {
     config.perplexity = {
-      apiKey: env.PERPLEXITY_API_KEY,
+      apiKey: env.PERPLEXITY_API_KEY || '', // Empty string if missing but forced
       modelName: env.PERPLEXITY_MODEL,
+      forceUse: env.FORCE_PERPLEXITY || false,
+    }
+    
+    // Log warning if forced but missing API key
+    if (env.FORCE_PERPLEXITY && !env.PERPLEXITY_API_KEY) {
+      console.warn('WARNING: Perplexity is forced but API key is missing. This will cause errors.')
     }
   }
 

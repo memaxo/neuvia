@@ -1,5 +1,10 @@
 export type { Database } from '@/lib/types/database'
-export type { TypedSupabaseClient } from './types'
+// Export any other Supabase-related utilities
+
+/**
+ * Json type from Supabase schema
+ */
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 export {
   createServerClient,
   createReadOnlyClient,

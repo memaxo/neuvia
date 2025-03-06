@@ -155,6 +155,7 @@ function createExtractionSequence(
   onProgress?: ProgressCallback
 ) {
   // Default to Gemini Flash for extraction (better at unstructured medical text)
+  // but gracefully handle missing API keys with fallback
   const useGemini = options.useGemini ?? true
 
   // Create the model with appropriate settings and callbacks
@@ -170,20 +171,40 @@ function createExtractionSequence(
     )
   }
 
-  // Select the appropriate model
-  const llm = useGemini
-    ? langChainCore.createChatGemini({
+  // We'll try to use Gemini if requested, with automatic fallback to OpenAI
+  let llm: BaseChatModel;
+  
+  try {
+    if (useGemini) {
+      llm = langChainCore.createChatGemini({
         modelName: 'gemini-flash',
         temperature: options.temperature ?? 0.1,
         streaming: false,
         callbacks: callbackHandlers,
-      })
-    : langChainCore.createChatOpenAI({
+        fallbackToOpenAI: true // Enable automatic fallback
+      });
+    } else {
+      llm = langChainCore.createChatOpenAI({
         modelName: 'o3-mini',
         temperature: options.temperature ?? 0.1,
         streaming: false,
         callbacks: callbackHandlers,
-      })
+      });
+    }
+  } catch (error) {
+    // If creation fails for any reason, fall back to OpenAI
+    logger.warn('Failed to create preferred model, falling back to OpenAI', { 
+      error: error instanceof Error ? error.message : String(error),
+      preferredModel: useGemini ? 'gemini-flash' : 'o3-mini'
+    });
+    
+    llm = langChainCore.createChatOpenAI({
+      modelName: 'o3-mini',
+      temperature: options.temperature ?? 0.1,
+      streaming: false,
+      callbacks: callbackHandlers,
+    });
+  }
 
   // Create comprehensive prompt for medical document extraction
   const extractionPrompt = ChatPromptTemplate.fromMessages([
@@ -237,6 +258,7 @@ function createCorrectionSequence(
   onProgress?: ProgressCallback
 ) {
   // Use O3-mini for corrections (better at following instructions precisely)
+  // but allow override through options
   const useGemini = options.useGemini ?? false
 
   // Create callback handlers if needed
@@ -252,20 +274,40 @@ function createCorrectionSequence(
     )
   }
 
-  // Select the appropriate model
-  const llm = useGemini
-    ? langChainCore.createChatGemini({
+  // We'll try to use the selected model with fallback mechanism
+  let llm: BaseChatModel;
+  
+  try {
+    if (useGemini) {
+      llm = langChainCore.createChatGemini({
         modelName: 'gemini-flash',
         temperature: options.temperature ?? 0.1,
         streaming: false,
         callbacks: callbackHandlers,
-      })
-    : langChainCore.createChatOpenAI({
+        fallbackToOpenAI: true // Enable automatic fallback
+      });
+    } else {
+      llm = langChainCore.createChatOpenAI({
         modelName: 'o3-mini',
         temperature: options.temperature ?? 0.1,
         streaming: false,
         callbacks: callbackHandlers,
-      })
+      });
+    }
+  } catch (error) {
+    // If creation fails for any reason, fall back to OpenAI
+    logger.warn('Failed to create preferred model for correction processing, falling back to OpenAI', { 
+      error: error instanceof Error ? error.message : String(error),
+      preferredModel: useGemini ? 'gemini-flash' : 'o3-mini'
+    });
+    
+    llm = langChainCore.createChatOpenAI({
+      modelName: 'o3-mini',
+      temperature: options.temperature ?? 0.1,
+      streaming: false,
+      callbacks: callbackHandlers,
+    });
+  }
 
   // Create prompt for correction processing
   const correctionPrompt = ChatPromptTemplate.fromMessages([
@@ -376,9 +418,11 @@ export async function extractPatientSummary(
     method: 'extractPatientSummary',
     workflowId: workflowId || undefined,
     documentLength: documentText?.length,
+    useGemini: options.useGemini ?? true
   })
 
   try {
+    // Validate input
     if (!documentText || documentText.trim() === '') {
       moduleLogger.warn('Empty document text provided for extraction')
 
@@ -396,9 +440,11 @@ export async function extractPatientSummary(
       }
     }
 
+    // Log the extraction start with options for debugging
     moduleLogger.info('Starting patient summary extraction', {
       useGemini: options.useGemini ?? true,
       temperature: options.temperature ?? 0.1,
+      maxTokens: options.maxTokens,
     })
 
     // Update status if callback provided
@@ -425,23 +471,36 @@ export async function extractPatientSummary(
       metadata: { workflowId: workflowId || undefined },
     }
 
-    // Run with workflow to track progress
-    const result = await runWithWorkflow<string>(
-      'extraction' as WorkflowStep,
+    // Use retryWithBackoff to make extraction more resilient
+    // This will automatically retry if we encounter transient errors
+    const result = await retryWithBackoff(
       async () => {
-        moduleLogger.info('Invoking extraction sequence')
-        // Call the sequence with the document text
-        return extractionSequence.invoke(
-          { documentText: documentText.slice(0, 32000) }, // Limit text to avoid token limits
-          runnableConfig
-        )
+        // Run with workflow to track progress
+        return await runWithWorkflow<string>(
+          'extraction' as WorkflowStep,
+          async () => {
+            moduleLogger.info('Invoking extraction sequence')
+            // Call the sequence with the document text
+            return extractionSequence.invoke(
+              { documentText: documentText.slice(0, 32000) }, // Limit text to avoid token limits
+              runnableConfig
+            )
+          },
+          {
+            onProgress: (progress: number) =>
+              onProgress?.(progress, 'Processing document'),
+            workflowId,
+          }
+        );
       },
-      {
-        onProgress: (progress: number) =>
-          onProgress?.(progress, 'Processing document'),
-        workflowId,
+      2, // 2 retries
+      1000, // 1 second initial delay
+      { 
+        workflowId: workflowId || undefined, 
+        documentLength: documentText?.length,
+        useGemini: options.useGemini ?? true
       }
-    )
+    );
 
     if (!result) {
       moduleLogger.error('Extraction sequence returned empty result')
@@ -449,7 +508,11 @@ export async function extractPatientSummary(
         message: 'Failed to extract patient summary - empty result returned',
         service: options.useGemini ? 'Gemini' : 'OpenAI',
         code: 'EMPTY_EXTRACTION_RESULT',
-        data: { workflowId: workflowId || undefined },
+        data: { 
+          workflowId: workflowId || undefined,
+          documentLength: documentText?.length,
+          useGemini: options.useGemini ?? true
+        },
       })
     }
 
@@ -466,10 +529,13 @@ export async function extractPatientSummary(
       phase: 'extraction_completed',
     })
 
+    // Extract structured data from the markdown summary
+    const structuredData = extractStructuredDataFromMarkdown(result);
+
     return {
       success: true,
       summary: result,
-      structuredData: {}, // In a real implementation, we would parse the markdown to extract structured data
+      structuredData: structuredData
     }
   } catch (error) {
     // Handle extraction errors
@@ -597,25 +663,36 @@ export async function processCorrection(
       },
     }
 
-    // Process the correction
-    const result = await runWithWorkflow<string>(
-      'verification' as WorkflowStep,
+    // Process the correction with retry capability
+    const result = await retryWithBackoff(
       async () => {
-        moduleLogger.info('Invoking correction sequence')
-        return correctionSequence.invoke(
-          {
-            currentSummary,
-            userCorrection,
+        return await runWithWorkflow<string>(
+          'verification' as WorkflowStep,
+          async () => {
+            moduleLogger.info('Invoking correction sequence')
+            return correctionSequence.invoke(
+              {
+                currentSummary,
+                userCorrection,
+              },
+              runnableConfig
+            )
           },
-          runnableConfig
-        )
+          {
+            onProgress: (progress: number) =>
+              onProgress?.(progress, 'Processing correction'),
+            workflowId,
+          }
+        );
       },
+      2, // 2 retries
+      1000, // 1 second initial delay
       {
-        onProgress: (progress: number) =>
-          onProgress?.(progress, 'Processing correction'),
-        workflowId,
+        workflowId: workflowId || undefined,
+        correctionLength: userCorrection.length,
+        useGemini: options.useGemini ?? false
       }
-    )
+    );
 
     if (!result) {
       moduleLogger.error('Correction sequence returned empty result')
@@ -623,7 +700,10 @@ export async function processCorrection(
         message: 'Failed to process correction - empty result returned',
         service: options.useGemini ? 'Gemini' : 'OpenAI',
         code: 'EMPTY_CORRECTION_RESULT',
-        data: { workflowId: workflowId || undefined },
+        data: { 
+          workflowId: workflowId || undefined,
+          correctionLength: userCorrection.length 
+        },
       })
     }
 
@@ -640,10 +720,13 @@ export async function processCorrection(
       phase: 'verification',
     })
 
+    // Extract structured data from the corrected markdown
+    const structuredData = extractStructuredDataFromMarkdown(result);
+    
     return {
       success: true,
       summary: result,
-      structuredData: {}, // In a real implementation, we would parse the markdown to extract structured data
+      structuredData: structuredData
     }
   } catch (error) {
     // Handle correction errors
@@ -822,6 +905,7 @@ export async function* streamPatientSummary(
     })
 
     // Default to Gemini Flash with streaming enabled
+    // but gracefully handle missing API keys with fallback
     const useGemini = options.useGemini ?? true
 
     // Create callback handlers
@@ -833,20 +917,40 @@ export async function* streamPatientSummary(
       )
     }
 
-    // Select the appropriate model with streaming enabled
-    const llm = useGemini
-      ? langChainCore.createChatGemini({
+    // We'll try to use Gemini if requested, with automatic fallback to OpenAI
+    let llm: BaseChatModel;
+    
+    try {
+      if (useGemini) {
+        llm = langChainCore.createChatGemini({
           modelName: 'gemini-flash',
           temperature: options.temperature ?? 0.1,
           streaming: true,
           callbacks: callbackHandlers,
-        })
-      : langChainCore.createChatOpenAI({
+          fallbackToOpenAI: true // Enable automatic fallback
+        });
+      } else {
+        llm = langChainCore.createChatOpenAI({
           modelName: 'o3-mini',
           temperature: options.temperature ?? 0.1,
           streaming: true,
           callbacks: callbackHandlers,
-        })
+        });
+      }
+    } catch (error) {
+      // If creation fails for any reason, fall back to OpenAI
+      moduleLogger.warn('Failed to create streaming model, falling back to OpenAI', { 
+        error: error instanceof Error ? error.message : String(error),
+        preferredModel: useGemini ? 'gemini-flash' : 'o3-mini'
+      });
+      
+      llm = langChainCore.createChatOpenAI({
+        modelName: 'o3-mini',
+        temperature: options.temperature ?? 0.1,
+        streaming: true,
+        callbacks: callbackHandlers,
+      });
+    }
 
     // Create extraction prompt
     const extractionPrompt = ChatPromptTemplate.fromMessages([
@@ -1050,6 +1154,152 @@ function determineRetryability(error: ApplicationError): boolean {
 
   // Default to allowing retry for other error types
   return true
+}
+
+/**
+ * Extract structured data from a markdown patient summary
+ * 
+ * @param markdownText The patient summary in markdown format
+ * @returns Structured patient data object
+ */
+function extractStructuredDataFromMarkdown(markdownText: string): PatientSummaryData {
+  const structuredData: PatientSummaryData = {
+    demographics: {},
+    medicalHistory: [],
+    allergies: [],
+    medications: [],
+    vitalSigns: [],
+    assessment: '',
+    plan: ''
+  };
+
+  try {
+    // Extract demographics
+    const demographicsMatch = markdownText.match(/## Patient Demographics\s+([\s\S]*?)(?=\n## |$)/i);
+    if (demographicsMatch && demographicsMatch[1]) {
+      const demographicsText = demographicsMatch[1];
+      
+      // Extract name
+      const nameMatch = demographicsText.match(/\*\*Name:\*\*\s*(.*?)(?:\n|$)/i);
+      if (nameMatch && nameMatch[1]) {
+        structuredData.demographics!.name = nameMatch[1].trim();
+      }
+      
+      // Extract date of birth
+      const dobMatch = demographicsText.match(/\*\*DOB:\*\*\s*(.*?)(?:\n|$)/i);
+      if (dobMatch && dobMatch[1]) {
+        structuredData.demographics!.dateOfBirth = dobMatch[1].trim();
+      }
+      
+      // Extract gender
+      const genderMatch = demographicsText.match(/\*\*Gender:\*\*\s*(.*?)(?:\n|$)/i);
+      if (genderMatch && genderMatch[1]) {
+        structuredData.demographics!.gender = genderMatch[1].trim();
+      }
+      
+      // Extract MRN
+      const mrnMatch = demographicsText.match(/\*\*MRN:\*\*\s*(.*?)(?:\n|$)/i);
+      if (mrnMatch && mrnMatch[1]) {
+        structuredData.demographics!.mrn = mrnMatch[1].trim();
+      }
+    }
+    
+    // Extract medical history
+    const medicalHistoryMatch = markdownText.match(/## Medical History\s+([\s\S]*?)(?=\n## |$)/i);
+    if (medicalHistoryMatch && medicalHistoryMatch[1]) {
+      const historyItems = medicalHistoryMatch[1].match(/- (.*?)(?:\n|$)/g);
+      if (historyItems) {
+        structuredData.medicalHistory = historyItems.map(item => 
+          item.replace(/^- /, '').trim()
+        );
+      }
+    }
+    
+    // Extract allergies
+    const allergiesMatch = markdownText.match(/## Allergies\s+([\s\S]*?)(?=\n## |$)/i);
+    if (allergiesMatch && allergiesMatch[1]) {
+      const allergyItems = allergiesMatch[1].match(/- (.*?)(?:\n|$)/g);
+      if (allergyItems) {
+        structuredData.allergies = allergyItems.map(item => 
+          item.replace(/^- /, '').trim()
+        );
+      }
+    }
+    
+    // Extract medications
+    const medicationsMatch = markdownText.match(/## Current Medications\s+([\s\S]*?)(?=\n## |$)/i);
+    if (medicationsMatch && medicationsMatch[1]) {
+      const medItems = medicationsMatch[1].match(/- (.*?)(?:\n|$)/g);
+      if (medItems) {
+        structuredData.medications = medItems.map(item => {
+          const medText = item.replace(/^- /, '').trim();
+          const parts = medText.split(/\s+/);
+          
+          // Try to extract name, dosage, and frequency
+          // Format like "Lisinopril 20mg daily"
+          if (parts.length >= 3) {
+            return {
+              name: parts[0],
+              dosage: parts[1],
+              frequency: parts.slice(2).join(' ')
+            };
+          } else if (parts.length === 2) {
+            return {
+              name: parts[0],
+              dosage: parts[1]
+            };
+          } else {
+            return { name: medText };
+          }
+        });
+      }
+    }
+    
+    // Extract vital signs
+    const vitalsMatch = markdownText.match(/## Vital Signs\s+([\s\S]*?)(?=\n## |$)/i);
+    if (vitalsMatch && vitalsMatch[1]) {
+      const vitalItems = vitalsMatch[1].match(/- \*\*(.*?):\*\*\s*(.*?)(?:\n|$)/g);
+      if (vitalItems) {
+        structuredData.vitalSigns = vitalItems.map(item => {
+          const cleaned = item.replace(/^- \*\*/, '').replace(/:\*\*\s*/, '|').trim();
+          const [name, value] = cleaned.split('|');
+          
+          // Try to extract unit from value
+          let unitMatch = value.match(/(.*?)\s+(\w+\/\w+|\w+)$/);
+          if (unitMatch) {
+            return {
+              name: name.trim(),
+              value: unitMatch[1].trim(),
+              unit: unitMatch[2].trim()
+            };
+          } else {
+            return {
+              name: name.trim(),
+              value: value.trim()
+            };
+          }
+        });
+      }
+    }
+    
+    // Extract assessment
+    const assessmentMatch = markdownText.match(/## Assessment\s+([\s\S]*?)(?=\n## |$)/i);
+    if (assessmentMatch && assessmentMatch[1]) {
+      structuredData.assessment = assessmentMatch[1].trim();
+    }
+    
+    // Extract plan
+    const planMatch = markdownText.match(/## Plan\s+([\s\S]*?)(?=\n## |$)/i);
+    if (planMatch && planMatch[1]) {
+      structuredData.plan = planMatch[1].trim();
+    }
+    
+  } catch (error) {
+    // Log the error but don't block returning partial data
+    console.error('Error extracting structured data:', error);
+  }
+  
+  return structuredData;
 }
 
 /**

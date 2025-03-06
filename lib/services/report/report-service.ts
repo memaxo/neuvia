@@ -270,6 +270,25 @@ export class ReportService {
 
       options?.onProgress?.('generation', 30)
 
+      // Check if this is a fallback research result
+      // If so, use an alternate report generation path that's optimized for fallback content
+      if (params.researchData.isFallback) {
+        moduleLogger.info('Using fallback report generation for fallback research data', {
+          isFallback: true,
+          modelName: params.researchData.modelName
+        })
+        
+        return this.generateReportWithRunnables(
+          params.researchData,
+          params.patientId,
+          {
+            ...options,
+            saveToDatabase: params.saveToDatabase,
+            contextData: params.contextData,
+          }
+        )
+      }
+
       // Format report based on type and provided research data
       const reportContent = await this.formatReport(
         params.type,
@@ -292,6 +311,7 @@ export class ReportService {
           generationTime: Date.now() - startTime,
           reportType: params.type,
           contextData: params.contextData,
+          isFallback: params.researchData.isFallback || false
         },
         sections: this.extractSections(reportContent),
       }
@@ -311,39 +331,69 @@ export class ReportService {
       moduleLogger.info('Report generation completed successfully', {
         generationTime: Date.now() - startTime,
         reportType: params.type,
+        isFallback: params.researchData.isFallback || false
       })
 
       return reportData
     } catch (error) {
-      // Handle errors with normalized error handling
-      const normalizedError = normalizeError(error)
-
       moduleLogger.error(
-        'Failed to generate report',
+        'Standard report generation failed, attempting fallback approach',
         {
-          errorCode: normalizedError.code,
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
         },
-        normalizedError
+        error
       )
+      
+      // Try using the Runnable-based approach as a fallback when formatting fails
+      try {
+        moduleLogger.info('Using fallback report generation method')
+        options?.onProgress?.('fallback', 40)
+        
+        const fallbackReport = await this.generateReportWithRunnables(
+          params.researchData,
+          params.patientId,
+          {
+            ...options,
+            saveToDatabase: params.saveToDatabase,
+            contextData: params.contextData,
+          }
+        )
+        
+        moduleLogger.info('Fallback report generation succeeded')
+        return fallbackReport
+      } catch (fallbackError) {
+        // Handle errors with normalized error handling
+        const normalizedError = normalizeError(error)
 
-      // Call error callback if provided
-      options?.onError?.(normalizedError.message)
+        moduleLogger.error(
+          'All report generation methods failed',
+          {
+            errorCode: normalizedError.code,
+            originalError: error instanceof Error ? error.message : String(error),
+            fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+          },
+          normalizedError
+        )
 
-      // If it's already our error type, rethrow it
-      if (error instanceof ApplicationError) {
-        throw error
+        // Call error callback if provided
+        options?.onError?.(normalizedError.message)
+
+        // If it's already our error type, rethrow it
+        if (error instanceof ApplicationError) {
+          throw error
+        }
+
+        // Otherwise normalize to a SystemError
+        throw new SystemError({
+          message: 'Failed to generate report',
+          code: 'REPORT_GENERATION_FAILED',
+          data: {
+            reportType: params.type,
+            patientId: params.patientId,
+          },
+          cause: error,
+        })
       }
-
-      // Otherwise normalize to a SystemError
-      throw new SystemError({
-        message: 'Failed to generate report',
-        code: 'REPORT_GENERATION_FAILED',
-        data: {
-          reportType: params.type,
-          patientId: params.patientId,
-        },
-        cause: error,
-      })
     }
   }
 

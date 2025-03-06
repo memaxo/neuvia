@@ -18,7 +18,8 @@ import type {
   VerificationMetadata,
   VerificationItem,
   VerifiedDocument,
-  VerificationStatusType,
+  VerificationStatus,
+  ExtendedVerificationItem
 } from './verification'
 import type { Report, ReportSections } from './report'
 import type { BaseEntity } from './base'
@@ -160,7 +161,17 @@ export interface DbDocument {
 /**
  * Database representation of an extracted document
  */
-export interface DbExtractedDocument extends DbDocument {
+export interface DbExtractedDocument {
+  id: string
+  created_at: string
+  updated_at: string
+  document_type: DbDocumentType
+  patient_id?: string
+  department_id?: string
+  file_name: string
+  file_size: number
+  file_type: string
+  lifecycle_stage: string
   extracted_data: {
     raw_text: string
     metadata: Record<string, unknown>
@@ -172,7 +183,7 @@ export interface DbExtractedDocument extends DbDocument {
   }
   is_processed: boolean
   processing_error?: string
-  processing_status: string
+  processing_status: DocumentProcessingStatus
   confidence?: number
 }
 
@@ -261,13 +272,28 @@ export function documentToDb(doc: Partial<Document> & BaseEntity): DbDocument {
 export function extractedDocumentFromDb(
   dbDoc: DbExtractedDocument
 ): ExtractedDocument {
-  const baseDoc = documentFromDb(dbDoc)
+  // Create a DbDocument from DbExtractedDocument to pass to documentFromDb
+  const dbDocBase: DbDocument = {
+    id: dbDoc.id,
+    created_at: dbDoc.created_at,
+    updated_at: dbDoc.updated_at,
+    file_name: dbDoc.file_name,
+    file_size: dbDoc.file_size,
+    file_type: dbDoc.file_type,
+    document_type: dbDoc.document_type,
+    lifecycle_stage: dbDoc.lifecycle_stage,
+    patient_id: dbDoc.patient_id,
+    department_id: dbDoc.department_id,
+    metadata: {}
+  }
+  
+  const baseDoc = documentFromDb(dbDocBase)
 
   return {
     ...baseDoc,
     extractedData: {
       rawText: dbDoc.extracted_data.raw_text,
-      metadata: dbDoc.extracted_data.metadata as unknown as DocumentMetadata,
+      metadata: dbDoc.extracted_data.metadata as DocumentMetadata,
       chunks: dbDoc.extracted_data.chunks?.map((chunk) => ({
         content: chunk.content,
         pageNumber: chunk.page_number,
@@ -276,7 +302,7 @@ export function extractedDocumentFromDb(
     },
     isProcessed: dbDoc.is_processed,
     processingError: dbDoc.processing_error,
-    processingStatus: dbDoc.processing_status as DocumentProcessingStatus,
+    processingStatus: dbDoc.processing_status,
     confidence: dbDoc.confidence,
   }
 }
@@ -291,12 +317,10 @@ export function extractedDocumentToDb(
 
   return {
     ...baseDoc,
+    document_type: documentTypeToDb(doc.documentType),
     extracted_data: {
       raw_text: doc.extractedData.rawText,
-      metadata: doc.extractedData.metadata as unknown as Record<
-        string,
-        unknown
-      >,
+      metadata: doc.extractedData.metadata as Record<string, unknown>,
       chunks: doc.extractedData.chunks?.map((chunk) => ({
         content: chunk.content,
         page_number: chunk.pageNumber,
@@ -306,7 +330,7 @@ export function extractedDocumentToDb(
     is_processed: doc.isProcessed,
     processing_error: doc.processingError,
     processing_status: doc.processingStatus,
-    confidence: doc.confidence,
+    confidence: doc.confidence
   }
 }
 
@@ -424,21 +448,22 @@ export interface DbVerificationMetadata {
 export interface DbVerificationItem {
   id: string
   title: string
-  status: string
-  content: string
+  status?: string
+  content?: string
   metadata?: Record<string, unknown>
   user_id?: string
   verified_at?: string
   correction?: string
   reason?: string
-  // Additional fields that are used in the adapter functions but not in the schema
+  // Required fields for mapping to VerificationItem
   description?: string
-  category?: string
-  path?: string
   original_content?: string
   current_content?: string
   is_verified?: boolean
   is_modified?: boolean
+  // Optional fields
+  category?: string
+  path?: string
   confidence?: number
   change_history?: Array<{
     id: string
@@ -486,23 +511,25 @@ export function verificationMetadataFromDb(
   // Map the corrections array to match the expected format
   const corrections = dbMeta.corrections.map((c) => ({
     id: c.id,
-    content: c.text, // Map 'text' to 'content'
+    text: c.text,
     timestamp: c.timestamp,
+    userId: c.user_id
   }))
 
   // Create a partial object with only the properties defined in VerificationMetadata
   const metadata: Partial<VerificationMetadata> = {
-    verificationStatus: dbMeta.verification_status as VerificationStatusType,
+    verification_status: dbMeta.verification_status as VerificationStatus,
     originalSummaryId: dbMeta.original_summary_id,
     currentVersionId: dbMeta.current_version_id,
     correctionCount: dbMeta.correction_count,
+    verifiedAt: dbMeta.verified_at,
+    verifiedBy: dbMeta.verified_by,
     corrections,
-    // Additional properties that might be in the extended version
-    documentId:
-      dbMeta.extracted_data !== undefined && dbMeta.extracted_data !== null
-        ? String(dbMeta.extracted_data)
-        : undefined,
-    patientId: dbMeta.patient_id,
+    extractedData: dbMeta.extracted_data,
+    startedAt: dbMeta.started_at,
+    lastUpdated: dbMeta.last_updated,
+    confidenceScore: dbMeta.confidence_score,
+    rejectionReason: dbMeta.rejection_reason
   }
 
   return metadata as VerificationMetadata
@@ -515,31 +542,33 @@ export function verificationMetadataToDb(
   meta: VerificationMetadata
 ): DbVerificationMetadata {
   // Map the corrections array to match the database format
-  const corrections =
-    meta.corrections?.map((c) => ({
-      id: c.id,
-      text: c.content, // Map 'content' to 'text'
-      timestamp:
-        typeof c.timestamp === 'object'
-          ? c.timestamp.toISOString()
-          : c.timestamp,
-      user_id: undefined,
-    })) || []
+  const corrections = Array.isArray(meta.corrections) ? 
+    meta.corrections.map((c) => {
+      // Convert timestamp to string safely
+      const timestamp = String(c.timestamp ?? '');
+      
+      return {
+        id: c.id,
+        text: c.text,
+        timestamp,
+        user_id: c.userId,
+      };
+    }) : [];
 
   return {
-    verification_status: meta.verificationStatus,
+    verification_status: meta.verification_status,
     original_summary_id: meta.originalSummaryId ?? '',
     current_version_id: meta.currentVersionId ?? '',
     correction_count: meta.correctionCount,
-    verified_at: undefined, // Not in the schema
-    verified_by: undefined, // Not in the schema
+    verified_at: meta.verifiedAt,
+    verified_by: meta.verifiedBy,
     corrections,
-    extracted_data: undefined, // Not in the schema
-    started_at: undefined, // Not in the schema
-    last_updated: undefined, // Not in the schema
-    confidence_score: undefined, // Not in the schema
-    rejection_reason: undefined, // Not in the schema
-    patient_id: meta.patientId,
+    extracted_data: meta.extractedData,
+    started_at: meta.startedAt,
+    last_updated: meta.lastUpdated,
+    confidence_score: meta.confidenceScore,
+    rejection_reason: meta.rejectionReason,
+    patient_id: undefined
   }
 }
 
@@ -549,42 +578,62 @@ export function verificationMetadataToDb(
 export function verificationItemFromDb(
   dbItem: DbVerificationItem
 ): VerificationItem {
-  return {
+  // First get the base fields that match VerificationItem interface
+  const baseItem: VerificationItem = {
     id: dbItem.id,
     title: dbItem.title,
-    content: dbItem.content,
-    status: dbItem.status as VerificationItem['status'],
-    correction: dbItem.correction,
-    reason: dbItem.reason,
-    verifiedBy: dbItem.user_id,
-    verifiedAt: dbItem.verified_at,
-    metadata: dbItem.metadata,
-  }
+    description: dbItem.description,
+    originalContent: dbItem.original_content ?? dbItem.content ?? '',
+    currentContent: dbItem.current_content ?? dbItem.content ?? '',
+    isVerified: dbItem.is_verified ?? false,
+    isModified: dbItem.is_modified ?? false,
+    changeHistory: (dbItem.change_history ?? []).map(history => ({
+      id: history.id,
+      content: history.content,
+      timestamp: history.timestamp,
+      userId: history.user_id,
+      reason: history.reason
+    })),
+    metadata: dbItem.metadata
+  };
+
+  return baseItem;
 }
 
 /**
  * Convert verification item from application to database format
  */
 export function verificationItemToDb(
-  item: VerificationItem
+  item: VerificationItem & Partial<ExtendedVerificationItem>
 ): DbVerificationItem {
-  // Convert Date objects to ISO strings if present
-  const verifiedAt =
-    typeof item.verifiedAt === 'object' && item.verifiedAt instanceof Date
-      ? item.verifiedAt.toISOString()
-      : item.verifiedAt
-
-  return {
+  // Build the basic fields
+  const dbItem: DbVerificationItem = {
     id: item.id,
     title: item.title,
-    content: item.content,
+    description: item.description,
+    original_content: item.originalContent,
+    current_content: item.currentContent,
+    is_verified: item.isVerified,
+    is_modified: item.isModified,
+    content: item.currentContent, // For backward compatibility
+    metadata: item.metadata,
+    // Add extended fields if available
     status: item.status,
     correction: item.correction,
     reason: item.reason,
     user_id: item.verifiedBy,
-    verified_at: verifiedAt,
-    metadata: item.metadata,
-  }
+    verified_at: item.verifiedAt,
+    // Map change history if available
+    change_history: item.changeHistory?.map(history => ({
+      id: history.id,
+      content: history.content,
+      timestamp: history.timestamp,
+      user_id: history.userId,
+      reason: history.reason
+    }))
+  };
+
+  return dbItem;
 }
 
 /**
@@ -599,7 +648,7 @@ export function verifiedDocumentFromDb(
     verifiedBy: dbDoc.verified_by,
     verifiedAt: dbDoc.verified_at,
     verificationItems: dbDoc.verification_items.map(verificationItemFromDb),
-    verificationStatus: dbDoc.verification_status as VerificationStatusType,
+    verificationStatus: dbDoc.verification_status as VerificationStatus,
     verificationMetadata: verificationMetadataFromDb(
       dbDoc.verification_metadata
     ),

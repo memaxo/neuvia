@@ -8,7 +8,7 @@
  * This ensures a consistent schema across TypeScript types, Zod schemas, and OpenAPI.
  */
 
-import type { UUID, Timestamp } from './base'
+import type { UUID, Timestamp, BaseEntity } from './base'
 import type { Database } from '@/lib/types/database'
 
 // -----------------------------------------------------------------------------
@@ -307,6 +307,94 @@ export interface VerificationResult {
   verificationMetadata: VerificationMetadata
 }
 
+/**
+ * Extended VerificationItem with additional fields for database storage
+ */
+export interface ExtendedVerificationItem extends VerificationItem {
+  /**
+   * Current verification status
+   */
+  status?: string;
+  
+  /**
+   * Content after verification
+   */
+  content?: string;
+  
+  /**
+   * Correction text if any
+   */
+  correction?: string;
+  
+  /**
+   * Reason for correction or verification
+   */
+  reason?: string;
+  
+  /**
+   * User who verified this item
+   */
+  verifiedBy?: UUID;
+  
+  /**
+   * When this item was verified
+   */
+  verifiedAt?: Timestamp;
+}
+
+/**
+ * Verified document with complete metadata and items
+ */
+export interface VerifiedDocument extends BaseEntity {
+  /**
+   * Original document ID
+   */
+  originalDocumentId: string;
+  
+  /**
+   * User who verified the document
+   */
+  verifiedBy?: string;
+  
+  /**
+   * When the document was verified
+   */
+  verifiedAt: string;
+  
+  /**
+   * Verification items
+   */
+  verificationItems: VerificationItem[];
+  
+  /**
+   * Verification status
+   */
+  verificationStatus: VerificationStatus;
+  
+  /**
+   * Verification metadata
+   */
+  verificationMetadata: VerificationMetadata;
+  
+  /**
+   * Document type information
+   */
+  documentType: any; // Using any to avoid circular imports
+  
+  /**
+   * Patient ID
+   */
+  patientId?: string;
+  
+  /**
+   * Verified data content
+   */
+  verifiedData: {
+    content: Record<string, unknown>;
+    metadata: Record<string, unknown>;
+  };
+}
+
 // -----------------------------------------------------------------------------
 // Options, requests, and results from the now-deprecated verification-service-types
 // -----------------------------------------------------------------------------
@@ -493,4 +581,41 @@ export function isVerificationResult(value: unknown): value is VerificationResul
     return false
   }
   return true
+}
+
+/**
+ * Convert verification metadata to a database-compatible format
+ * Ensures that all properties are properly serialized for database storage
+ *
+ * @param metadata - Any metadata object to convert
+ * @returns Database compatible metadata object
+ */
+export function getDbCompatibleMetadata(metadata: Record<string, any>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  
+  // Process each key in the metadata
+  for (const [key, value] of Object.entries(metadata)) {
+    // Handle dates and convert to ISO strings
+    if (value instanceof Date) {
+      result[key] = value.toISOString()
+    }
+    // Handle nested objects
+    else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = getDbCompatibleMetadata(value as Record<string, any>)
+    }
+    // Handle arrays by mapping each item
+    else if (Array.isArray(value)) {
+      result[key] = value.map(item =>
+        item !== null && typeof item === 'object'
+          ? getDbCompatibleMetadata(item as Record<string, any>)
+          : item
+      )
+    }
+    // Keep primitives as is
+    else {
+      result[key] = value
+    }
+  }
+  
+  return result
 }

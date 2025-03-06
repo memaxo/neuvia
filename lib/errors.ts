@@ -57,6 +57,64 @@ export class ApplicationError extends Error {
 }
 
 /**
+ * ExternalServiceError - for errors from external API services
+ */
+export class ExternalServiceError extends ApplicationError {
+  constructor({
+    message = 'External service error',
+    code = 'EXTERNAL_SERVICE_ERROR',
+    statusCode = 500,
+    service,
+    data = {},
+    cause
+  }: {
+    message?: string
+    code?: string
+    statusCode?: number
+    service: string
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    super({ 
+      message, 
+      code, 
+      statusCode, 
+      data: { ...data, service }, 
+      cause, 
+      isOperational: true 
+    })
+  }
+}
+
+/**
+ * SystemError - for internal system errors
+ */
+export class SystemError extends ApplicationError {
+  constructor({
+    message = 'System error',
+    code = 'SYSTEM_ERROR',
+    statusCode = 500,
+    data = {},
+    cause
+  }: {
+    message?: string
+    code?: string
+    statusCode?: number
+    data?: Record<string, any>
+    cause?: Error | unknown
+  }) {
+    super({ 
+      message, 
+      code, 
+      statusCode, 
+      data, 
+      cause, 
+      isOperational: false 
+    })
+  }
+}
+
+/**
  * Helper function to safely handle unknown errors and convert to ApplicationError
  */
 export function normalizeError(error: unknown): ApplicationError {

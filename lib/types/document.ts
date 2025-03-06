@@ -144,6 +144,16 @@ export interface DocumentMetadata {
   uploadedBy?: UUID
 
   /**
+   * Error message if extraction fails
+   */
+  error?: string
+
+  /**
+   * Error code if extraction fails
+   */
+  errorCode?: string
+
+  /**
    * Patient ID if this is a patient document
    */
   patientId?: UUID
@@ -182,6 +192,16 @@ export interface DocumentMetadata {
    * Additional custom metadata
    */
   custom?: Record<string, unknown>
+  
+  /**
+   * Document type confidence score (0-1)
+   */
+  documentTypeConfidence?: number
+  
+  /**
+   * Detected document sections
+   */
+  detectedSections?: string[]
 }
 
 /**

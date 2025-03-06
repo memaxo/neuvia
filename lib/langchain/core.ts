@@ -14,7 +14,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import {
   ExternalServiceError,
   SystemError,
-  ValidationError,
+  ApplicationError,
 } from '@/lib/errors'
 import logger from '@/lib/logger'
 /**
@@ -43,6 +43,8 @@ import type { BaseRetriever } from '@langchain/core/retrievers'
 import { BufferMemory } from 'langchain/memory'
 // Import zod for schema validation
 import type { z } from 'zod'
+// Import the PerplexityChat model
+import { PerplexityChat, type PerplexityChatOptions } from '@/lib/langchain/perplexity-chat-model'
 
 /**
  * LangChain Core class
@@ -93,8 +95,8 @@ export class LangChainCore {
     } catch (error) {
       moduleLogger.error('Failed to initialize LangChain Core', {}, error)
 
-      if (error instanceof ValidationError) {
-        // Just rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Just rethrow application errors
         throw error
       }
 
@@ -120,7 +122,7 @@ export class LangChainCore {
     // Validate OpenAI configuration
     if (!this.config.openai.apiKey) {
       moduleLogger.error('Missing OpenAI API key')
-      throw new ValidationError({
+      throw new ApplicationError({
         message: 'OpenAI API key is required for LangChain initialization',
         code: 'MISSING_OPENAI_API_KEY',
       })
@@ -129,7 +131,7 @@ export class LangChainCore {
     // Validate Supabase configuration
     if (!this.config.supabase.url) {
       moduleLogger.error('Missing Supabase URL')
-      throw new ValidationError({
+      throw new ApplicationError({
         message: 'Supabase URL is required for LangChain initialization',
         code: 'MISSING_SUPABASE_URL',
       })
@@ -137,7 +139,7 @@ export class LangChainCore {
 
     if (!this.config.supabase.serviceKey) {
       moduleLogger.error('Missing Supabase service key')
-      throw new ValidationError({
+      throw new ApplicationError({
         message:
           'Supabase service key is required for LangChain initialization',
         code: 'MISSING_SUPABASE_KEY',
@@ -195,8 +197,8 @@ export class LangChainCore {
     } catch (error) {
       moduleLogger.error('Failed to create OpenAI chat model', {}, error)
 
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
         throw error
       }
 
@@ -213,18 +215,22 @@ export class LangChainCore {
    * Create a Gemini chat model (Gemini 2.0 Flash)
    *
    * @param options Optional configuration for the chat model
+   * @returns Gemini chat model or falls back to OpenAI if Gemini is not available
    */
   public createChatGemini(options?: {
     modelName?: string
     temperature?: number
     streaming?: boolean
     callbacks?: BaseCallbackHandler[]
+    fallbackToOpenAI?: boolean
   }) {
+    const fallbackToOpenAI = options?.fallbackToOpenAI ?? true
     const moduleLogger = logger.withMetadata({
       module: 'LangChainCore',
       method: 'createChatGemini',
       modelName: options?.modelName || this.config.gemini?.modelName,
       streaming: options?.streaming ?? false,
+      fallbackToOpenAI,
     })
 
     try {
@@ -232,9 +238,19 @@ export class LangChainCore {
 
       // Check if Gemini API key is available
       if (!this.config.gemini?.apiKey) {
-        moduleLogger.error('Gemini API key is not configured')
-        throw new ValidationError({
-          message: 'Gemini API key is not configured',
+        moduleLogger.warn('Gemini API key is not configured - using fallback model')
+        
+        if (fallbackToOpenAI) {
+          moduleLogger.info('Falling back to OpenAI model')
+          return this.createChatOpenAI({
+            temperature: options?.temperature,
+            streaming: options?.streaming,
+            callbacks: options?.callbacks,
+          })
+        }
+        
+        throw new ApplicationError({
+          message: 'Gemini API key is not configured and fallback is disabled',
           code: 'MISSING_GEMINI_API_KEY',
         })
       }
@@ -251,9 +267,31 @@ export class LangChainCore {
     } catch (error) {
       moduleLogger.error('Failed to create Gemini chat model', {}, error)
 
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // If fallback is enabled and this is a configuration error, try OpenAI
+        if (fallbackToOpenAI && error.code === 'MISSING_GEMINI_API_KEY') {
+          moduleLogger.info('Falling back to OpenAI model after Gemini configuration error')
+          return this.createChatOpenAI({
+            temperature: options?.temperature,
+            streaming: options?.streaming,
+            callbacks: options?.callbacks,
+          })
+        }
+        
+        // Otherwise rethrow application errors
         throw error
+      }
+
+      // If fallback is enabled, try OpenAI for other errors
+      if (fallbackToOpenAI) {
+        moduleLogger.info('Falling back to OpenAI model after Gemini error', {
+          errorType: error instanceof Error ? error.constructor.name : typeof error,
+        })
+        return this.createChatOpenAI({
+          temperature: options?.temperature,
+          streaming: options?.streaming,
+          callbacks: options?.callbacks,
+        })
       }
 
       throw new ExternalServiceError({
@@ -293,8 +331,8 @@ export class LangChainCore {
     } catch (error) {
       moduleLogger.error('Failed to create OpenAI embeddings', {}, error)
 
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
         throw error
       }
 
@@ -325,7 +363,7 @@ export class LangChainCore {
       moduleLogger.info('Creating prompt template')
 
       if (!template) {
-        throw new ValidationError({
+        throw new ApplicationError({
           message: 'Template string is required',
           code: 'MISSING_TEMPLATE',
         })
@@ -333,8 +371,8 @@ export class LangChainCore {
 
       return PromptTemplate.fromTemplate(template)
     } catch (error) {
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
         throw error
       }
 
@@ -371,14 +409,14 @@ export class LangChainCore {
       moduleLogger.info('Creating chat prompt template')
 
       if (!systemTemplate) {
-        throw new ValidationError({
+        throw new ApplicationError({
           message: 'System template is required',
           code: 'MISSING_SYSTEM_TEMPLATE',
         })
       }
 
       if (!humanTemplate) {
-        throw new ValidationError({
+        throw new ApplicationError({
           message: 'Human template is required',
           code: 'MISSING_HUMAN_TEMPLATE',
         })
@@ -389,8 +427,8 @@ export class LangChainCore {
         ['human', humanTemplate],
       ])
     } catch (error) {
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
         throw error
       }
 
@@ -423,7 +461,7 @@ export class LangChainCore {
       moduleLogger.info('Creating message')
 
       if (!content) {
-        throw new ValidationError({
+        throw new ApplicationError({
           message: 'Message content is required',
           code: 'MISSING_MESSAGE_CONTENT',
         })
@@ -437,14 +475,14 @@ export class LangChainCore {
         case 'ai':
           return new AIMessage(content)
         default:
-          throw new ValidationError({
+          throw new ApplicationError({
             message: `Unknown message role: ${role}`,
             code: 'INVALID_MESSAGE_ROLE',
           })
       }
     } catch (error) {
-      if (error instanceof ValidationError) {
-        // Rethrow validation errors
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
         throw error
       }
 
@@ -761,11 +799,68 @@ export class LangChainCore {
   }
 
   /**
+   * Create a Perplexity chat model (sonar-deep-research)
+   *
+   * @param options Optional configuration for the Perplexity chat model
+   */
+  public createPerplexityChat(options?: PerplexityChatOptions & {
+    callbacks?: BaseCallbackHandler[]
+  }) {
+    const moduleLogger = logger.withMetadata({
+      module: 'LangChainCore',
+      method: 'createPerplexityChat',
+      modelName: options?.model || 'sonar-deep-research',
+    })
+
+    try {
+      this.ensureInitialized()
+
+      moduleLogger.info('Creating Perplexity chat model')
+
+      // Check if we have an API key
+      const apiKey = options?.apiKey || this.config.perplexity?.apiKey || process.env.PERPLEXITY_API_KEY
+      
+      if (!apiKey) {
+        moduleLogger.warn('No Perplexity API key found - you must provide an API key')
+        throw new ApplicationError({
+          message: 'Perplexity API key is required for creating a Perplexity chat model',
+          code: 'MISSING_PERPLEXITY_API_KEY',
+        })
+      }
+
+      return new PerplexityChat({
+        apiKey,
+        model: options?.model || 'sonar-deep-research',
+        temperature: options?.temperature ?? 0.7,
+        maxTokens: options?.maxTokens,
+        baseURL: options?.baseURL,
+        includeSources: options?.includeSources ?? true,
+        returnImages: options?.returnImages ?? false,
+        callbacks: options?.callbacks,
+      })
+    } catch (error: unknown) {
+      moduleLogger.error('Failed to create Perplexity chat model', {}, error)
+
+      if (error instanceof ApplicationError) {
+        // Rethrow application errors
+        throw error
+      }
+
+      throw new ExternalServiceError({
+        message: 'Failed to create Perplexity chat model',
+        service: 'Perplexity',
+        code: 'PERPLEXITY_MODEL_CREATION_FAILED',
+        cause: error,
+      })
+    }
+  }
+
+  /**
    * Ensure the core is initialized
    */
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new ValidationError({
+      throw new ApplicationError({
         message: 'LangChain Core is not initialized. Call initialize() first.',
         code: 'LANGCHAIN_NOT_INITIALIZED',
       })

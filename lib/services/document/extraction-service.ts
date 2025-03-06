@@ -305,124 +305,70 @@ export class DocumentExtractionService {
     detectedSections: string[]
     textQuality: number
   }> {
-    // Use PDF.js for enhanced extraction
-    const arrayBuffer = await blob.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-    const pageCount = pdf.numPages
-    let fullText = ''
-    const chunks: Array<{
-      content: string
-      pageNumber: number
-      metadata?: any
-    }> = []
-    const detectedSections: string[] = []
-    let hasImages = false
-    let hasTables = false
-    let textQuality = 1.0
-
-    // Process each page
-    for (let i = 1; i <= pageCount; i++) {
-      const page = await pdf.getPage(i)
-
-      // Get text content with layout information
-      const textContent = await page.getTextContent({
-        normalizeWhitespace: true,
-      } as any)
-
-      // Check for potential tables by analyzing text item positions
-      const potentialTable = this.detectTablesInPdfPage(textContent)
-      if (potentialTable) {
-        hasTables = true
+    // Use LangChain's WebPDFLoader to load PDF pages
+    const loader = new WebPDFLoader(blob);
+    const docs = await loader.load(); // Each Document represents a PDF page
+    const pageCount = docs.length;
+    let fullText = '';
+    const chunks: Array<{ content: string; pageNumber: number; metadata?: any }> = [];
+    let detectedSections: string[] = [];
+    let hasImages = false; // WebPDFLoader does not extract images, so default is false
+    let hasTables = false;
+  
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      const pageText = doc.pageContent;
+      fullText += pageText + "\n\n";
+  
+      // Detect sections in the page using our custom logic
+      const pageSections = this.detectSectionsInText(pageText);
+      detectedSections = detectedSections.concat(pageSections);
+  
+      // Simple table detection using regex on the page text
+      if (/\b(table|row)\b/i.test(pageText)) {
+        hasTables = true;
       }
-
-      // Extract images if present (simplified)
-      const operatorList = await page.getOperatorList()
-      if (operatorList.fnArray.includes(pdfjsLib.OPS.paintImageXObject)) {
-        hasImages = true
-      }
-
-      // Convert text content to string with layout preservation
-      let pageText = ''
-      let lastY: number | undefined
-      let lastX = 0
-
-      textContent.items.forEach((item: any) => {
-        const currentY = item.transform[5]
-        const currentX = item.transform[4]
-
-        // Add newlines for new vertical positions (new lines)
-        if (lastY !== undefined && Math.abs(currentY - lastY) > 5) {
-          pageText += '\n'
-          lastX = 0
-        }
-
-        // Add spaces for horizontal gaps
-        if (lastX !== 0 && currentX - lastX > 10) {
-          pageText += ' '
-        }
-
-        pageText += item.str
-        lastY = currentY
-        lastX = currentX + item.width
-      })
-
-      fullText += `${pageText}\n\n`
-
-      // Detect sections in this page
-      const pageSections = this.detectSectionsInText(pageText)
-      detectedSections.push(...pageSections)
-
-      // Create page chunk
+  
+      // Create a chunk for the page
       chunks.push({
         content: pageText,
-        pageNumber: i,
-        metadata: {
-          hasTable: potentialTable,
-          hasImage: hasImages,
-          sections: pageSections,
-        },
-      })
-
-      // Break text into smaller chunks if needed
-      if (
-        options.splitPages &&
-        pageText.length > (options.maxPageLength || 5000)
-      ) {
+        pageNumber: i + 1,
+        metadata: { sections: pageSections }
+      });
+  
+      // Additional semantic chunking if pageText is too long
+      if (options.splitPages && pageText.length > (options.maxPageLength || 5000)) {
         const pageChunks = await this.createSemanticChunks(pageText, {
           ...this.defaultChunkingOptions,
           chunkSize: options.maxPageLength || 5000,
-        })
-
-        // Add page number and metadata to each chunk
+        });
         pageChunks.forEach((chunk, index) => {
           chunks.push({
             content: chunk.pageContent,
-            pageNumber: i,
-            metadata: {
-              ...chunk.metadata,
-              chunkIndex: index,
-            },
-          })
-        })
+            pageNumber: i + 1,
+            metadata: { ...chunk.metadata, chunkIndex: index }
+          });
+        });
       }
     }
-
-    // Estimate text quality based on recognized characters and potential OCR artifacts
-    const wordCount = fullText.split(/\s+/).length
-    const charCount = fullText.replace(/\s+/g, '').length
-    const nonAlphanumericRatio =
-      fullText.replace(/[a-zA-Z0-9\s]/g, '').length / charCount
-    textQuality = Math.max(0.1, 1.0 - (nonAlphanumericRatio > 0.3 ? 0.5 : 0))
-
+  
+    fullText = fullText.trim();
+    detectedSections = Array.from(new Set(detectedSections));
+  
+    const charCount = fullText.replace(/\s+/g, '').length;
+    const nonAlphaCount = fullText.replace(/[a-zA-Z0-9\s]/g, '').length;
+    const nonAlphaRatio = charCount > 0 ? nonAlphaCount / charCount : 0;
+    const textQuality = Math.max(0.1, 1.0 - (nonAlphaRatio > 0.3 ? 0.5 : 0));
+  
     return {
       text: fullText,
       chunks,
       pageCount,
       hasImages,
       hasTables,
-      detectedSections: [...new Set(detectedSections)], // Remove duplicates
+      detectedSections,
       textQuality,
-    }
+    };
   }
 
   /**
