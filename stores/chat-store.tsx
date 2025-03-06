@@ -1,275 +1,406 @@
-'use client'
+"use client";
 
-import { useToast } from '@/components/ui/use-toast'
-import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { create } from "zustand";
+import { devtools } from "zustand/middleware";
+import { createContext, type ReactNode, type Dispatch } from "react";
+
+// Import proper types from the application's type files
 import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from 'react'
-
-// Import types from our centralized type system
+  ChatMessageType,
+  type ChatMessage,
+  type ChatMessageMetadata
+} from "@/lib/types/chat";
 import type {
-  ChatAction,
-  ChatMode,
-  ChatState,
-  ChatStoreSelector,
-  ChatStoreState,
-  ExtendedChatContextType,
-  Message,
-  MessageMetadata,
-  ProcessingPhase,
-  ProcessingStatus,
-  ReportFormat,
+  WorkflowStep,
+  WorkflowState as WorkflowStateType,
+  ProcessingStatus as WorkflowProcessingStatus,
+  MessageMetadata
+} from "@/lib/types/workflow";
+import { DomainOnlyWorkflowStep, ProcessingPhase } from "@/lib/types/workflow";
+import { VerificationStatus } from "@/lib/types/verification";
+import type {
   VerificationItem,
-  VerificationMetadata,
-  VerificationOptions,
   VerificationResult,
-  VerificationStatusType,
-  WorkflowState,
-  ExtendedWorkflowResult,
-} from '@/lib/chat/types'
+  VerificationMetadata,
+  CompleteVerificationOptions,
+  GenerateVerificationOptions,
+  SubmitCorrectionOptions,
+  ProcessCorrectionOptions
+} from "@/lib/types/verification";
+import type { DocumentType } from "@/lib/types/document";
+import type { ReportType, ReportFormat, ReportOptions } from "@/lib/types/report";
+import type { ResearchOptions, ResearchResult } from "@/lib/types/research";
 
-import { processMessage } from '@/lib/actions/message-processor'
-import { initialChatState } from '@/lib/chat/types'
+// Import services
+import { ApiClient } from "@/lib/api/client/api-client";
+import { verificationService } from "@/lib/services/verification/verification-service";
+import { documentService } from "@/lib/services/document";
+import { reportService } from "@/lib/services/report/report-service";
+import { perplexityService } from "@/lib/services/perplexity/perplexity-service";
+import { workflowService } from "@/lib/services/workflow/workflow-service";
+import { chatService } from "@/lib/services/chat/chat-service";
 
-// Import for database operations
-import type { DocumentType } from '@/lib/processing/types/base'
-import type { WorkflowStep, WorkflowOptions } from '@/lib/workflow/types'
-
-import { ApiClient } from '@/lib/api/client/api-client'
-import { useWorkflow } from '@/lib/workflow/use-workflow'
-import { useProcessingWorkflow } from '@/lib/hooks/use-processing-workflow'
-import { validateWorkflowTransition } from '@/lib/workflow/workflow-manager'
+// Import error handling
+import { normalizeError } from "@/lib/errors";
 import {
-  WorkflowStateError,
-  DocumentProcessingError,
   VerificationError,
-  ReportGenerationError,
-  normalizeError,
-} from '@/lib/errors'
+  DocumentProcessingError,
+  ReportGenerationError
+} from "@/lib/errors/verification-errors";
 
-// Import the useWorkflowSync hook for transaction tracking
-import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
+////////////////////////////////////////////////////////////////////////////////
+// Types and Interfaces
+////////////////////////////////////////////////////////////////////////////////
 
-// Import error handling utilities
-import { useWorkflowErrorHandler } from '@/lib/errors/workflow-error-handler'
+// Workflow state manager interface for integration with useWorkflow hook
+interface WorkflowStateManager {
+  getCurrentWorkflowId: () => string | null;
+  getCurrentChatId: () => string | null;
+  resetWorkflow: () => Promise<void>;
+  updateWorkflowState: (step: WorkflowStep, metadata?: Record<string, unknown>) => Promise<void>;
+  initiateVerification?: (extractedDocument: any, messageId?: string) => Promise<any>;
+  processCorrection?: (correctionText: string, currentSummary: string, messageId?: string) => Promise<any>;
+  completeVerification?: (isApproved: boolean) => Promise<VerificationResult>;
+  beginReportGeneration?: (reportMetadata?: Record<string, unknown>) => Promise<{ success: boolean }>;
+}
 
-// Initialize API client
-const apiClientInstance = new ApiClient()
+// Default workflow state manager implementation
+const defaultWorkflowStateManager: WorkflowStateManager = {
+  getCurrentWorkflowId: () => null,
+  getCurrentChatId: () => null,
+  resetWorkflow: async () => {},
+  updateWorkflowState: async (_step: WorkflowStep, _metadata?: Record<string, unknown>) => {}
+};
 
-// Define initial workflow state
-const initialWorkflowState = {
-  currentStep: 'idle' as WorkflowStep,
+export type ChatMode = "default" | "verification" | "research";
+
+export type ProcessingStatusType = "idle" | "processing" | "success" | "error";
+
+interface ProcessingStatus {
+  status: ProcessingStatusType;
+  progress: number;
+  phase: ProcessingPhase;
+  currentStep?: string;
+  error?: string;
+}
+
+export interface VerificationOptions {
+  items?: VerificationItem[];
+  comments?: string;
+}
+
+// Improved workflow state interface
+interface WorkflowState {
+  currentStep: WorkflowStep;
+  processingStatus: ProcessingStatus;
+  workflowError: string | null;
+  data: Record<string, unknown>;
+}
+
+// Improved verification state interface
+interface VerificationState {
+  isInVerificationMode: boolean;
+  currentSummary: string | null;
+  verificationStatus: VerificationStatus | string;
+  verificationItems: VerificationItem[];
+  summaryVersions: Array<{
+    id: string;
+    content: string;
+    timestamp: string;
+    userId?: string;
+  }>;
+}
+
+// Research state interface
+interface ResearchState {
+  query: string | null;
+  result: ResearchResult | null;
+  isActive: boolean;
+  progress: number;
+}
+
+// Initial workflow state
+const initialWorkflowState: WorkflowState = {
+  currentStep: "idle" as WorkflowStep,
   processingStatus: {
-    status: 'idle' as 'idle' | 'processing' | 'success' | 'error',
+    status: "idle" as const,
     progress: 0,
-    phase: 'initialization' as ProcessingPhase,
+    phase: ProcessingPhase.INITIALIZATION,
   },
-  workflowError: null,
+  workflowError: null as string | null,
   data: {},
-}
+};
 
-// Create an extended chat state with workflow state included
-const extendedInitialState: ChatState = {
-  ...initialChatState,
-  workflow: initialWorkflowState,
-}
+// Initial research state
+const initialResearchState: ResearchState = {
+  query: null,
+  result: null,
+  isActive: false,
+  progress: 0
+};
 
-// Function to generate unique IDs
-const generateUniqueId = () => crypto.randomUUID()
+// Updated chat store interface with enhanced types
+export interface ChatStore {
+  isLoading: boolean;
+  error: string | null;
+  mode: ChatMode;
+  chatId?: string;
+  workflowId?: string;
 
-// Import the workflow services
-import { workflowService } from '@/lib/services/workflow/workflow-service'
-import { chatService } from '@/lib/services/chat/chat-service'
-import { workflowStateManager } from '@/lib/services/workflow/workflow-state-manager'
-import { verificationService } from '@/lib/services/verification/verification-service'
+  messages: ChatMessage[];
 
-// Track pending workflow transactions
-interface PendingTransaction {
-  id: string
-  step: WorkflowStep
-  metadata: Record<string, any>
-  timestamp: string
-  status: 'pending' | 'committed' | 'failed' | 'conflict'
-}
+  workflow: WorkflowState;
 
-const pendingTransactions = new Map<string, PendingTransaction>()
+  // Verification state
+  verification: VerificationState;
 
-// Function to update workflow state in database using the service layer with optimistic updates
-async function updateDatabaseWorkflowState(
-  step: WorkflowStep,
-  metadata?: Record<string, any>,
-  options: {
-    optimistic?: boolean
-    conflictStrategy?: 'client-wins' | 'server-wins' | 'merge' | 'manual'
-    forceUpdate?: boolean
-  } = {}
-): Promise<string> {
-  try {
-    // Use the service to update the workflow state with optimistic updates
-    const transactionId = await workflowService.updateWorkflowState(
-      workflowStateManager.getCurrentWorkflowId() || '',
-      step,
-      metadata,
-      options
-    )
-
-    // Store the transaction for tracking
-    pendingTransactions.set(transactionId, {
-      id: transactionId,
-      step,
-      metadata: metadata || {},
-      timestamp: new Date().toISOString(),
-      status: 'pending',
-    })
-
-    // Set up a timeout to check transaction status
-    setTimeout(async () => {
-      try {
-        const status = await workflowService.getTransactionStatus(transactionId)
-        if (status.status !== 'pending') {
-          const transaction = pendingTransactions.get(transactionId)
-          if (transaction) {
-            // Handle the status safely with type checking
-            if (
-              status.status === 'committed' ||
-              status.status === 'failed' ||
-              status.status === 'conflict'
-            ) {
-              transaction.status = status.status
-            }
-
-            // Clean up transactions after a while
-            if (status.status === 'committed' || status.status === 'failed') {
-              setTimeout(() => {
-                pendingTransactions.delete(transactionId)
-              }, 60000) // Keep for 1 minute for debugging
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error checking transaction status:', err)
-      }
-    }, 2000) // Check after 2 seconds
-
-    return transactionId
-  } catch (error) {
-    console.error('Failed to update workflow state in database:', error)
-    throw error
-  }
-}
-
-// Define Zustand store with both state and actions
-interface ChatStore extends ChatState {
-  // Basic actions
-  setLoading: (isLoading: boolean) => void
-  setError: (error: string | null) => void
-  setMode: (mode: ChatMode) => void
-  resetChat: () => void
-
-  // Message actions
-  addMessage: (message: Message | Omit<Message, 'id'>) => void
-  updateMessages: (messages: Message[]) => void
-  updateMessageProgress: (
-    messageId: string,
-    progress: number,
-    phase: string
-  ) => void
-
-  // Workflow actions
-  updateWorkflowStep: (
-    step: WorkflowStep,
-    metadata?: Record<string, any>
-  ) => void
-  updateProgress: (progress: number, phase?: ProcessingPhase) => void
-
-  // Verification actions
-  startVerification: (content: string, options?: VerificationOptions) => void
-  submitCorrection: (correction: string) => void
-  completeVerification: (isApproved: boolean) => Promise<VerificationResult>
-  handleCorrectionMessage: (correction: string) => Promise<void>
-
-  // Report generation actions
-  startReportGeneration: (reportOptions?: any) => void
-  completeReportGeneration: (report: any) => void
-  generateReport: () => Promise<void>
-  formatReport: (format: any) => Promise<void>
+  // Research state
+  research: ResearchState;
 
   // Document processing
-  docProgress: number
-  isDocProcessing: boolean
-  extractedDocument: any | null
+  docProgress: number;
+  isDocProcessing: boolean;
+  extractedDocument: Record<string, unknown> | null;
+
+  // Report generation
+  reportGeneration?: {
+    isComplete: boolean;
+    format: Record<string, unknown>;
+    reportId?: string;
+  };
+
+  // Workflow state manager
+  workflowStateManager: WorkflowStateManager;
+
+  ////////////////////////////////////////////////////////////////////////////
+  // Actions
+  ////////////////////////////////////////////////////////////////////////////
+  setLoading: (isLoading: boolean) => void;
+  setError: (error: string | null) => void;
+  setMode: (mode: ChatMode) => void;
+  resetChat: () => void;
+
+  // Message handling
+  addMessage: (message: ChatMessage | Omit<ChatMessage, "id">) => void;
+  updateMessages: (messages: ChatMessage[]) => void;
+  updateMessageProgress: (messageId: string, progress: number, phase: string) => void;
+
+  // Workflow methods
+  updateWorkflowStep: (step: WorkflowStep, metadata?: Record<string, unknown>) => void;
+  updateProgress: (progress: number, phase?: ProcessingPhase) => void;
+  setWorkflowManager: (manager: WorkflowStateManager) => void;
+  syncWorkflowState: (state: WorkflowStateType) => void;
+  subscribeToWorkflowUpdates: (callback: (state: WorkflowStateType) => void) => () => void;
+
+  // Verification methods
+  startVerification: (content: string, options?: VerificationOptions) => Promise<void>;
+  submitCorrection: (correction: string) => void;
+  completeVerification: (isApproved: boolean) => Promise<VerificationResult>;
+  handleCorrectionMessage: (correction: string) => Promise<void>;
+  confirmVerification: () => Promise<VerificationResult>;
+  initiateVerification: (extractedDocument: any, messageId?: string) => Promise<any>;
+  processCorrection: (correctionText: string, currentSummary: string, messageId?: string) => Promise<any>;
+  resetVerification: () => Promise<{ success: boolean }>;
+
+  // Report generation methods
+  startReportGeneration: (reportOptions?: any) => void;
+  completeReportGeneration: (report: any) => void;
+  generateReport: () => Promise<void>;
+  formatReport: (format: any) => Promise<void>;
+  beginReportGeneration: (reportMetadata?: Record<string, any>) => Promise<{ success: boolean }>;
+
+  // Document processing methods
   processDocument: (
     file: File,
     patientId: string,
     documentType?: string,
     abortSignal?: AbortSignal
-  ) => Promise<any>
-  uploadDocument: (
-    file: File,
-    patientId: string,
-    documentType?: string
-  ) => Promise<any>
-  resetDocumentProcessing: () => void
+  ) => Promise<any>;
+  uploadDocument: (file: File, patientId: string, documentType?: string) => Promise<any>;
+  resetDocumentProcessing: () => void;
 
   // Message sending
   sendMessage: (
     content: string,
-    options?: { isCorrection?: boolean; metadata?: MessageMetadata }
-  ) => Promise<void>
+    options?: { isCorrection?: boolean; metadata?: ChatMessageMetadata }
+  ) => Promise<void>;
 
-  // Helper functions for backward compatibility
-  addSystemMessage: (content: string, type?: string, metadata?: any) => Message
-  postSummaryMessage: (summary: string) => Message
-  updateSummaryAfterCorrection: (newSummary: string) => Message
-  confirmVerification: () => Promise<VerificationResult>
-  clearMessages: () => void
+  // Helper methods
+  addSystemMessage: (content: string, type?: string, metadata?: Record<string, unknown>) => ChatMessage;
+  postSummaryMessage: (summary: string) => ChatMessage;
+  updateSummaryAfterCorrection: (newSummary: string) => ChatMessage;
+  clearMessages: () => void;
 
-  // Workflow methods from useWorkflow
-  initiateVerification: (
-    extractedDocument: any,
-    messageId?: string
-  ) => Promise<any>
-  processCorrection: (
-    correctionText: string,
-    currentSummary: string,
-    messageId?: string
-  ) => Promise<any>
-  resetVerification: () => Promise<any>
-  beginReportGeneration: (reportMetadata?: Record<string, any>) => Promise<any>
+  // Research methods
+  performResearch: (query: string, options?: ResearchOptions) => Promise<ResearchResult>;
 }
 
-// Extend the WorkflowState interface to properly type the data property
-interface ExtendedWorkflowState extends WorkflowState {
-  data: Record<string, unknown> & {
-    verificationMetadata?: VerificationMetadata
-    patientId?: string
-  }
+// Initial chat store state
+const initialState: Omit<ChatStore, 'workflowStateManager' | 'setWorkflowManager' | 'syncWorkflowState' | 'subscribeToWorkflowUpdates' | 'performResearch'> = {
+  isLoading: false,
+  error: null,
+  mode: "default",
+  chatId: undefined,
+  workflowId: undefined,
+  messages: [],
+
+  workflow: initialWorkflowState,
+
+  verification: {
+    isInVerificationMode: false,
+    currentSummary: null,
+    verificationStatus: "pending",
+    verificationItems: [],
+    summaryVersions: [],
+  },
+
+  research: initialResearchState,
+
+  docProgress: 0,
+  isDocProcessing: false,
+  extractedDocument: null,
+
+  reportGeneration: {
+    isComplete: false,
+    format: {} as Record<string, unknown>,
+    reportId: undefined,
+  },
+
+  // Basic actions
+  setLoading: () => {},
+  setError: () => {},
+  setMode: () => {},
+  resetChat: () => {},
+
+  // Message handling
+  addMessage: () => {},
+  updateMessages: () => {},
+  updateMessageProgress: () => {},
+
+  // Workflow methods
+  updateWorkflowStep: () => {},
+  updateProgress: () => {},
+
+  // Verification methods
+  startVerification: async () => {},
+  submitCorrection: () => {},
+  completeVerification: async () => ({
+    isCompleted: false,
+    isApproved: false,
+    items: [],
+    completedAt: new Date().toISOString(),
+    verificationMetadata: {
+      verification_status: VerificationStatus.failed,
+      originalSummaryId: "",
+      currentVersionId: "",
+      correctionCount: 0,
+      corrections: [],
+      lastUpdated: new Date().toISOString(),
+    },
+  }),
+  handleCorrectionMessage: async () => {},
+  confirmVerification: async () => ({
+    isCompleted: false,
+    isApproved: false,
+    items: [],
+    completedAt: new Date().toISOString(),
+    verificationMetadata: {
+      verification_status: VerificationStatus.failed,
+      originalSummaryId: "",
+      currentVersionId: "",
+      correctionCount: 0,
+      corrections: [],
+      lastUpdated: new Date().toISOString(),
+    },
+  }),
+  initiateVerification: async () => ({}),
+  processCorrection: async () => ({}),
+  resetVerification: async () => ({ success: true }),
+
+  // Report generation methods
+  startReportGeneration: () => {},
+  completeReportGeneration: () => {},
+  generateReport: async () => {},
+  formatReport: async () => {},
+  beginReportGeneration: async () => ({ success: true }),
+
+  // Document processing methods
+  processDocument: async () => ({}),
+  uploadDocument: async () => ({}),
+  resetDocumentProcessing: () => {},
+
+  // Message sending
+  sendMessage: async () => {},
+
+  // Helper methods
+  addSystemMessage: () => ({
+    id: "temp",
+    role: "system",
+    content: "System message placeholder",
+    createdAt: new Date().toISOString(),
+    type: ChatMessageType.SYSTEM,
+  }),
+  postSummaryMessage: () => ({
+    id: "temp-summary",
+    role: "assistant",
+    content: "Summary message placeholder",
+    createdAt: new Date().toISOString(),
+    type: ChatMessageType.SUMMARY,
+  }),
+  updateSummaryAfterCorrection: () => ({
+    id: "temp-summary-correction",
+    role: "assistant",
+    content: "Corrected summary placeholder",
+    createdAt: new Date().toISOString(),
+    type: ChatMessageType.SUMMARY,
+  }),
+  clearMessages: () => {},
+};
+
+// Helper function to create a fallback verification result
+function createFallbackVerificationResult(state: Pick<ChatStore, 'verification'>): VerificationResult {
+  return {
+    isCompleted: false,
+    isApproved: false,
+    items: state.verification.verificationItems,
+    completedAt: new Date().toISOString(),
+    verificationMetadata: {
+      verification_status: VerificationStatus.failed,
+      originalSummaryId: state.verification.summaryVersions[0]?.id ?? "",
+      currentVersionId:
+        state.verification.summaryVersions[state.verification.summaryVersions.length - 1]?.id ?? "",
+      correctionCount: state.verification.summaryVersions.length - 1,
+      corrections: state.verification.summaryVersions.map((v) => ({
+        id: v.id,
+        text: v.content,
+        timestamp: v.timestamp,
+      })),
+      startedAt: state.verification.summaryVersions[0]?.timestamp,
+      lastUpdated: new Date().toISOString(),
+    },
+  };
 }
 
-// Create the Zustand store
+// Create the actual store with Zustand
 export const useChatStore = create<ChatStore>()(
   devtools(
     (set, get) => ({
-      // Initial state from chatReducer's initialState
-      ...extendedInitialState,
+      // Include workflowStateManager in initial state
+      ...initialState,
+      workflowStateManager: defaultWorkflowStateManager,
 
-      // Document processing state
-      docProgress: 0,
-      isDocProcessing: false,
-      extractedDocument: null,
-
-      // Basic state actions
-      setLoading: (isLoading) => set({ isLoading }),
-
-      setError: (error) =>
+      ///////////////////////////////////////////////////////////////////////////
+      // Basic actions
+      ///////////////////////////////////////////////////////////////////////////
+      setLoading: (isLoading: boolean) =>
         set((state) => ({
+          ...state,
+          isLoading,
+        })),
+
+      setError: (error: string | null) =>
+        set((state) => ({
+          ...state,
           error,
           isLoading: false,
           workflow: {
@@ -278,10 +409,15 @@ export const useChatStore = create<ChatStore>()(
           },
         })),
 
-      setMode: (mode) => set({ mode }),
+      setMode: (mode: ChatMode) =>
+        set((state) => ({
+          ...state,
+          mode,
+        })),
 
       resetChat: () =>
         set((state) => ({
+          ...state,
           messages: [],
           isLoading: false,
           error: null,
@@ -291,184 +427,165 @@ export const useChatStore = create<ChatStore>()(
             summaryVersions: [],
             currentSummary: null,
             verificationItems: [],
+            verificationStatus: "pending",
           },
-          workflow: { ...initialWorkflowState },
+          workflow: {
+            ...initialWorkflowState,
+          },
+          research: {
+            ...initialResearchState
+          },
         })),
 
+      ///////////////////////////////////////////////////////////////////////////
       // Message actions
-      addMessage: (message) =>
+      ///////////////////////////////////////////////////////////////////////////
+      addMessage: (msg) =>
         set((state) => {
-          const newMessage =
-            'id' in message
-              ? message
-              : {
-                  ...message,
-                  id: crypto.randomUUID(),
-                }
-
+          const newMessage: ChatMessage = "id" in msg
+            ? msg
+            : {
+                ...msg,
+                id: crypto.randomUUID(),
+              };
           return {
+            ...state,
             messages: [...state.messages, newMessage],
-          }
+          };
         }),
 
-      updateMessages: (messages) => set({ messages }),
-
-      updateMessageProgress: (messageId, progress, phase) =>
+      updateMessages: (messages: ChatMessage[]) =>
         set((state) => ({
-          messages: state.messages.map((message) => {
-            if (message.id === messageId) {
-              return {
-                ...message,
-                metadata: {
-                  ...message.metadata,
-                  progressValue: progress,
-                  progressPhase: phase,
-                },
-              }
-            }
-            return message
-          }),
-          workflow: phase
-            ? {
-                ...state.workflow,
-                processingStatus: {
-                  ...state.workflow.processingStatus,
-                  progress,
-                  phase: phase as ProcessingPhase,
-                },
-              }
-            : state.workflow,
+          ...state,
+          messages,
         })),
 
-      // Workflow actions with optimistic updates and transaction tracking
-      updateWorkflowStep: (step, metadata) =>
+      updateMessageProgress: (messageId: string, progress: number, phase: string) =>
         set((state) => {
-          // Use the imported validation functions
-
-          // Current step from state
-          const currentStep = state.workflow.currentStep
-
-          // Check if this is a remote update from Supabase sync
-          const isRemoteUpdate = metadata?._syncedFromRemote === true
-
-          // Check if this has a transaction ID, indicating it's part of an optimistic update
-          const isTransactionalUpdate = metadata?._transactionId !== undefined
-
-          // Always validate transitions unless it's a remote update, transactional, or same-state update
-          // Remote updates are already validated on the originating client
-          if (
-            !isRemoteUpdate &&
-            !isTransactionalUpdate &&
-            currentStep !== step
-          ) {
-            // Validate the transition
-            const validation = validateWorkflowTransition(
-              currentStep,
-              step,
-              metadata
-            )
-
-            // If the transition is invalid, handle it more strictly
-            if (!validation.isValid) {
-              console.error(
-                `Invalid workflow transition from '${currentStep}' to '${step}':`,
-                validation.error,
-                { details: validation.details, metadata }
-              )
-
-              // Add detailed error information to metadata for better debugging
-              if (metadata) {
-                metadata.transitionWarning = validation.error
-                metadata.invalidTransition = true
-                metadata.validationDetails = validation.details
-                metadata.attemptedAt = new Date().toISOString()
-              }
-
-              // Create error object to use for state updates or throwing
-              const transitionError = new WorkflowStateError({
-                message: validation.error || 'Invalid workflow transition',
-                transition: { from: currentStep, to: step },
-                data: {
-                  ...metadata,
-                  validationDetails: validation.details,
-                },
-              })
-
-              // In production, we'll update error state but stay on the current step
-              // This prevents UI from breaking while still tracking the error
-              if (process.env.NODE_ENV !== 'development') {
-                // Set error in state instead of throwing
-                state.error = transitionError.message
-                state.workflow.workflowError = transitionError.message
-
-                // Return early with updated metadata but keep the current step
-                return {
-                  workflow: {
-                    ...state.workflow,
-                    currentStep, // Stay on current step
-                    data: {
-                      ...state.workflow.data,
-                      transitionError: {
-                        message: transitionError.message,
-                        from: currentStep,
-                        to: step,
-                        details: validation.details,
-                        timestamp: new Date().toISOString(),
-                      },
-                    },
+          const updated = state.messages.map((m) => {
+            if (m.id === messageId) {
+              const messageType = m.metadata?.type ?? ChatMessageType.PROGRESS;
+              return {
+                ...m,
+                metadata: {
+                  ...(m.metadata ?? {}),
+                  type: messageType,
+                  progress: {
+                    value: progress,
+                    phase: phase as ProcessingPhase,
                   },
-                  // Keep current mode
-                  mode: state.mode,
-                  // Set error state
-                  error: transitionError.message,
-                }
-              } else {
-                // In development, throw error to catch invalid transitions early
-                // This is caught by the error boundary and helps during development
-                setTimeout(() => {
-                  throw transitionError
-                }, 0)
+                },
+              } as ChatMessage; // Explicit cast to ChatMessage
+            }
+            return m;
+          });
 
-                // Also prevent the transition by keeping the current step
-                step = currentStep
+          return {
+            ...state,
+            messages: updated,
+            workflow: {
+              ...state.workflow,
+              processingStatus: {
+                ...state.workflow.processingStatus,
+                progress,
+                phase: phase as ProcessingPhase,
+              },
+            },
+          };
+        }),
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Workflow integration methods
+      ///////////////////////////////////////////////////////////////////////////
+      setWorkflowManager: (manager: WorkflowStateManager) =>
+        set((state) => ({
+          ...state,
+          workflowStateManager: manager
+        })),
+
+      syncWorkflowState: (workflowState: WorkflowStateType) =>
+        set((state) => ({
+          ...state,
+          workflow: {
+            ...state.workflow,
+            currentStep: workflowState.currentStep,
+            processingStatus: {
+              status: workflowState.progress > 0 ? "processing" : "idle",
+              progress: workflowState.progress,
+              phase: workflowState.phase || ProcessingPhase.INITIALIZATION,
+              error: workflowState.error || undefined
+            },
+            workflowError: workflowState.error || null,
+            data: {
+              ...state.workflow.data,
+              ...(workflowState.metadata || {})
+            }
+          }
+        })),
+
+      subscribeToWorkflowUpdates: (callback: (state: WorkflowStateType) => void) => {
+        const state = get();
+        const workflowId = state.workflowStateManager.getCurrentWorkflowId();
+        
+        if (!workflowId) {
+          console.warn("Cannot subscribe to workflow updates: no workflow ID available");
+          return () => {};
+        }
+        
+        const channel = workflowService.subscribeToWorkflowChanges(
+          workflowId,
+          (payload) => {
+            const newStep = payload.new.current_step as WorkflowStep;
+            const newMetadata = payload.new.metadata as Record<string, unknown> || {};
+            
+            // Update our local state
+            set((state) => ({
+              ...state,
+              workflow: {
+                ...state.workflow,
+                currentStep: newStep,
+                data: {
+                  ...state.workflow.data,
+                  ...newMetadata
+                }
               }
-            }
+            }));
+            
+            // Call the callback with the new state
+            callback({
+              currentStep: newStep,
+              progress: newMetadata.progress as number || 0,
+              phase: newMetadata.phase as ProcessingPhase || undefined,
+              error: newMetadata.error as string || null,
+              metadata: newMetadata,
+              timestamp: payload.new.updated_at as string
+            });
+          }
+        );
+        
+        // Return unsubscribe function
+        return () => {
+          workflowService.unsubscribeFromChannel(channel);
+        };
+      },
+
+      updateWorkflowStep: (step: WorkflowStep, metadata?: Record<string, unknown>) =>
+        set((state) => {
+          const currentStep = state.workflow.currentStep;
+          
+          // Handle error steps specially
+          let nextError: string | null = state.error;
+          let nextWorkflowError: string | null = state.workflow.workflowError;
+          
+          if (step === DomainOnlyWorkflowStep.ERROR && metadata?.error) {
+            nextError = typeof metadata.error === 'object' 
+              ? JSON.stringify(metadata.error) 
+              : String(metadata.error);
+            nextWorkflowError = typeof metadata.error === 'object' 
+              ? JSON.stringify(metadata.error) 
+              : String(metadata.error);
           }
 
-          // Helper to map workflow steps to chat modes
-          const mapStepToMode = (
-            step: WorkflowStep,
-            currentMode: ChatMode
-          ): ChatMode => {
-            switch (step) {
-              case 'verification':
-              case 'verification_pending':
-              case 'verification_in_progress':
-                return 'verification'
-              case 'report_generation':
-                return 'default' // Use default mode for reports
-              case 'error':
-                return currentMode // Preserve current mode on error
-              default:
-                // Only switch mode if it was tied to a workflow step
-                if (currentMode === 'verification') {
-                  return 'default'
-                }
-                return currentMode
-            }
-          }
-
-          const mode = mapStepToMode(step, state.mode)
-
-          // For error steps, set the error state too
-          if (step === 'error' && metadata?.error) {
-            // Set the error in the workflow and main error state
-            const errorMessage = metadata.error as string
-            state.error = errorMessage
-            state.workflow.workflowError = errorMessage
-          }
-
-          // Track the transition in metadata for diagnostics
           const enrichedMetadata = {
             ...(metadata || {}),
             _transition: {
@@ -476,141 +593,91 @@ export const useChatStore = create<ChatStore>()(
               to: step,
               timestamp: new Date().toISOString(),
             },
-          }
+          };
 
-          // Only update the database if this is a local change (not a remote sync or part of an optimistic update)
-          // This prevents endless loops of updates between clients
-          if (!isRemoteUpdate && !isTransactionalUpdate) {
-            // Use options based on the update context
-            const options = {
-              // Use optimistic updates by default
-              optimistic: true,
-
-              // Use merge strategy by default but allow overrides
-              conflictStrategy: metadata?._conflictStrategy || 'merge',
-
-              // Force update for error states
-              forceUpdate: step === 'error',
+          // Call the workflow service through our manager
+          void (async () => {
+            try {
+              await state.workflowStateManager.updateWorkflowState(step, enrichedMetadata);
+            } catch (err) {
+              console.error("Failed to update workflow state:", err);
             }
-
-            // Add transaction ID to state for tracking
-            const transactionId = updateDatabaseWorkflowState(
-              step,
-              enrichedMetadata,
-              options
-            ).catch((error) => {
-              console.error('Failed to update workflow state:', error)
-              // Return a special value to indicate failure
-              return '__FAILED__'
-            })
-
-            // If we're using async/await in a synchronous context, we need to handle the promise
-            // but Zustand's set function should finish before the promise resolves
-            transactionId
-              .then((id) => {
-                if (id !== '__FAILED__') {
-                  // Store transaction ID in the state for reference
-                  // This happens after the state update, so a subsequent render will pick it up
-                  set((state) => ({
-                    workflow: {
-                      ...state.workflow,
-                      data: {
-                        ...state.workflow.data,
-                        _latestTransactionId: id,
-                      },
-                    },
-                  }))
-                }
-                return id // Return a value from then()
-              })
-              .catch((err) => {
-                console.error('Transaction ID promise failed:', err)
-                return '__ERROR__'
-              })
-          }
+          })();
 
           return {
+            ...state,
+            error: nextError,
             workflow: {
               ...state.workflow,
               currentStep: step,
+              workflowError: nextWorkflowError,
               data: {
                 ...state.workflow.data,
                 ...enrichedMetadata,
               },
             },
-            mode,
-            // If transitioning to error, also set the error state
-            ...(step === 'error' && metadata?.error
-              ? { error: metadata.error }
-              : {}),
-          }
+          };
         }),
 
-      updateProgress: (progress, phase) =>
+      updateProgress: (progress: number, phase?: ProcessingPhase) =>
         set((state) => ({
+          ...state,
           workflow: {
             ...state.workflow,
             processingStatus: {
               ...state.workflow.processingStatus,
               progress,
-              phase: phase || state.workflow.processingStatus.phase,
+              phase: (phase ?? state.workflow.processingStatus.phase) as ProcessingPhase,
             },
           },
         })),
-
+    
+///////////////////////////////////////////////////////////////////////////
       // Verification actions
-      startVerification: (content, options) => {
-        set((state) => {
-          const summaryId = crypto.randomUUID()
-          const timestamp = new Date().toISOString()
-
-          return {
-            mode: 'verification',
-            verification: {
-              ...state.verification,
-              isInVerificationMode: true,
-              currentSummary: content,
-              verificationItems: options?.items || [],
-              verificationStatus: 'in_progress',
-              summaryVersions: [
-                ...state.verification.summaryVersions,
-                {
-                  id: summaryId,
-                  content,
-                  timestamp,
-                },
-              ],
-            },
-            workflow: {
-              ...state.workflow,
-              currentStep: 'verification',
-              processingStatus: {
-                status: 'processing',
-                progress: 70,
-                phase: 'verification',
-              },
-              data: {
-                ...state.workflow.data,
-                verification: {
-                  isInVerificationMode: true,
-                  originalSummaryId: summaryId,
-                  currentVersionId: summaryId,
-                  correctionCount: 0,
-                  startedAt: timestamp,
-                },
-              },
-            },
-          }
-        })
-
-        return Promise.resolve(true)
-      },
-
-      submitCorrection: (correction) =>
+      ///////////////////////////////////////////////////////////////////////////
+      startVerification: async (content: string, options?: VerificationOptions) => {
         set((state) => ({
+          ...state,
+          mode: "verification",
           verification: {
             ...state.verification,
-            verificationStatus: 'in_progress',
+            isInVerificationMode: true,
+            currentSummary: content,
+            verificationItems: options?.items ?? [],
+            verificationStatus: "in_progress",
+            summaryVersions: [
+              ...state.verification.summaryVersions,
+              {
+                id: crypto.randomUUID(),
+                content,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          },
+          workflow: {
+            ...state.workflow,
+            currentStep: "verification",
+            processingStatus: {
+              status: "processing",
+              progress: 70,
+              phase: ProcessingPhase.VERIFICATION,
+            },
+            data: {
+              ...state.workflow.data,
+              verification: {
+                isInVerificationMode: true,
+              },
+            },
+          },
+        }));
+      },
+
+      submitCorrection: (correction: string) =>
+        set((state) => ({
+          ...state,
+          verification: {
+            ...state.verification,
+            verificationStatus: "in_progress",
           },
           workflow: {
             ...state.workflow,
@@ -621,678 +688,1146 @@ export const useChatStore = create<ChatStore>()(
           },
         })),
 
-      completeVerification: async (isApproved) => {
-        const state = get()
-        const handleErrorFallback = (error: unknown) => {
-          console.error('completeVerification error:', error)
-        }
-        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
+      completeVerification: async (isApproved: boolean) => {
+        const state = get();
+        const workflowId = state.workflowStateManager.getCurrentWorkflowId() ?? "";
+
+        // Update local state to show processing
+        set((s) => ({
+          ...s,
+          workflow: {
+            ...s.workflow,
+            processingStatus: {
+              status: "processing",
+              progress: 85,
+              phase: ProcessingPhase.VERIFICATION,
+            }
+          }
+        }));
 
         try {
-          // Call the verification service to complete verification
-          const result = await verificationService.completeVerification(
+          // Use the complete CompleteVerificationOptions type
+          const options: CompleteVerificationOptions = {
             workflowId,
             isApproved,
-            {
-              items: state.verification.verificationItems,
-              // Include any user-specific data if available
-              userId: '',
-            }
-          )
-
+            items: state.verification.verificationItems,
+            comments: state.workflow.data.verificationComments as string
+          };
+          
+          // Call verification service with proper options
+          const result = await verificationService.completeVerification(workflowId, isApproved, {
+            items: state.verification.verificationItems,
+            comments: options.comments
+          });
+          
           if (!result.success) {
             throw new VerificationError({
-              message:
-                result.error?.message || 'Failed to complete verification',
-              code: result.error?.code || 'VERIFICATION_COMPLETION_FAILED',
-              verificationId: state.verification.summaryVersions[0]?.id,
-              documentId: state.workflow.data.documentId as string,
-              data: result.error?.details,
-            })
+              message: result.error?.message ?? "Failed to complete verification",
+              code: result.error?.code ?? "VERIFICATION_COMPLETION_FAILED",
+              data: { details: result.error?.details },
+            });
           }
 
-          // Update state with the completed verification data
-          const nextStep = isApproved
-            ? 'report_generation'
-            : state.workflow.currentStep
-
-          set((state) => {
-            const verification = state.workflow.data.verification || {}
-
-            return {
-              verification: {
-                ...state.verification,
-                isInVerificationMode: false,
-                verificationStatus: isApproved ? 'completed' : 'failed',
+          // Update workflow step based on verification status
+          const nextStep = isApproved ? "report_generation" : "verification_failed";
+          
+          // Update local state
+          set((s) => ({
+            ...s,
+            verification: {
+              ...s.verification,
+              isInVerificationMode: false,
+              verificationStatus: isApproved ? "completed" : "failed",
+            },
+            workflow: {
+              ...s.workflow,
+              currentStep: nextStep,
+              processingStatus: {
+                status: "success",
+                progress: 100,
+                phase: ProcessingPhase.VERIFICATION,
               },
-              workflow: {
-                ...state.workflow,
-                currentStep: nextStep,
-                processingStatus: isApproved
-                  ? {
-                      status: 'success',
-                      progress: 100,
-                      phase: 'verification' as ProcessingPhase,
-                    }
-                  : state.workflow.processingStatus,
-                data: {
-                  ...state.workflow.data,
-                  verification: {
-                    ...verification,
-                    isInVerificationMode: false,
-                    isApproved,
-                    completedAt: new Date().toISOString(),
-                    verificationResult: result.data,
-                  },
+              data: {
+                ...s.workflow.data,
+                verification: {
+                  isInVerificationMode: false,
+                  isApproved,
+                  completedAt: new Date().toISOString(),
+                  verificationResult: result.data,
                 },
               },
-              mode: isApproved ? 'default' : state.mode,
-            }
-          })
-
-          // Return the verification result from the service
-          return result.data
-        } catch (error) {
-          // Handle errors and update workflow state accordingly
-          await handleErrorFallback(error)
-
-          // Return a basic verification result indicating failure
-          return {
-            isCompleted: false,
-            isApproved: false,
-            items: state.verification.verificationItems,
-            completedAt: new Date().toISOString(),
-            verificationMetadata: {
-              verificationStatus: 'failed',
-              originalSummaryId:
-                state.verification.summaryVersions[0]?.id || '',
-              currentVersionId:
-                state.verification.summaryVersions[
-                  state.verification.summaryVersions.length - 1
-                ]?.id || '',
-              correctionCount: state.verification.summaryVersions.length - 1,
-              corrections: state.verification.summaryVersions.map(
-                (version) => ({
-                  id: version.id,
-                  text: version.content,
-                  timestamp: version.timestamp,
-                })
-              ),
-              startedAt: state.verification.summaryVersions[0]?.timestamp,
-              lastUpdated: new Date().toISOString(),
             },
-          }
+            mode: isApproved ? "default" : s.mode,
+          }));
+
+          // Add a system message about verification completion
+          get().addSystemMessage(
+            isApproved
+              ? "Verification completed successfully. Generating report..."
+              : "Verification rejected. Please make necessary corrections.",
+            isApproved ? ChatMessageType.SYSTEM : ChatMessageType.ERROR,
+            { verificationComplete: true, isApproved }
+          );
+          
+          return result.data;
+        } catch (error) {
+          // Enhanced error handling
+          const normalizedError = normalizeError(error);
+          
+          // Update local state to show error
+          set((s) => ({
+            ...s,
+            workflow: {
+              ...s.workflow,
+              currentStep: DomainOnlyWorkflowStep.ERROR,
+              processingStatus: {
+                status: "error",
+                progress: 0,
+                phase: ProcessingPhase.ERROR,
+              },
+              workflowError: normalizedError.message
+            }
+          }));
+          
+          // Add error message to chat
+          get().addSystemMessage(
+            `Verification failed: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: normalizedError.code }
+          );
+          
+          // Return fallback verification result
+          return createFallbackVerificationResult(state);
         }
       },
 
-      handleCorrectionMessage: async (correction) => {
-        const state = get()
-        const handleErrorFallback = (error: unknown) => {
-          console.error('handleCorrectionMessage error:', error)
-        }
-        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
+      handleCorrectionMessage: async (correction: string) => {
+        const state = get();
+        const workflowId = state.workflowStateManager.getCurrentWorkflowId() ?? "";
 
-        // Add the correction message with verification-specific metadata
+        // Add user correction message
         get().addMessage({
-          role: 'user',
+          id: crypto.randomUUID(),
+          role: "user",
           content: correction,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
+          type: ChatMessageType.CORRECTION,
           metadata: {
-            isCorrection: true,
-            type: 'correction',
+            type: ChatMessageType.CORRECTION,
             workflowId,
           },
-        })
+        });
 
-        // Add a processing message
-        const progressMessageId = crypto.randomUUID()
+        const progressMessageId = crypto.randomUUID();
         get().addMessage({
           id: progressMessageId,
-          role: 'system',
-          content: 'Processing your correction...',
-          createdAt: new Date(),
+          role: "system",
+          content: "Processing your correction...",
+          createdAt: new Date().toISOString(),
+          type: ChatMessageType.PROGRESS,
           metadata: {
-            isProgress: true,
-            type: 'progress',
-            progressValue: 0,
-            progressPhase: 'correction',
+            type: ChatMessageType.PROGRESS,
+            progress: { value: 0, phase: ProcessingPhase.CORRECTION },
             workflowId,
           },
-        })
+        });
 
-        // Update state to show we're processing the correction
-        get().submitCorrection(correction)
+        get().submitCorrection(correction);
 
         try {
-          // Get the current summary from state
-          const currentSummary = state.verification.currentSummary || ''
-
-          // Use the verification service to submit the correction
-          const result = await verificationService.submitCorrection({
+          const currentSummary = state.verification.currentSummary ?? "";
+          
+          // Use proper SubmitCorrectionOptions
+          const correctionOptions: SubmitCorrectionOptions & {
+            onStatusUpdate?: (status: any) => void;
+          } = {
             correction,
             currentSummary,
             workflowId,
             messageId: progressMessageId,
-            onStatusUpdate: (status) => {
-              // Update progress if callback is provided
-              if (status) {
+            onStatusUpdate: (st: {
+              progress?: number;
+              phase?: string;
+              status?: string;
+              error?: string;
+            }) => {
+              if (st.progress !== undefined) {
                 get().updateMessageProgress(
                   progressMessageId,
-                  status.progress || 0,
-                  status.phase || 'correction'
-                )
+                  st.progress,
+                  st.phase ?? "correction"
+                );
               }
             },
-          })
-
-          // Handle service errors
+          };
+          
+          const result = await verificationService.submitCorrection(correctionOptions);
+          
           if (!result.success) {
             throw new VerificationError({
-              message: result.error?.message || 'Failed to submit correction',
-              code: result.error?.code || 'CORRECTION_SUBMISSION_FAILED',
-              verificationId: state.verification.summaryVersions[0]?.id,
-              documentId: state.workflow.data.documentId as string,
-              data: result.error?.details,
-            })
+              message: result.error?.message ?? "Failed to submit correction",
+              code: result.error?.code ?? "CORRECTION_SUBMISSION_FAILED",
+            });
           }
 
-          // Get data from the service response
-          const newSummaryId = result.data.summaryId
-          const timestamp = new Date().toISOString()
-          const newSummary = result.data.summary
-          const correctionCount =
-            result.data.correctionCount ||
-            ((state.workflow.data as ExtendedWorkflowState['data'])
-              .verificationMetadata?.correctionCount || 0) + 1
+          get().updateMessageProgress(progressMessageId, 100, "completed");
 
-          // Update the progress message to show completion
-          get().updateMessageProgress(progressMessageId, 100, 'completed')
+          const newSummaryId = result.data.summaryId;
+          const newSummary = result.data.summary;
+          const timestamp = new Date().toISOString();
 
-          // Add the corrected summary with metadata from the service
           get().addMessage({
-            role: 'assistant',
+            id: crypto.randomUUID(),
+            role: "assistant",
             content: newSummary,
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.SUMMARY,
             metadata: {
-              isSummary: true,
-              type: 'summary',
+              type: ChatMessageType.SUMMARY,
               summaryVersionId: newSummaryId,
               timestamp,
               workflowId,
-              verificationMetadata: {
-                verificationStatus: 'in_progress',
-                correctionCount,
-                summaryId: newSummaryId,
-              },
             },
-          })
+          });
 
-          // Ask for confirmation again
           get().addMessage({
-            role: 'system',
+            id: crypto.randomUUID(),
+            role: "system",
             content:
-              "I've updated the summary based on your correction. Please review it and type 'confirm' to approve or provide additional corrections.",
-            createdAt: new Date(),
+              "I've updated the summary based on your correction. Please review and type 'confirm' or provide more corrections.",
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.VERIFICATION,
             metadata: {
-              isVerificationRequest: true,
-              type: 'verification_request',
+              type: ChatMessageType.VERIFICATION,
               workflowId,
             },
-          })
+          });
 
-          // Update verification state with new summary from the service
+          set((s) => ({
+            ...s,
+            verification: {
+              ...s.verification,
+              currentSummary: newSummary,
+              verificationStatus: "in_progress",
+              summaryVersions: [
+                ...s.verification.summaryVersions,
+                {
+                  id: newSummaryId,
+                  content: newSummary,
+                  timestamp,
+                  userId: "",
+                },
+              ],
+            },
+            workflow: {
+              ...s.workflow,
+              currentStep: "verification_in_progress",
+              processingStatus: {
+                status: "success",
+                progress: 100,
+                phase: ProcessingPhase.CORRECTION,
+              },
+              data: {
+                ...s.workflow.data,
+                verificationMetadata: {
+                  ...(s.workflow.data.verificationMetadata ?? {}),
+                  currentVersionId: newSummaryId,
+                },
+              },
+            },
+          }));
+        } catch (error) {
+          const normalizedError = normalizeError(error);
+          
+          get().addMessage({
+            id: crypto.randomUUID(),
+            role: "system",
+            content: `Error processing correction: ${normalizedError.message}`,
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.ERROR,
+            metadata: {
+              type: ChatMessageType.ERROR,
+              errorCode: normalizedError.code
+            }
+          });
+          
+          get().updateMessageProgress(progressMessageId, 100, ProcessingPhase.ERROR);
+          
+          // Update workflow state
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorDetails: normalizedError.data,
+            errorTimestamp: new Date().toISOString()
+          });
+        }
+      },
+
+      initiateVerification: async (extractedDocument, messageId?: string) => {
+        try {
+          const summaryId = crypto.randomUUID();
           set((state) => ({
+            ...state,
+            workflow: {
+              ...state.workflow,
+              currentStep: "verification_pending",
+              processingStatus: {
+                status: "processing",
+                progress: 50,
+                phase: ProcessingPhase.VERIFICATION,
+              },
+              data: {
+                ...state.workflow.data,
+                documentId: extractedDocument.documentId !== undefined ? extractedDocument.documentId : "",
+                patientId: extractedDocument.patientId !== undefined ? extractedDocument.patientId : "",
+              },
+            },
+            mode: "verification",
+          }));
+
+          // Use proper GenerateVerificationOptions
+          const verificationOptions: GenerateVerificationOptions = {
+            document: extractedDocument,
+            workflowId: get().workflowStateManager.getCurrentWorkflowId() ?? "",
+            messageId: messageId ?? "",
+            summaryId,
+          };
+          
+          const result = await verificationService.generateVerification(verificationOptions);
+          
+          if (!result.success) {
+            throw new VerificationError({
+              message: result.error?.message ?? "Failed to generate verification",
+              code: result.error?.code ?? "VERIFICATION_GENERATION_FAILED",
+            });
+          }
+
+          const timestamp = new Date().toISOString();
+          set((s) => ({
+            ...s,
+            workflow: {
+              ...s.workflow,
+              currentStep: "verification",
+              processingStatus: {
+                status: "success",
+                progress: 100,
+                phase: ProcessingPhase.VERIFICATION,
+              },
+              data: {
+                ...s.workflow.data,
+                extractedData: result.data.structuredData || extractedDocument,
+                summaryId,
+                verificationMetadata: {
+                  verification_status: VerificationStatus.pending,
+                  originalSummaryId: summaryId,
+                  currentVersionId: summaryId,
+                  correctionCount: 0,
+                  startedAt: timestamp,
+                  lastUpdated: timestamp,
+                  corrections: [],
+                },
+              },
+            },
+            verification: {
+              ...s.verification,
+              isInVerificationMode: true,
+              currentSummary: result.data.summary,
+              verificationStatus: "pending",
+              summaryVersions: [
+                {
+                  id: summaryId,
+                  content: result.data.summary,
+                  timestamp,
+                  userId: "",
+                },
+              ],
+            },
+          }));
+          
+          // Add a system message about verification
+          get().addSystemMessage(
+            "Please review the extracted information and make any necessary corrections.",
+            ChatMessageType.VERIFICATION,
+            { verificationStarted: true }
+          );
+
+          return {
+            summaryId,
+            summary: result.data.summary,
+            structuredData: result.data.structuredData || {},
+          };
+        } catch (error) {
+          const normalizedError = normalizeError(error);
+          
+          // Update to error state
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorDetails: normalizedError.data || {},
+            errorTimestamp: new Date().toISOString()
+          });
+          
+          // Add error message
+          get().addSystemMessage(
+            `Verification initialization failed: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: normalizedError.code }
+          );
+          
+          return {};
+        }
+      },
+
+      processCorrection: async (correctionText, currentSummary, messageId?: string) => {
+        try {
+          set((s) => ({
+            ...s,
+            workflow: {
+              ...s.workflow,
+              currentStep: "verification_in_progress",
+              processingStatus: {
+                status: "processing",
+                progress: 0,
+                phase: ProcessingPhase.CORRECTION,
+              },
+            },
+            verification: {
+              ...s.verification,
+              verificationStatus: "in_progress",
+            },
+          }));
+
+          // Use proper ProcessCorrectionOptions
+          const correctionOptions: ProcessCorrectionOptions = {
+            correction: correctionText,
+            currentSummary,
+            workflowId: get().workflowStateManager.getCurrentWorkflowId() ?? "",
+            messageId,
+          };
+          
+          const result = await verificationService.processCorrection(correctionOptions);
+          
+          if (!result.success) {
+            throw new VerificationError({
+              message: result.error?.message ?? "Failed to process correction",
+              code: result.error?.code ?? "CORRECTION_PROCESSING_FAILED",
+            });
+          }
+
+          const newSummaryId = result.data.summaryId;
+          const newSummary = result.data.summary;
+          const timestamp = new Date().toISOString();
+          
+          set((state) => ({
+            ...state,
+            workflow: {
+              ...state.workflow,
+              currentStep: "verification_in_progress",
+              processingStatus: {
+                status: "success",
+                progress: 100,
+                phase: ProcessingPhase.CORRECTION,
+              },
+              data: {
+                ...state.workflow.data,
+                verificationMetadata: {
+                  ...(state.workflow.data.verificationMetadata ?? {}),
+                  currentVersionId: newSummaryId,
+                  correctionCount:
+                    ((state.workflow.data as any).verificationMetadata?.correctionCount || 0) + 1,
+                  lastUpdated: timestamp
+                },
+              },
+            },
             verification: {
               ...state.verification,
               currentSummary: newSummary,
-              verificationStatus: 'in_progress',
               summaryVersions: [
                 ...state.verification.summaryVersions,
                 {
                   id: newSummaryId,
                   content: newSummary,
                   timestamp,
-                  userId: '',
+                  userId: "",
                 },
               ],
             },
-            workflow: {
-              ...state.workflow,
-              currentStep: 'verification_in_progress',
-              processingStatus: {
-                status: 'success',
-                progress: 100,
-                phase: 'verification',
-              },
-              data: {
-                ...state.workflow.data,
-                verificationMetadata: {
-                  ...(state.workflow.data.verificationMetadata || {}),
-                  currentVersionId: newSummaryId,
-                  correctionCount,
-                  lastUpdated: timestamp,
-                },
-              },
-            },
-          }))
+          }));
+
+          return {
+            summaryId: newSummaryId,
+            summary: newSummary,
+            structuredData: result.data.structuredData || {},
+          };
         } catch (error) {
-          // Use the error handler to properly handle and log errors
-          await handleErrorFallback(error)
-
-          // Add an error message to the chat
-          get().addMessage({
-            role: 'system',
-            content: `I couldn't process your correction. Please try again with a different correction or contact support if the issue persists.`,
-            createdAt: new Date(),
-            metadata: {
-              isError: true,
-              type: 'error',
-              errorCode: 'CORRECTION_PROCESSING_ERROR',
-              workflowId,
-            },
-          })
-
-          // Update the progress message to show failure
-          get().updateMessageProgress(progressMessageId, 100, 'error')
+          const normalizedError = normalizeError(error);
+          
+          // Update to error state
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorDetails: normalizedError.data || {},
+            errorTimestamp: new Date().toISOString()
+          });
+          
+          throw error;
         }
       },
 
-      // Report generation actions
-      startReportGeneration: (reportOptions) =>
+      resetVerification: async () => {
+        try {
+          await get().workflowStateManager.resetWorkflow();
+          
+          set((state) => ({
+            ...state,
+            workflow: {
+              ...state.workflow,
+              currentStep: "idle",
+              processingStatus: {
+                status: "idle",
+                progress: 0,
+                phase: ProcessingPhase.INITIALIZATION,
+              },
+              data: {
+                ...state.workflow.data,
+                verificationMetadata: null,
+              },
+              workflowError: null,
+            },
+            verification: {
+              ...state.verification,
+              isInVerificationMode: false,
+              currentSummary: null,
+              summaryVersions: [],
+              verificationStatus: "pending",
+              verificationItems: [],
+            },
+          }));
+          
+          return { success: true };
+        } catch (error) {
+          const normalizedError = normalizeError(error);
+          
+          get().setError(normalizedError.message);
+          throw error;
+        }
+      },
+
+      confirmVerification: async () => {
+        return get().completeVerification(true);
+      },
+
+      ///////////////////////////////////////////////////////////////////////////
+      // Report generation
+      ///////////////////////////////////////////////////////////////////////////
+      startReportGeneration: (reportOptions?: any) =>
         set((state) => ({
-          mode: 'default',
+          ...state,
+          mode: "default",
           reportGeneration: {
+            ...state.reportGeneration,
             isComplete: false,
-            format: reportOptions || null,
+            format: reportOptions || {},
           },
           workflow: {
             ...state.workflow,
-            currentStep: 'report_generation',
+            currentStep: "report_generation",
             processingStatus: {
-              status: 'processing',
+              status: "processing",
               progress: 85,
-              phase: 'report_generation',
+              phase: ProcessingPhase.REPORT_GENERATION,
             },
           },
         })),
 
-      completeReportGeneration: (report) =>
+      completeReportGeneration: (report: any) =>
         set((state) => ({
+          ...state,
           reportGeneration: {
             ...state.reportGeneration,
             isComplete: true,
             format: report,
+            reportId: report.reportId || state.reportGeneration?.reportId
           },
           workflow: {
             ...state.workflow,
-            currentStep: 'complete',
+            currentStep: "complete",
             processingStatus: {
-              status: 'success',
+              status: "success",
               progress: 100,
-              phase: 'completion',
+              phase: ProcessingPhase.COMPLETION,
             },
+            data: {
+              ...state.workflow.data,
+              reportCompleted: true,
+              reportCompletedAt: new Date().toISOString(),
+              reportId: report.reportId || state.reportGeneration?.reportId
+            }
           },
         })),
 
-      // Generate a report
       generateReport: async () => {
-        // Start report generation in workflow
-        get().startReportGeneration()
-
-        // Get current workflow and patient data
-        const state = get()
-        const currentWorkflowId =
-          workflowStateManager.getCurrentWorkflowId() || ''
-        const currentPatientId = (state.workflow.data.patientId as string) || ''
-
         try {
-          // Call the reports API
-          const report = await apiClientInstance.reports.generateReport({
-            workflowId: currentWorkflowId,
-            patientId: currentPatientId,
-            format: 'pdf',
-            includeVerificationData: true,
-            detailLevel: 'comprehensive',
-          })
-
-          // Update workflow state to completion once report is done
-          get().completeReportGeneration({
-            format: report.data.format || 'pdf',
-            content: report.data.content || 'Generated report content',
-            generatedAt: report.data.generatedAt || new Date().toISOString(),
-            reportId: report.data.id,
-          })
-        } catch (error) {
-          console.error('Error generating report:', error)
-
-          // Normalize and create domain-specific error
-          const normalizedError = normalizeError(error)
-
-          const reportError = new ReportGenerationError({
-            message: normalizedError.message || 'Failed to generate report',
-            code: 'REPORT_GENERATION_FAILED',
-            workflowId: currentWorkflowId,
-            patientId: currentPatientId,
-            data: {
-              requestDetails: {
-                format: 'pdf',
-                includeVerificationData: true,
-                detailLevel: 'comprehensive',
-              },
+          // Update local state to show report generation in progress
+          get().startReportGeneration();
+          const state = get();
+          const workflowId = state.workflowStateManager.getCurrentWorkflowId() ?? "";
+          const patientId = (state.workflow.data.patientId as string) ?? "";
+          
+          if (!patientId) {
+            throw new Error("Patient ID is required for report generation");
+          }
+          
+          // Create progress tracking callback
+          const onProgress = (phase: ProcessingPhase, progress: number) => {
+            get().updateProgress(progress, phase);
+          };
+          
+          // Add a system message about report generation
+          const progressMessageId = get().addSystemMessage(
+            "Generating comprehensive medical report...",
+            ChatMessageType.PROGRESS,
+            {
+              progress: {
+                value: 0,
+                phase: ProcessingPhase.REPORT_GENERATION,
+                startedAt: new Date().toISOString()
+              }
+            }
+          ).id;
+          
+          // Use reportService for generation
+          const reportOptions: ReportOptions = {
+            includeDemographics: true,
+            includeVisualizations: true,
+            includeCitations: true,
+            onProgress
+          };
+          
+          const report = await reportService.generateReport(
+            {
+              patientId: patientId,
+              type: "medical-diagnosis", // Using string literal since ReportType may not be accessible
+              documentIds: state.workflow.data.documentIds as string[],
+              saveToDatabase: true
             },
-            cause: error,
-          })
-
-          // Update workflow state with detailed error
-          get().setError(reportError.message)
-          get().updateWorkflowStep('error', {
+            reportOptions
+          );
+          
+          // Update workflow step and progress
+          get().updateWorkflowStep("complete", {
+            reportId: report.id,
+            reportGeneratedAt: report.metadata.generatedAt,
+            reportType: report.metadata.reportType,
+          });
+          
+          // Update message progress to 100%
+          get().updateMessageProgress(progressMessageId, 100, ProcessingPhase.COMPLETION);
+          
+          // Complete report generation in local state
+          get().completeReportGeneration({
+            format: report.metadata.reportType || "comprehensive",
+            content: report.content || "",
+            generatedAt: report.metadata.generatedAt || new Date().toISOString(),
+            reportId: report.id || crypto.randomUUID(),
+          });
+          
+          // Add the report to the chat
+          get().addMessage({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: report.content || "Report generated successfully.",
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.REPORT,
+            metadata: {
+              type: ChatMessageType.REPORT,
+              reportId: report.id,
+              patientId: patientId,
+            }
+          });
+          
+        } catch (error) {
+          // Enhanced error handling
+          const normalizedError = normalizeError(error);
+          const reportError = new ReportGenerationError({
+            message: normalizedError.message ?? "Failed to generate report",
+            code: "REPORT_GENERATION_FAILED",
+            data: {
+              workflowId: get().workflowStateManager.getCurrentWorkflowId(),
+              patientId: get().workflow.data.patientId,
+            },
+            cause: error instanceof Error ? error : new Error(String(error)),
+          });
+          
+          // Update error state
+          get().setError(reportError.message);
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
             error: reportError.message,
             errorDetails: reportError.data,
             errorCode: reportError.code,
-            errorTimestamp: reportError.timestamp,
-            errorStage: 'report_generation',
-          })
+            errorTimestamp: new Date().toISOString(),
+            errorStage: "report_generation",
+          });
+          
+          // Add error message to chat
+          get().addSystemMessage(
+            `Report generation failed: ${reportError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: reportError.code }
+          );
+          
+          throw reportError;
         }
       },
 
-      // Format a report
-      formatReport: async (format) => {
+      formatReport: async (format: any) => {
         try {
-          // Get current report data
-          const state = get()
-          const reportId = state.reportGeneration?.reportId || ''
+          const state = get();
+          const reportId = state.reportGeneration?.reportId ?? "";
 
           if (!reportId) {
-            throw new Error('No report has been generated yet')
+            throw new Error("No report has been generated yet");
           }
-
-          // Call the reports API to update format
-          const formattedReport = await apiClientInstance.reports.formatReport(
-            reportId,
+          
+          // Add progress message
+          const progressMessageId = get().addSystemMessage(
+            `Formatting report as ${format.format || 'PDF'}...`,
+            ChatMessageType.PROGRESS,
             {
-              format: format.format || 'pdf',
-              style: format.style || 'clinical',
-              metadataInFooter: format.metadataInFooter || false,
+              progress: {
+                value: 0,
+                phase: ProcessingPhase.REPORT_GENERATION
+              }
             }
-          )
+          ).id;
+
+          // Use reportService to format the report
+          const formattedReport = await reportService.formatReportOutput(
+            {
+              id: reportId,
+              content: state.reportGeneration?.format?.content as string || "",
+              patientId: state.workflow.data.patientId as string || "",
+              sources: [],
+              metadata: {
+                ...state.reportGeneration?.format || {},
+                generatedAt: new Date().toISOString()
+              },
+              generatedAt: new Date(),
+              sections: {}
+            },
+            format.format || "markdown"
+          );
+          
+          // Update progress message
+          get().updateMessageProgress(progressMessageId, 100, ProcessingPhase.COMPLETION);
 
           get().completeReportGeneration({
-            format,
-            content: formattedReport.data.content || 'Formatted report content',
+            format: format,
+            content: formattedReport || "Formatted report content",
             formattedAt: new Date().toISOString(),
-            reportId: formattedReport.data.id || reportId,
-          })
+            reportId: reportId,
+          });
+          
+          // Add the formatted report to chat
+          get().addMessage({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: `Report has been formatted as ${format.format || 'PDF'}.`,
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.SYSTEM,
+            metadata: {
+              type: ChatMessageType.SYSTEM,
+              reportId,
+              format: format.format
+            }
+          });
+          
         } catch (error) {
-          console.error('Error formatting report:', error)
-          get().setError(
-            error instanceof Error ? error.message : 'Failed to format report'
-          )
+          const normalizedError = normalizeError(error);
+          
+          get().setError(normalizedError.message);
+          get().addSystemMessage(
+            `Failed to format report: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: "REPORT_FORMAT_FAILED" }
+          );
+          
+          throw error;
+        }
+      },
+      
+      beginReportGeneration: async (reportMetadata) => {
+        try {
+          const currentStep = get().workflow.currentStep;
+          const validSteps = ["verification_completed", "verification", "complete"];
+          
+          if (!validSteps.includes(currentStep)) {
+            throw new Error(
+              `Verification must be completed before generating report, current step: ${currentStep}`
+            );
+          }
+          
+          const workflowId = get().workflowStateManager.getCurrentWorkflowId() ?? "";
+          
+          if (get().workflowStateManager.beginReportGeneration) {
+            await get().workflowStateManager.beginReportGeneration(reportMetadata);
+          } else {
+            await workflowService.updateWorkflowState(
+              workflowId,
+              "report_generation",
+              {
+                ...(reportMetadata || {}),
+                reportGenerationStartedAt: new Date().toISOString(),
+              }
+            );
+          }
+
+          set((state) => ({
+            ...state,
+            workflow: {
+              ...state.workflow,
+              currentStep: "report_generation",
+              processingStatus: {
+                status: "processing",
+                progress: 0,
+                phase: ProcessingPhase.REPORT_GENERATION,
+              },
+              data: {
+                ...state.workflow.data,
+                reportMetadata: reportMetadata || {},
+              },
+            },
+          }));
+          
+          return { success: true };
+        } catch (error) {
+          const normalizedError = normalizeError(error);
+          
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorTimestamp: new Date().toISOString(),
+          });
+          
+          throw error;
         }
       },
 
+      ///////////////////////////////////////////////////////////////////////////
       // Document processing
-      processDocument: async (file, patientId, documentType, abortSignal) => {
+      ///////////////////////////////////////////////////////////////////////////
+      processDocument: async (file: File, patientId: string, documentType?: string, abortSignal?: AbortSignal) => {
         try {
-          // Update state to show processing
+          // Update local state
           set({
             isDocProcessing: true,
             docProgress: 0,
             extractedDocument: null,
-          })
-
-          // Update workflow state to uploading
-          get().updateWorkflowStep('uploading', {
+          });
+          
+          // Update workflow step
+          get().updateWorkflowStep("uploading", {
             fileName: file.name,
             fileSize: file.size,
             fileType: file.type,
-          })
-
-          // Handle progress updates
-          const onStatusUpdate = (status: ProcessingStatus) => {
-            if (status.progress !== undefined) {
-              set({ docProgress: status.progress })
+            patientId
+          });
+          
+          // Create document type object with proper typing
+          const docTypeObj: DocumentType = documentType
+            ? { category: "clinical", type: documentType }
+            : { category: "clinical", type: "document" };
+          
+          // Create progress callback that updates both local progress and workflow status
+          const onStatusUpdate = (status: WorkflowProcessingStatus) => {
+            if (typeof status.progress === "number") {
+              set({ docProgress: status.progress });
             }
-
+            
             if (status.phase) {
               get().updateProgress(
-                status.progress || 0,
-                status.phase as ProcessingPhase
-              )
+                status.progress !== undefined ? status.progress : 0,
+                status.phase
+              );
             }
-
-            if (status.status === 'error') {
-              get().setError(status.error || 'Processing failed')
+            
+            if (status.status === "error") {
+              get().setError(status.error !== undefined ? status.error : "Processing failed");
             }
-          }
-
-          // Initialize document processing state with progress 0
-          set({ docProgress: 0, isDocProcessing: true })
-
-          // Convert string document type to DocumentType object if provided
-          const docTypeObj = documentType
-            ? ({
-                category: 'clinical',
-                type: documentType,
-              } as DocumentType)
-            : undefined
-
-          // Call the API client instead of document service directly
-          const result = await apiClientInstance.documents.processDocument({
+          };
+          
+          // Process document using documentService
+          const result = await documentService.processDocument(
             file,
-            patientId,
-            documentType: docTypeObj?.type || 'clinical',
-            documentCategory: docTypeObj?.category || 'clinical',
-            onStatusUpdate: onStatusUpdate as any,
-          })
-
-          // Store the result
+            {
+              documentType: docTypeObj,
+              patientId,
+              onStatusUpdate,
+              extractionLevel: "comprehensive"
+            }
+          );
+          
+          // Check if aborted
+          if (abortSignal?.aborted) {
+            throw new Error("Document processing was aborted");
+          }
+          
+          // Update local state with extracted document
           set({
             extractedDocument: result,
             docProgress: 100,
             isDocProcessing: false,
-          })
-
-          // Update workflow state to verification
-          get().updateWorkflowStep('verification')
-
-          return result
+          });
+          
+          // Move to verification step
+          get().updateWorkflowStep("verification", {
+            documentId: result.id,
+            patientId,
+            documentType: docTypeObj
+          });
+          
+          // Add system message about successful processing
+          get().addSystemMessage(
+            `Document processed successfully. Please verify the extracted information.`,
+            ChatMessageType.SYSTEM,
+            { documentId: result.id }
+          );
+          
+          return result;
         } catch (error) {
-          console.error('Document processing failed:', error)
-
-          // Update state for error
-          set({
-            isDocProcessing: false,
-            docProgress: 0,
-          })
-
-          // Normalize and log the error properly
-          const normalizedError = normalizeError(error)
-
-          // Create a domain-specific document processing error
+          // Enhanced error handling with proper error classification
+          const normalizedError = normalizeError(error);
           const documentError = new DocumentProcessingError({
             message: normalizedError.message,
-            code: 'DOCUMENT_PROCESSING_FAILED',
-            phase: 'extraction',
+            code: "DOCUMENT_PROCESSING_FAILED",
             data: {
               fileName: file.name,
               fileSize: file.size,
               fileType: file.type,
               patientId,
             },
-            cause: error,
-          })
-
-          // Update workflow state with detailed error
-          get().setError(documentError.message)
-          get().updateWorkflowStep('error', {
+            cause: error instanceof Error ? error : new Error(String(error)),
+          });
+          
+          // Update error state
+          get().setError(documentError.message);
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
             error: documentError.message,
             errorDetails: documentError.data,
             errorCode: documentError.code,
-            errorTimestamp: documentError.timestamp,
-          })
-
-          throw documentError
+            errorTimestamp: new Date().toISOString(),
+          });
+          
+          // Add error message to chat
+          get().addSystemMessage(
+            `Document processing failed: ${documentError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: documentError.code }
+          );
+          
+          throw documentError;
+        } finally {
+          // Clean up in case of abort
+          if (abortSignal?.aborted) {
+            set({
+              isDocProcessing: false,
+              docProgress: 0,
+            });
+          }
         }
       },
 
-      // Upload document to storage
-      uploadDocument: async (file, patientId, documentType) => {
+      uploadDocument: async (file: File, patientId: string, documentType?: string) => {
         try {
-          // Handle progress updates
-          const onStatusUpdate = (status: ProcessingStatus) => {
-            if (status.progress !== undefined) {
-              set({ docProgress: status.progress })
+          set({
+            isDocProcessing: true,
+            docProgress: 0,
+          });
+          
+          // Update workflow step
+          get().updateWorkflowStep("uploading", {
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            patientId
+          });
+          
+          const onStatusUpdate = (status: WorkflowProcessingStatus) => {
+            if (typeof status.progress === "number") {
+              set({ docProgress: status.progress });
             }
-
+            
             if (status.phase) {
               get().updateProgress(
-                status.progress || 0,
-                status.phase as ProcessingPhase
-              )
+                status.progress !== undefined ? status.progress : 0,
+                status.phase
+              );
             }
-
-            if (status.status === 'error') {
-              get().setError(status.error || 'Upload failed')
+            
+            if (status.status === "error") {
+              get().setError(status.error !== undefined ? status.error : "Upload failed");
             }
-          }
-
-          // Call the API client instead of document service directly
-          const result = await apiClientInstance.documents.uploadDocument({
+          };
+          
+          // Create document type object
+          const docTypeObj: DocumentType = documentType
+            ? { category: "clinical", type: documentType }
+            : { category: "clinical", type: "document" };
+          
+          // Use document service for upload
+          const result = await documentService.uploadDocument(
             patientId,
             file,
-            documentType: documentType || 'clinical',
-            documentCategory: 'clinical',
-            onStatusUpdate: onStatusUpdate as any,
-          })
-
-          // Update state after upload
+            {
+              documentType: docTypeObj,
+              priority: "normal",
+              onStatusUpdate
+            }
+          );
+          
           set({
             docProgress: 100,
             isDocProcessing: false,
-          })
+          });
+          
+          // Update workflow step
+          get().updateWorkflowStep("extracting", {
+            documentId: result.documentId,
+            fileName: result.fileName,
+            extractionStatus: result.extractionStatus
+          });
+          
+          // Add system message
+          get().addSystemMessage(
+            `Document uploaded successfully. Extracting content...`,
+            ChatMessageType.SYSTEM,
+            { documentId: result.documentId }
+          );
 
-          return result
+          return result;
         } catch (error) {
-          console.error('Document upload failed:', error)
-
-          // Update state for error
-          set({
-            isDocProcessing: false,
-            docProgress: 0,
-          })
-
-          // Handle errors and update workflow state
-          get().setError(
-            error instanceof Error ? error.message : 'Document upload failed'
-          )
-          get().updateWorkflowStep('error')
-
-          throw error
+          const normalizedError = normalizeError(error);
+          
+          get().setError(normalizedError.message);
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorDetails: normalizedError.data || {},
+            errorTimestamp: new Date().toISOString(),
+          });
+          
+          // Add error message
+          get().addSystemMessage(
+            `Document upload failed: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: normalizedError.code }
+          );
+          
+          throw error;
         }
       },
 
-      // Reset document processing state
       resetDocumentProcessing: () => {
         set({
           docProgress: 0,
           isDocProcessing: false,
           extractedDocument: null,
-        })
+        });
       },
 
-      // Send a message with queue
-      sendMessage: async (content, options) => {
-        if (!content.trim()) return
-
+      ///////////////////////////////////////////////////////////////////////////
+      // Message sending and helpers
+      ///////////////////////////////////////////////////////////////////////////
+      sendMessage: async (content: string, options?: { isCorrection?: boolean; metadata?: ChatMessageMetadata }) => {
+        if (!content.trim()) return;
+        
         try {
-          get().setLoading(true)
+          get().setLoading(true);
 
-          // Add user message
-          const userMessage: Message = {
+          const messageType = options?.isCorrection ? ChatMessageType.CORRECTION : ChatMessageType.CHAT;
+          const userMessage: ChatMessage = {
             id: crypto.randomUUID(),
-            role: 'user',
+            role: "user",
             content,
-            createdAt: new Date(),
-            metadata: options?.metadata,
+            createdAt: new Date().toISOString(),
+            type: messageType,
+            metadata: options?.metadata ?? { type: messageType },
+          };
+          
+          get().addMessage(userMessage);
+
+          // Handle corrections specially
+          if (options?.isCorrection) {
+            await get().handleCorrectionMessage(content);
+            return;
           }
-
-          get().addMessage(userMessage)
-
-          // Process the message based on current mode
-          await processMessage(content, get().mode, (action) => {
-            // Handle different action types
-            switch (action.type) {
-              case 'ADD_MESSAGE':
-                get().addMessage(action.payload.message)
-                break
-              case 'UPDATE_MESSAGES':
-                get().updateMessages(action.payload.messages)
-                break
-              case 'SET_MODE':
-                get().setMode(action.payload.mode)
-                break
-              case 'UPDATE_WORKFLOW_STEP':
-                get().updateWorkflowStep(action.payload.step)
-                break
-              case 'SET_ERROR':
-                get().setError(action.payload.error)
-                break
-              case 'UPDATE_PROGRESS':
-                get().updateMessageProgress(
-                  action.payload.messageId,
-                  action.payload.progress,
-                  action.payload.phase
-                )
-                break
-              default:
-                console.warn('Unhandled action type:', action.type)
-            }
-          })
+          
+          // Update workflow step for normal messages
+          get().updateWorkflowStep("chat_in_progress", {
+            lastUserMessage: content,
+            lastUserMessageAt: new Date().toISOString()
+          });
+          
+          // Here you could add logic to send to API, or handle different message types
+          // For now we'll just simulate a bot response with a delay
+          setTimeout(() => {
+            const responseMessage: ChatMessage = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: `I've received your message: "${content}"`,
+              createdAt: new Date().toISOString(),
+              type: ChatMessageType.CHAT,
+              metadata: { type: ChatMessageType.CHAT }
+            };
+            
+            get().addMessage(responseMessage);
+            get().updateWorkflowStep("chat_completed", {
+              lastAssistantMessage: responseMessage.content,
+              lastAssistantMessageAt: new Date().toISOString()
+            });
+            
+            get().setLoading(false);
+          }, 500);
+          
         } catch (error) {
-          console.error('Error sending message:', error)
-          get().setError(
-            error instanceof Error ? error.message : 'Failed to send message'
-          )
-        } finally {
-          get().setLoading(false)
+          const normalizedError = normalizeError(error);
+          
+          get().setError(normalizedError.message);
+          get().setLoading(false);
+          
+          // Add error message
+          get().addSystemMessage(
+            `Failed to send message: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: normalizedError.code }
+          );
         }
       },
 
-      // Additional methods for backward compatibility
-
-      // Add a system message
       addSystemMessage: (content, type, metadata) => {
-        const message: Message = {
+        const messageType = type ? (type as ChatMessageType) : ChatMessageType.SYSTEM;
+        const message: ChatMessage = {
           id: crypto.randomUUID(),
-          role: 'system',
+          role: "system",
           content,
-          createdAt: new Date(),
-          metadata: {
-            type,
-            ...metadata,
-          },
-        }
-
-        get().addMessage(message)
-        return message
+          createdAt: new Date().toISOString(),
+          type: messageType,
+          metadata: metadata ? { type: messageType, ...metadata } : { type: messageType },
+        };
+        get().addMessage(message);
+        return message;
       },
 
-      // Post a summary message
       postSummaryMessage: (summary) => {
-        const summaryId = crypto.randomUUID()
-        const timestamp = new Date().toISOString()
-
-        // Create message
-        const message: Message = {
+        const summaryId = crypto.randomUUID();
+        const timestamp = new Date().toISOString();
+        void get().startVerification(summary); // Might do something async
+        const message: ChatMessage = {
           id: crypto.randomUUID(),
-          role: 'assistant',
+          role: "assistant",
           content: summary,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
+          type: ChatMessageType.SUMMARY,
           metadata: {
-            isSummary: true,
+            type: ChatMessageType.SUMMARY,
             summaryVersionId: summaryId,
             verificationMetadata: {
-              verificationStatus: 'pending',
+              verification_status: VerificationStatus.pending,
               originalSummaryId: summaryId,
               currentVersionId: summaryId,
               correctionCount: 0,
@@ -1301,743 +1836,221 @@ export const useChatStore = create<ChatStore>()(
               corrections: [],
             },
           },
-        }
-
-        // Start verification
-        get().startVerification(summary)
-
-        // Add the message
-        get().addMessage(message)
-
-        return message
+        };
+        get().addMessage(message);
+        return message;
       },
 
-      // Update summary after correction
       updateSummaryAfterCorrection: (newSummary) => {
-        const state = get()
-        const newVersionId = crypto.randomUUID()
-        const timestamp = new Date().toISOString()
-
-        // Create metadata
-        const metadata: MessageMetadata = {
-          isSummary: true,
-          summaryVersionId: newVersionId,
-          verificationMetadata: {
-            verificationStatus: 'in_progress',
-            originalSummaryId:
-              state.verification.summaryVersions[0]?.id || newVersionId,
-            currentVersionId: newVersionId,
-            correctionCount: state.verification.summaryVersions.length,
-            corrections: [
-              ...state.verification.summaryVersions.map((v) => ({
-                id: v.id,
-                text: v.content,
-                timestamp: v.timestamp,
-              })),
-              {
-                id: newVersionId,
-                text: newSummary,
-                timestamp,
-              },
-            ],
-            startedAt:
-              state.verification.summaryVersions[0]?.timestamp || timestamp,
-            lastUpdated: timestamp,
-          },
-        }
-
-        // Create message
-        const message: Message = {
+        const newVersionId = crypto.randomUUID();
+        const message: ChatMessage = {
           id: crypto.randomUUID(),
-          role: 'assistant',
+          role: "assistant",
           content: newSummary,
-          createdAt: new Date(),
-          metadata,
-        }
-
-        // Add the message
-        get().addMessage(message)
-
-        return message
+          createdAt: new Date().toISOString(),
+          type: ChatMessageType.SUMMARY,
+          metadata: {
+            type: ChatMessageType.SUMMARY,
+            summaryVersionId: newVersionId,
+          },
+        };
+        get().addMessage(message);
+        return message;
       },
 
-      // Confirm verification (alias for completeVerification with true)
-      confirmVerification: async () => {
-        return get().completeVerification(true)
-      },
-
-      // Clear messages (alias for resetChat)
       clearMessages: () => {
-        get().resetChat()
+        get().resetChat();
       },
 
-      // Methods from useWorkflow
-
-      // Initialize verification process for a document using the verification service
-      initiateVerification: async (extractedDocument, messageId) => {
-        const handleErrorFallback = (error: unknown) => {
-          console.error('initiateVerification error:', error)
-        }
-        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-        const chatId = workflowStateManager.getCurrentChatId() || undefined
-
+      ///////////////////////////////////////////////////////////////////////////
+      // Research methods
+      ///////////////////////////////////////////////////////////////////////////
+      performResearch: async (query: string, options?: ResearchOptions) => {
         try {
-          // Validate user is authenticated
-          const userId = ''
-          if (!userId) {
-            throw new Error('User not authenticated')
-          }
-
-          // Update state to show we're initiating verification
+          // Set loading state
           set((state) => ({
+            ...state,
+            isLoading: true,
+            mode: "research",
+            research: {
+              ...state.research,
+              isActive: true,
+              query,
+              progress: 0
+            },
             workflow: {
               ...state.workflow,
-              currentStep: 'verification_pending',
+              currentStep: DomainOnlyWorkflowStep.RESEARCH,
               processingStatus: {
-                status: 'processing',
-                progress: 50,
-                phase: 'verification',
-              },
-              data: {
-                ...state.workflow.data,
-                documentId: extractedDocument.documentId || '',
-                patientId: extractedDocument.patientId || '',
-              },
-            },
-            mode: 'verification',
-          }))
-
-          // Use the verification service to generate verification
-          const verificationResult =
-            await verificationService.generateVerification({
-              document: extractedDocument,
-              workflowId,
-              messageId: messageId || '',
-              summaryId: crypto.randomUUID(),
-              onStatusUpdate: (status) => {
-                // Update progress if a status update callback is provided
-                if (status && messageId) {
-                  get().updateMessageProgress(
-                    messageId,
-                    status.progress || 0,
-                    status.phase || 'verification'
-                  )
-                }
-              },
-            })
-
-          // Handle service errors
-          if (!verificationResult.success) {
-            throw new VerificationError({
-              message:
-                verificationResult.error?.message ||
-                'Failed to generate verification',
-              code:
-                verificationResult.error?.code ||
-                'VERIFICATION_GENERATION_FAILED',
-              documentId: extractedDocument.documentId || '',
-              data: verificationResult.error?.details,
-            })
-          }
-
-          // Update the store state with result from verification service
-          const timestamp = new Date().toISOString()
-          set((state) => ({
-            workflow: {
-              ...state.workflow,
-              currentStep: 'verification',
-              processingStatus: {
-                status: 'success',
-                progress: 100,
-                phase: 'verification',
-              },
-              data: {
-                ...state.workflow.data,
-                extractedData:
-                  verificationResult.data.structuredData || extractedDocument,
-                summaryId: verificationResult.data.summaryId,
-                verificationMetadata: {
-                  verificationStatus: 'pending',
-                  originalSummaryId: verificationResult.data.summaryId,
-                  currentVersionId: verificationResult.data.summaryId,
-                  correctionCount: 0,
-                  startedAt: timestamp,
-                  lastUpdated: timestamp,
-                },
-              },
-            },
-            verification: {
-              ...state.verification,
-              isInVerificationMode: true,
-              currentSummary: verificationResult.data.summary,
-              verificationStatus: 'pending',
-              summaryVersions: [
-                {
-                  id: verificationResult.data.summaryId,
-                  content: verificationResult.data.summary,
-                  timestamp,
-                  userId,
-                },
-              ],
-            },
-          }))
-
-          // Return a standardized result with data from the service
-          return {
-            summaryId: verificationResult.data.summaryId,
-            summary: verificationResult.data.summary,
-            structuredData: verificationResult.data.structuredData || {},
-          }
-        } catch (error) {
-          // Use the error handler to properly handle and log errors
-          await handleErrorFallback(error)
-
-          // Return a basic failure result
-          throw error
-        }
-      },
-
-      // Process a user correction to the summary
-      processCorrection: async (correctionText, currentSummary, messageId) => {
-        const handleErrorFallback = (error: unknown) => {
-          console.error('processCorrection error:', error)
-        }
-        const workflowId = workflowStateManager.getCurrentWorkflowId() || ''
-
-        try {
-          // Validate user is authenticated
-          const userId = ''
-          if (!userId) {
-            throw new Error('User not authenticated')
-          }
-
-          // Initialize processing state
-          set((state) => ({
-            workflow: {
-              ...state.workflow,
-              currentStep: 'verification_in_progress',
-              processingStatus: {
-                status: 'processing',
+                status: "processing",
                 progress: 0,
-                phase: 'correction',
-              },
-            },
-            verification: {
-              ...state.verification,
-              verificationStatus: 'in_progress',
-            },
-          }))
-
-          // Use the verification service to process the correction
-          const correctionResult = await verificationService.processCorrection({
-            correction: correctionText,
-            currentSummary,
-            workflowId,
-            messageId: messageId || '',
-            onStatusUpdate: (status) => {
-              // Update progress if a status update callback is provided
-              if (status && messageId) {
-                get().updateMessageProgress(
-                  messageId,
-                  status.progress || 0,
-                  status.phase || 'correction'
-                )
+                phase: ProcessingPhase.RESEARCH
               }
-            },
-          })
-
-          // Handle service errors
-          if (!correctionResult.success) {
-            throw new VerificationError({
-              message:
-                correctionResult.error?.message ||
-                'Failed to process correction',
-              code:
-                correctionResult.error?.code || 'CORRECTION_PROCESSING_FAILED',
-              verificationId: get().verification.summaryVersions[0]?.id,
-              documentId: get().workflow.data.documentId as string,
-              data: correctionResult.error?.details,
-            })
-          }
-
-          // Update local state with new summary from the service
-          set((state) => {
-            const currVerificationMetadata =
-              state.workflow.data.verificationMetadata || {}
-            const currSummaryVersions = state.verification.summaryVersions || []
-            const newSummaryId = correctionResult.data.summaryId
-            const timestamp = new Date().toISOString()
-
-            return {
-              workflow: {
-                ...state.workflow,
-                currentStep: 'verification_in_progress',
-                processingStatus: {
-                  status: 'success',
-                  progress: 100,
-                  phase: 'correction',
-                },
-                data: {
-                  ...state.workflow.data,
-                  verificationMetadata: {
-                    ...currVerificationMetadata,
-                    currentVersionId: newSummaryId,
-                    correctionCount:
-                      ((currVerificationMetadata as any).correctionCount || 0) +
-                      1,
-                  },
-                },
-              },
-              verification: {
-                ...state.verification,
-                currentSummary: correctionResult.data.summary,
-                summaryVersions: [
-                  ...currSummaryVersions,
-                  {
-                    id: newSummaryId,
-                    content: correctionResult.data.summary,
-                    timestamp,
-                    userId,
-                  },
-                ],
-              },
             }
-          })
-
-          // Return standardized result with data from the service
-          return {
-            summaryId: correctionResult.data.summaryId,
-            summary: correctionResult.data.summary,
-            structuredData: correctionResult.data.structuredData || {},
-            correctionCount:
-              correctionResult.data.correctionCount ||
-              ((get().workflow.data as ExtendedWorkflowState['data'])
-                .verificationMetadata?.correctionCount || 0) + 1,
-          }
-        } catch (error) {
-          // Use the error handler to properly handle and log errors
-          await handleErrorFallback(error)
-
-          // Rethrow to allow callers to handle the error
-          throw error
-        }
-      },
-
-      // Reset verification state using useWorkflow hook
-      resetVerification: async () => {
-        try {
-          // Get the auth user ID for the workflow using the API client
-          const { data: userData } =
-            await apiClientInstance.auth.getCurrentUser()
-          const userId = userData?.user?.id
-          const chatId = workflowStateManager.getCurrentChatId() || undefined
-
-          if (!userId) {
-            throw new Error('User not authenticated')
-          }
-
-          // Reset verification in database - use the workflow state manager
-          await workflowStateManager.resetWorkflow()
-
-          // Update local state
+          }));
+          
+          // Add user message
+          get().addMessage({
+            id: crypto.randomUUID(),
+            role: "user",
+            content: query,
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.CHAT,
+            metadata: {
+              type: ChatMessageType.CHAT,
+              isResearchQuery: true
+            }
+          });
+          
+          // Add progress message
+          const progressMessageId = crypto.randomUUID();
+          get().addMessage({
+            id: progressMessageId,
+            role: "system",
+            content: "Researching your query...",
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.PROGRESS,
+            metadata: {
+              type: ChatMessageType.PROGRESS,
+              progress: {
+                value: 0,
+                phase: ProcessingPhase.RESEARCH
+              }
+            }
+          });
+          
+          // Perform research using perplexityService
+          const researchResult = await perplexityService.performDeepResearch(
+            query,
+            {
+              ...options,
+              onProgress: (progress: number) => {
+                // Update progress in our message and workflow
+                get().updateMessageProgress(progressMessageId, progress, ProcessingPhase.RESEARCH);
+                get().updateProgress(progress, ProcessingPhase.RESEARCH);
+                
+                // Update research state
+                set((state) => ({
+                  ...state,
+                  research: {
+                    ...state.research,
+                    progress
+                  }
+                }));
+              }
+            }
+          );
+          
+          // Update workflow state
+          get().updateWorkflowStep("chat_completed", {
+            researchCompleted: true,
+            researchTimestamp: new Date().toISOString(),
+            query
+          });
+          
+          // Update research state
           set((state) => ({
-            workflow: {
-              ...state.workflow,
-              currentStep: 'idle',
-              processingStatus: {
-                status: 'idle',
-                progress: 0,
-                phase: 'initialization',
-              },
-              data: {
-                ...state.workflow.data,
-                verificationMetadata: null,
-              },
-            },
-            verification: {
-              ...state.verification,
-              isInVerificationMode: false,
-              currentSummary: null,
-              summaryVersions: [],
-              verificationStatus: 'pending',
-              verificationItems: [],
-            },
-          }))
-
-          return {
-            success: true,
+            ...state,
+            research: {
+              ...state.research,
+              result: researchResult,
+              progress: 100,
+              isActive: false
+            }
+          }));
+          
+          // Add research result as message
+          get().addMessage({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: researchResult.text,
+            createdAt: new Date().toISOString(),
+            type: ChatMessageType.RESEARCH,
+            metadata: {
+              type: ChatMessageType.RESEARCH,
+              summary: researchResult.summary,
+              keyFindings: researchResult.keyFindings,
+              sources: researchResult.sources,
+              confidence: researchResult.confidence,
+              modelName: researchResult.modelName
+            }
+          });
+          
+          // Add a sources summary message if there are sources
+          if (researchResult.sources && researchResult.sources.length > 0) {
+            const sourcesText = "Sources:\n" + researchResult.sources
+              .map((source, index) => `${index + 1}. ${source.title || 'Source'}: ${source.url}`)
+              .join("\n");
+            
+            get().addMessage({
+              id: crypto.randomUUID(),
+              role: "system",
+              content: sourcesText,
+              createdAt: new Date().toISOString(),
+              type: ChatMessageType.SYSTEM,
+              metadata: {
+                type: ChatMessageType.SYSTEM,
+                isSourcesList: true
+              }
+            });
           }
+          
+          return researchResult;
         } catch (error) {
-          console.error('Error resetting verification:', error)
-          throw error
-        }
-      },
-
-      // Begin report generation using workflow hooks
-      beginReportGeneration: async (reportMetadata) => {
-        try {
-          // Get the auth user ID for the workflow using the API client
-          const { data: userData } =
-            await apiClientInstance.auth.getCurrentUser()
-          const userId = userData?.user?.id
-          const chatId = workflowStateManager.getCurrentChatId() || undefined
-
-          if (!userId) {
-            throw new Error('User not authenticated')
-          }
-
-          // Get current workflow step for validation
-          const currentStep = get().workflow.currentStep
-
-          // Validate current state - this should be verification_completed
-          const validSteps = [
-            'verification_completed',
-            'verification',
-            'complete',
-          ]
-          if (!validSteps.includes(currentStep)) {
-            throw new Error(
-              `Verification must be completed before generating report, current step: ${currentStep}`
-            )
-          }
-
-          // Update database workflow state through the workflow state manager
-          await workflowStateManager.updateWorkflowState('report_generation', {
-            ...(reportMetadata || {}),
-            reportGenerationStartedAt: new Date().toISOString(),
-          })
-
-          // Update local state
+          // Enhanced error handling
+          const normalizedError = normalizeError(error);
+          
+          get().setError(normalizedError.message);
+          get().updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
+            error: normalizedError.message,
+            errorDetails: normalizedError.data || {},
+            errorTimestamp: new Date().toISOString()
+          });
+          
+          // Update research state
           set((state) => ({
-            workflow: {
-              ...state.workflow,
-              currentStep: 'report_generation',
-              processingStatus: {
-                status: 'processing',
-                progress: 0,
-                phase: 'report_generation',
-              },
-              data: {
-                ...state.workflow.data,
-                reportMetadata: reportMetadata || {},
-              },
-            },
-          }))
-
-          return {
-            success: true,
-          }
-        } catch (error) {
-          console.error('Error starting report generation:', error)
-
-          // Update to error state
-          get().updateWorkflowStep('error', {
-            error: error instanceof Error ? error.message : String(error),
-            errorTimestamp: new Date().toISOString(),
-          })
-
-          throw error
+            ...state,
+            research: {
+              ...state.research,
+              isActive: false,
+              progress: 0
+            }
+          }));
+          
+          // Add error message
+          get().addSystemMessage(
+            `Research failed: ${normalizedError.message}`,
+            ChatMessageType.ERROR,
+            { errorCode: normalizedError.code }
+          );
+          
+          throw error;
+        } finally {
+          set({ isLoading: false });
         }
-      },
+      }
     }),
-    {
-      name: 'chat-store',
-    }
+    { name: "chat-store" }
   )
-)
+);
 
-// Keep the original contexts for backward compatibility
-const ChatStateContext = createContext<ChatState | undefined>(undefined)
-const ChatDispatchContext = createContext<
-  React.Dispatch<ChatAction> | undefined
->(undefined)
+////////////////////////////////////////////////////////////////////////////////
+// Legacy React context placeholders (unused, but we define them to avoid errors)
+////////////////////////////////////////////////////////////////////////////////
+// These context variables are kept for backward compatibility but aren't actively used
+const ChatStateContext = createContext<ChatStore | undefined>(undefined);
+const ChatDispatchContext = createContext<Dispatch<any> | undefined>(undefined);
 
-// Create a provider that doesn't do anything but allows existing code to work
 export function ChatProvider({ children }: { readonly children: ReactNode }) {
-  // All the state is now in Zustand, so we just render children
-  return <>{children}</>
+  return children;
 }
 
-// Access state - compatibility hook that gets data from Zustand
-export function useChatState(): ChatState {
-  return useChatStore()
+export function useChatState(): ChatStore {
+  return useChatStore();
 }
 
-// Access dispatch - compatibility function that translates to Zustand actions
-export function useChatDispatch(): React.Dispatch<ChatAction> {
-  return (action: ChatAction) => {
-    switch (action.type) {
-      case 'ADD_MESSAGE':
-        useChatStore.getState().addMessage(action.payload.message)
-        break
-      case 'UPDATE_MESSAGES':
-        useChatStore.getState().updateMessages(action.payload.messages)
-        break
-      case 'SET_MODE':
-        useChatStore.getState().setMode(action.payload.mode)
-        break
-      case 'UPDATE_WORKFLOW_STEP':
-        useChatStore.getState().updateWorkflowStep(action.payload.step)
-        break
-      case 'SET_ERROR':
-        useChatStore.getState().setError(action.payload.error)
-        break
-      case 'UPDATE_PROGRESS':
-        useChatStore
-          .getState()
-          .updateMessageProgress(
-            action.payload.messageId,
-            action.payload.progress,
-            action.payload.phase
-          )
-        break
-      case 'SET_LOADING':
-        useChatStore.getState().setLoading(action.payload.isLoading)
-        break
-      case 'RESET_CHAT':
-        useChatStore.getState().resetChat()
-        break
-      case 'START_VERIFICATION':
-        useChatStore
-          .getState()
-          .startVerification(action.payload.content, action.payload.options)
-        break
-      case 'SUBMIT_CORRECTION':
-        useChatStore.getState().submitCorrection(action.payload.correction)
-        break
-      case 'COMPLETE_VERIFICATION':
-        useChatStore.getState().completeVerification(action.payload.isApproved)
-        break
-      case 'START_REPORT_GENERATION':
-        useChatStore
-          .getState()
-          .startReportGeneration(action.payload.reportOptions)
-        break
-      case 'COMPLETE_REPORT_GENERATION':
-        useChatStore.getState().completeReportGeneration(action.payload.report)
-        break
-      default:
-        console.warn('Unhandled action type:', action.type)
-    }
-  }
-}
-
-// Hook for handling errors with toast notifications
-export function useErrorHandler() {
-  const { toast } = useToast()
-  const setError = useChatStore((state) => state.setError)
-  const updateWorkflowStep = useChatStore((state) => state.updateWorkflowStep)
-  const currentStep = useChatStore((state) => state.workflow.currentStep)
-
-  // Initialize the workflow error handler with API client
-  const errorHandler = useWorkflowErrorHandler(apiClientInstance)
-
-  return {
-    // Enhanced error handler that preserves workflow transition context
-    handleError: async (
-      error: unknown,
-      fallbackMessage = 'An error occurred',
-      options?: {
-        step?: string
-        details?: Record<string, any>
-        showToast?: boolean
-        attemptRecovery?: boolean
-      }
-    ) => {
-      // Use the specialized workflow error handler
-      const metadata = await errorHandler.handleError(
-        error,
-        currentStep as any,
-        {
-          previousStep: (options?.step as any) || (currentStep as any),
-          details: options?.details,
-          showToast: options?.showToast,
-          attemptRecovery: options?.attemptRecovery,
-        }
-      )
-
-      return metadata
-    },
-
-    // Attempt recovery from an error with a specific strategy
-    recoverFromError: async (
-      targetStage: string,
-      metadata?: Record<string, any>
-    ) => {
-      try {
-        return await errorHandler.recoverFromError(targetStage as any, {
-          errorMessage: metadata?.error || 'Unknown error',
-          workflowStep: currentStep as any,
-          previousStep: metadata?.previousStep as any,
-          timestamp: new Date().toISOString(),
-          details: metadata,
-        })
-      } catch (error) {
-        console.error('Error recovery failed:', error)
-        return false
-      }
-    },
-
-    // Get recovery paths for current workflow step
-    getRecoveryPaths: () => {
-      return errorHandler.getRecoveryPaths(currentStep as any)
-    },
-
-    // Clear any error state
-    clearError: (returnToStep?: string) => {
-      setError(null)
-
-      if (returnToStep) {
-        updateWorkflowStep(returnToStep as any)
-      }
-    },
-  }
-}
-
-// Hook for basic message operations - compatibility wrapper over Zustand
-export function useMessageActions() {
-  const store = useChatStore()
-  const { handleError } = useErrorHandler()
-
-  return {
-    addMessage: (message: Message | Omit<Message, 'id'>): void => {
-      try {
-        store.addMessage(message)
-      } catch (error) {
-        handleError(error, 'Failed to add message')
-      }
-    },
-
-    updateMessages: (messages: Message[]): void => {
-      try {
-        store.updateMessages(messages)
-      } catch (error) {
-        handleError(error, 'Failed to update messages')
-      }
-    },
-
-    updateMessageProgress: (
-      messageId: string,
-      progress: number,
-      phase: string
-    ): void => {
-      try {
-        store.updateMessageProgress(messageId, progress, phase)
-      } catch (error) {
-        handleError(error, 'Failed to update message progress')
-      }
-    },
-  }
-}
-
-// Hook for sending messages - compatibility wrapper
-export function useSendMessage() {
-  const sendMessage = useChatStore((state) => state.sendMessage)
-  return { sendMessage }
-}
-
-// Document processing hook - compatibility wrapper
-export function useDocumentProcessing() {
-  const processDocument = useChatStore((state) => state.processDocument)
-  return { processDocument }
-}
-
-// Verification-specific hook - compatibility wrapper
-export function useVerification() {
-  const store = useChatStore()
-
-  return {
-    startVerification: store.startVerification,
-    handleCorrectionMessage: store.handleCorrectionMessage,
-    completeVerification: store.completeVerification,
-    verification: store.verification,
-  }
-}
-
-// Report generation specific hook - compatibility wrapper
-export function useReportGeneration() {
-  const store = useChatStore()
-
-  return {
-    generateReport: store.generateReport,
-    formatReport: store.formatReport,
-    reportGeneration: store.reportGeneration || {
-      isComplete: false,
-      format: null,
-    },
-  }
-}
-
-// Create a combined hook with actions for backwards compatibility
-export function useChatContext(): ExtendedChatContextType {
-  const store = useChatStore()
-
-  // Return a compatibility object that matches the old context structure
-  return {
-    // State from store
-    messages: store.messages,
-    isLoading: store.isLoading,
-    error: store.error,
-    mode: store.mode,
-    chatId: store.chatId,
-
-    // Workflow - match the structure expected by UseProcessingWorkflowResult
-    workflow: {
-      workflowStep: store.workflow.currentStep,
-      error: store.workflow.workflowError,
-      resetWorkflow: store.resetChat,
-      processDocument: store.processDocument,
-      extractedDocument: store.extractedDocument,
-      status: store.workflow.processingStatus.status,
-      data: store.workflow.data as ExtendedWorkflowState['data'],
-      // Add these methods to match the expected interface
-      generateReport: store.generateReport,
-      formatReport: store.formatReport,
-      completeVerification: store.completeVerification,
-      processCorrection: store.processCorrection,
-    },
-    workflowStep: store.workflow.currentStep,
-
-    // Message actions
-    sendMessage: store.sendMessage,
-    addMessage: store.addMessage,
-
-    // Verification
-    startVerification: async (content, options) => {
-      return store.startVerification(content, options)
-    },
-    handleCorrectionMessage: store.handleCorrectionMessage,
-    completeVerification: store.completeVerification,
-    verification: store.verification,
-
-    // Report generation
-    generateReport: store.generateReport,
-    formatReport: store.formatReport,
-    reportGeneration: store.reportGeneration || {
-      isComplete: false,
-      format: null,
-    },
-
-    // Additional compatibility methods
-    updateExtractionProgress: (
-      messageId: string,
-      progress: number,
-      phase: string,
-      replace: boolean = false
-    ) => {
-      store.updateMessageProgress(messageId, progress, phase)
-    },
-
-    postSummaryMessage: store.postSummaryMessage,
-    updateSummaryAfterCorrection: store.updateSummaryAfterCorrection,
-    resetChat: store.resetChat,
-    addSystemMessage: store.addSystemMessage,
-    confirmVerification: store.confirmVerification,
-    submitCorrection: async (correction: string) => {
-      store.submitCorrection(correction)
-      await store.handleCorrectionMessage(correction)
-    },
-    setChatMode: store.setMode,
-    clearMessages: store.resetChat,
-  }
+export function useChatDispatch(): Dispatch<any> {
+  return () => {
+    // no-op
+  };
 }

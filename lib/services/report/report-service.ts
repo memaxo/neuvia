@@ -1,34 +1,69 @@
 import { langChainCore } from '@/lib/langchain/core'
 import type {
-  DocumentType,
-  ProcessingStatus,
-} from '@/lib/processing/types/base'
-import type {
   ReportData,
   ReportDocument,
   ReportFormat,
   ReportGenerationParams,
   ReportOptions,
   ReportSections,
+  ReportType
 } from '@/lib/types/report'
 import type {
   ResearchDocument,
   ResearchResult,
-} from '@/lib/processing/types/research'
-import type { VerifiedDocument } from '@/lib/processing/types/verification'
+  ResearchSource
+} from '@/lib/types/research'
+import type { VerifiedDocument } from '@/lib/types/verification'
 import { createBrowserClient } from '@/lib/supabase/clients'
-import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
+import { createWorkflowCallbacks } from '@/lib/utils/langchain'
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
 import logger from '@/lib/logger'
 import {
   ExternalServiceError,
-  ValidationError,
-  NotFoundError,
   SystemError,
   normalizeError,
-  AuthenticationError,
   ApplicationError,
 } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors/verification-errors'
+import { ProcessingPhase } from '@/lib/types/workflow'
+import { UUID } from '@/lib/types/base'
+
+// Custom interfaces to bridge old and new type systems
+interface LegacyReportData {
+  content: string;
+  sources: ResearchSource[];
+  patientId: string;
+  generatedAt: Date;
+  metadata: {
+    modelName: string;
+    confidence: number;
+    generationTime: number;
+    reportType: string;
+    contextData?: Record<string, any>;
+    isFallback?: boolean;
+    title?: string;
+    departmentId?: string;
+  };
+  sections?: Record<string, string>;
+}
+
+interface LegacyReportGenerationParams {
+  type: string;
+  patientId: string;
+  researchData: ResearchResult;
+  contextData?: Record<string, any>;
+  saveToDatabase?: boolean;
+}
+
+interface LegacyReportOptions {
+  onProgress?: (phase: ProcessingPhase, progress: number) => void;
+  onSuccess?: (report: LegacyReportData) => void;
+  onError?: (errorMessage: string) => void;
+  saveToDatabase?: boolean;
+  reportFormat?: string;
+  createReportDocument?: boolean;
+  contextData?: Record<string, any>;
+}
 
 /**
  * Unified Report Service
@@ -36,7 +71,7 @@ import {
  * Single entry point for report generation across the application
  */
 export class ReportService {
-  private supabase = createBrowserClient()
+  private readonly supabase = createBrowserClient()
 
   /**
    * Generate a report based on a research document or verified document
@@ -47,8 +82,8 @@ export class ReportService {
    */
   async generateReportFromDocument(
     documentInput: ResearchDocument | VerifiedDocument,
-    options?: ReportOptions
-  ): Promise<ReportData> {
+    options?: LegacyReportOptions
+  ): Promise<LegacyReportData> {
     // Create logger with context
     const moduleLogger = logger.withMetadata({
       module: 'ReportService',
@@ -71,14 +106,14 @@ export class ReportService {
         `Report generation progress: ${phase} - ${progress}%`,
         { currentStep }
       )
-      statusCallback?.(phase as any, progress)
+      statusCallback?.(phase as ProcessingPhase, progress)
     }
 
     try {
       moduleLogger.info('Starting report generation')
 
       // Update status
-      updateStatus('initialization', 0, 'Starting report generation')
+      updateStatus(ProcessingPhase.INITIALIZATION, 0, 'Starting report generation')
 
       // Determine document type
       const isVerifiedDocument = 'verifiedData' in documentInput
@@ -91,7 +126,7 @@ export class ReportService {
         // For verified documents, we need to perform research first
         const verifiedDocument = documentInput as VerifiedDocument
 
-        updateStatus('research', 10, 'Performing research on verified data')
+        updateStatus(ProcessingPhase.RESEARCH, 10, 'Performing research on verified data')
 
         // Extract patient data from verified document
         const patientData = Object.entries(verifiedDocument.verifiedData || {})
@@ -105,7 +140,7 @@ export class ReportService {
             patientData,
             onProgress: (progress) => {
               updateStatus(
-                'research',
+                ProcessingPhase.RESEARCH,
                 Math.floor(progress * 0.6), // First 60% for research
                 `Performing research (${progress}%)`
               )
@@ -135,7 +170,7 @@ export class ReportService {
       }
 
       // Now generate the report
-      updateStatus('generation', 60, 'Generating report')
+      updateStatus(ProcessingPhase.REPORT_GENERATION, 60, 'Generating report')
 
       const reportType = isVerifiedDocument
         ? 'medical-diagnosis'
@@ -156,7 +191,7 @@ export class ReportService {
         {
           onProgress: (phase, progress) => {
             updateStatus(
-              'generation',
+              phase,
               // Scale progress to the remaining 40% (60-100%)
               60 + Math.floor(progress * 0.4),
               `Generating report (${progress}%)`
@@ -168,7 +203,7 @@ export class ReportService {
       )
 
       // Update status
-      updateStatus('complete', 100, 'Report generated')
+      updateStatus(ProcessingPhase.COMPLETION, 100, 'Report generated')
       moduleLogger.info('Report generation completed successfully', {
         reportType: result.metadata?.reportType,
       })
@@ -176,20 +211,14 @@ export class ReportService {
       // Create and return report document if needed
       if (options?.createReportDocument) {
         const reportDocument: ReportDocument = {
-          id: crypto.randomUUID(),
-          createdAt: new Date(),
+          id: crypto.randomUUID() as UUID,
+          title: result.metadata.title || `${result.metadata.reportType} Report`,
           documentType: isVerifiedDocument
             ? (documentInput as VerifiedDocument).documentType
             : (documentInput as ResearchDocument).documentType,
-          patientId: documentInput.patientId || '',
-          researchDocument: isVerifiedDocument
-            ? ({} as ResearchDocument)
-            : (documentInput as ResearchDocument),
-          reportData: result,
-          format: options.reportFormat || 'markdown',
+          patientId: documentInput.patientId || '' as UUID,
+          reportData: this.convertLegacyReportDataToReportData(result)
         }
-
-        return result
       }
 
       return result
@@ -238,9 +267,9 @@ export class ReportService {
    * @returns Generated report data
    */
   async generateReport(
-    params: ReportGenerationParams,
-    options?: ReportOptions
-  ): Promise<ReportData> {
+    params: LegacyReportGenerationParams,
+    options?: LegacyReportOptions
+  ): Promise<LegacyReportData> {
     const moduleLogger = logger.withMetadata({
       module: 'ReportService',
       method: 'generateReport',
@@ -255,7 +284,7 @@ export class ReportService {
       const startTime = Date.now()
 
       // Initial progress update
-      options?.onProgress?.('initialization', 0)
+      options?.onProgress?.(ProcessingPhase.INITIALIZATION, 0)
 
       // IMPORTANT: This service now expects research data to be provided
       // and does not perform research itself
@@ -268,7 +297,7 @@ export class ReportService {
         })
       }
 
-      options?.onProgress?.('generation', 30)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 30)
 
       // Check if this is a fallback research result
       // If so, use an alternate report generation path that's optimized for fallback content
@@ -297,10 +326,10 @@ export class ReportService {
         params.researchData.sources || []
       )
 
-      options?.onProgress?.('generation', 75)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 75)
 
       // Create the report data object
-      const reportData: ReportData = {
+      const reportData: LegacyReportData = {
         content: reportContent,
         sources: params.researchData.sources || [],
         patientId: params.patientId,
@@ -316,14 +345,14 @@ export class ReportService {
         sections: this.extractSections(reportContent),
       }
 
-      options?.onProgress?.('generation', 90)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 90)
 
       // Save the report to the database if requested
       if (params.saveToDatabase) {
         await this.saveReport(reportData)
       }
 
-      options?.onProgress?.('complete', 100)
+      options?.onProgress?.(ProcessingPhase.COMPLETION, 100)
 
       // Call success callback if provided
       options?.onSuccess?.(reportData)
@@ -347,7 +376,7 @@ export class ReportService {
       // Try using the Runnable-based approach as a fallback when formatting fails
       try {
         moduleLogger.info('Using fallback report generation method')
-        options?.onProgress?.('fallback', 40)
+        options?.onProgress?.(ProcessingPhase.RESEARCH, 40)
         
         const fallbackReport = await this.generateReportWithRunnables(
           params.researchData,
@@ -408,8 +437,8 @@ export class ReportService {
   async generateMedicalDiagnosisReport(
     researchData: ResearchResult,
     patientId: string,
-    options?: ReportOptions
-  ): Promise<ReportData> {
+    options?: LegacyReportOptions
+  ): Promise<LegacyReportData> {
     return this.generateReport(
       {
         type: 'medical-diagnosis',
@@ -432,8 +461,8 @@ export class ReportService {
    * @returns Formatted report content
    */
   async formatReportOutput(
-    reportData: ReportData,
-    format: ReportFormat = 'markdown'
+    reportData: LegacyReportData,
+    format: string = 'markdown'
   ): Promise<string> {
     if (!reportData) {
       throw new ValidationError({
@@ -510,8 +539,8 @@ export class ReportService {
   async generateReportWithRunnables(
     researchData: ResearchResult,
     patientId: string,
-    options?: ReportOptions
-  ): Promise<ReportData> {
+    options?: LegacyReportOptions
+  ): Promise<LegacyReportData> {
     try {
       // Track start time for performance measurement
       const startTime = Date.now()
@@ -523,19 +552,19 @@ export class ReportService {
       })
 
       moduleLogger.info('Starting report generation with Runnable patterns')
-      options?.onProgress?.('initialization', 10)
+      options?.onProgress?.(ProcessingPhase.INITIALIZATION, 10)
 
       // Create model with callbacks
       const llm = langChainCore.createChatOpenAI({
         temperature: 0.4,
         callbacks: createWorkflowCallbacks(null, 'report_generation', {
           onProgress: (progress: number) => {
-            options?.onProgress?.('generation', progress)
+            options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, progress)
           },
         }),
       })
 
-      options?.onProgress?.('generation', 20)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 20)
 
       // Create a structured output schema for the report
       const reportChain = langChainCore.createStructuredOutputChain(
@@ -560,17 +589,17 @@ export class ReportService {
         llm
       )
 
-      options?.onProgress?.('generation', 40)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 40)
 
       // Invoke the chain with the research data
       const result = await reportChain.invoke({
         researchText: researchData.text,
       })
 
-      options?.onProgress?.('generation', 80)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 80)
 
       // Create the report data object
-      const reportData: ReportData = {
+      const reportData: LegacyReportData = {
         content:
           result.content || result.text || JSON.stringify(result, null, 2),
         sources: researchData.sources || [],
@@ -588,14 +617,14 @@ export class ReportService {
           this.extractSections(result.content || result.text || ''),
       }
 
-      options?.onProgress?.('generation', 90)
+      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 90)
 
       // Save the report if requested
       if (options?.saveToDatabase !== false) {
         await this.saveReport(reportData)
       }
 
-      options?.onProgress?.('complete', 100)
+      options?.onProgress?.(ProcessingPhase.COMPLETION, 100)
 
       // Call success callback if provided
       options?.onSuccess?.(reportData)
@@ -657,7 +686,7 @@ export class ReportService {
     type: string,
     content: string,
     contextData?: Record<string, any>,
-    sources: any[] = []
+    sources: ResearchSource[] = []
   ): Promise<string> {
     // Format based on report type
     switch (type) {
@@ -683,7 +712,7 @@ export class ReportService {
   private formatMedicalDiagnosisReport(
     content: string,
     contextData?: Record<string, any>,
-    sources: any[] = []
+    sources: ResearchSource[] = []
   ): string {
     // Extract patient info from context data
     const patientName = contextData?.patientName || 'Patient'
@@ -726,7 +755,7 @@ export class ReportService {
   private formatResearchReport(
     content: string,
     contextData?: Record<string, any>,
-    sources: any[] = []
+    sources: ResearchSource[] = []
   ): string {
     // Create a properly formatted research report
     let report = `# Research Report\n\n`
@@ -744,8 +773,8 @@ export class ReportService {
       report += `## Sources\n\n`
       sources.forEach((source, index) => {
         report += `${index + 1}. ${source.title || 'Unknown Source'} - ${source.url || 'No URL'}\n`
-        if (source.description) {
-          report += `   ${source.description}\n\n`
+        if (source.snippet) {
+          report += `   ${source.snippet}\n\n`
         }
       })
     }
@@ -764,7 +793,7 @@ export class ReportService {
   private formatStandardReport(
     content: string,
     contextData?: Record<string, any>,
-    sources: any[] = []
+    sources: ResearchSource[] = []
   ): string {
     // Create a properly formatted standard report
     let report = `# Report\n\n`
@@ -810,7 +839,7 @@ export class ReportService {
    * @param report Report data to save
    * @returns Saved report ID
    */
-  private async saveReport(report: ReportData): Promise<string> {
+  private async saveReport(report: LegacyReportData): Promise<string> {
     const moduleLogger = logger.withMetadata({
       module: 'ReportService',
       method: 'saveReport',
@@ -829,7 +858,7 @@ export class ReportService {
 
       if (!userId) {
         moduleLogger.error('Authentication required to save report')
-        throw new AuthenticationError({
+        throw new ApplicationError({
           message: 'User must be authenticated to save reports',
           code: 'AUTH_REQUIRED_FOR_REPORT',
         })
@@ -893,7 +922,7 @@ export class ReportService {
             ? report.sources.map((s) => ({
                 title: s.title || 'Unnamed Source',
                 url: s.url,
-                description: s.description || '',
+                description: s.snippet || '',
               }))
             : null,
       }
@@ -953,8 +982,8 @@ export class ReportService {
    * @param content Report content
    * @returns Extracted sections
    */
-  private extractSections(content: string): ReportSections {
-    const sections: ReportSections = {}
+  private extractSections(content: string): Record<string, string> {
+    const sections: Record<string, string> = {}
 
     // Extract sections based on markdown headers
     const sectionRegex = /## ([^\n]+)\n\n([^#]+)(?=\n## |$)/g
@@ -975,6 +1004,67 @@ export class ReportService {
     }
 
     return sections
+  }
+
+  /**
+   * Converts legacy report data to the new report data format
+   */
+  private convertLegacyReportDataToReportData(legacyData: LegacyReportData): ReportData {
+    // Create sections in the new format
+    const newSections: ReportSections = {}
+    
+    if (legacyData.sections) {
+      Object.entries(legacyData.sections).forEach(([key, value], index) => {
+        newSections[key] = {
+          title: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+          content: value,
+          order: index,
+          editable: true
+        }
+      })
+    }
+    
+    // Create a new ReportData object from the legacy data
+    return {
+      report: {
+        id: crypto.randomUUID() as UUID,
+        title: legacyData.metadata.title || `${legacyData.metadata.reportType} Report`,
+        patientId: legacyData.patientId as UUID,
+        reportType: legacyData.metadata.reportType as unknown as ReportType,
+        status: 'COMPLETED',
+        sections: newSections,
+        sourceDocuments: [],
+        createdAt: legacyData.generatedAt.toISOString(),
+        updatedAt: legacyData.generatedAt.toISOString(),
+        metadata: {
+          generatedAt: legacyData.generatedAt.toISOString(),
+          generationTimeMs: legacyData.metadata.generationTime,
+          parameters: {
+            ...legacyData.metadata.contextData
+          },
+          version: '1.0'
+        }
+      },
+      patient: legacyData.metadata.contextData?.patient || {
+        id: legacyData.patientId as UUID,
+        firstName: 'Unknown',
+        lastName: 'Patient'
+      },
+      sourceDocuments: legacyData.sources.map(source => ({
+        id: crypto.randomUUID() as UUID,
+        title: source.title || 'Unknown Source',
+        documentType: {
+          category: 'ADMINISTRATIVE',
+          type: 'reference'
+        },
+        citation: source.url,
+        relevanceScore: 0.8
+      })),
+      formattedContent: {
+        markdown: legacyData.content,
+        text: legacyData.content
+      }
+    }
   }
 }
 

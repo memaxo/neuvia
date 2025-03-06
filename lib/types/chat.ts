@@ -7,12 +7,8 @@
  */
 
 import type { UUID, Timestamp } from './base';
-import type { 
-  WorkflowStep,
-  ProcessingPhase,
-  VerificationMetadata,
-  VerificationItem
-} from './workflow';
+import type { WorkflowStep, ProcessingPhase } from './workflow';
+import type { VerificationMetadata, VerificationItem } from './verification';
 
 // ==========================================================================
 // Chat Message Types
@@ -342,11 +338,10 @@ export function isMessageOfType<T extends ChatMessageType>(
 export function hasVerificationMetadata(
   message: ChatMessage
 ): message is ChatMessage & { metadata: { verificationMetadata: VerificationMetadata } } {
-  return Boolean(
-    message.metadata && 
-    message.type === ChatMessageType.VERIFICATION && 
-    message.metadata.verificationMetadata
-  );
+  return message.metadata !== undefined &&
+         message.metadata !== null &&
+         message.type === ChatMessageType.VERIFICATION &&
+         message.metadata.verificationMetadata !== undefined;
 }
 
 /**
