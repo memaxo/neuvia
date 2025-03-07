@@ -6,8 +6,10 @@
  */
 
 import logger from '@/lib/logger'
-import { normalizeError, ValidationError, ApplicationError } from '@/lib/errors'
+import { ApplicationError } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors/verification-errors'
 import type { DocumentType } from '@/lib/types/document'
+import { DocumentCategory } from '@/lib/types/document'
 
 /**
  * Document type detection result
@@ -20,7 +22,7 @@ interface DocumentTypeDetectionResult {
 }
 
 /**
- * Custom error class for analysis service errors
+ * Document Analysis Service
  */
 class AnalysisServiceError extends ApplicationError {
   constructor(
@@ -45,19 +47,19 @@ class AnalysisServiceError extends ApplicationError {
  */
 export class DocumentAnalysisService {
   /**
-   * Special medical document patterns for improved processing
+   * Medical document types with their categories
    */
   private readonly medicalDocumentTypes: Record<string, DocumentType> = {
-    PROGRESS_NOTE: { category: 'clinical', type: 'progress_note' },
-    HISTORY_AND_PHYSICAL: { category: 'clinical', type: 'history_physical' },
-    DISCHARGE_SUMMARY: { category: 'clinical', type: 'discharge_summary' },
-    OPERATIVE_REPORT: { category: 'clinical', type: 'operative_report' },
-    CONSULTATION: { category: 'clinical', type: 'consultation' },
-    PATHOLOGY_REPORT: { category: 'lab', type: 'pathology_report' },
-    RADIOLOGY_REPORT: { category: 'imaging', type: 'radiology_report' },
-    LAB_RESULTS: { category: 'lab', type: 'lab_results' },
-    MEDICATION_LIST: { category: 'clinical', type: 'medication_list' },
-    IMMUNIZATION_RECORD: { category: 'clinical', type: 'immunization_record' },
+    PROGRESS_NOTE: { category: DocumentCategory.CLINICAL, type: 'progress_note' },
+    HISTORY_AND_PHYSICAL: { category: DocumentCategory.CLINICAL, type: 'history_physical' },
+    DISCHARGE_SUMMARY: { category: DocumentCategory.CLINICAL, type: 'discharge_summary' },
+    OPERATIVE_REPORT: { category: DocumentCategory.CLINICAL, type: 'operative_report' },
+    CONSULTATION: { category: DocumentCategory.CLINICAL, type: 'consultation' },
+    PATHOLOGY_REPORT: { category: DocumentCategory.LAB, type: 'pathology_report' },
+    RADIOLOGY_REPORT: { category: DocumentCategory.IMAGING, type: 'radiology_report' },
+    LAB_RESULTS: { category: DocumentCategory.LAB, type: 'lab_results' },
+    MEDICATION_LIST: { category: DocumentCategory.CLINICAL, type: 'medication_list' },
+    IMMUNIZATION_RECORD: { category: DocumentCategory.CLINICAL, type: 'immunization_record' },
   }
 
   /**
@@ -129,7 +131,7 @@ export class DocumentAnalysisService {
     try {
       // Default document type
       const defaultType: DocumentTypeDetectionResult = {
-        type: { category: 'clinical', type: 'note' },
+        type: { category: DocumentCategory.CLINICAL, type: 'note' },
         confidence: 0.5,
       }
 
@@ -246,7 +248,7 @@ export class DocumentAnalysisService {
 
       // Return default type in case of error
       return {
-        type: { category: 'clinical', type: 'note' },
+        type: { category: DocumentCategory.CLINICAL, type: 'note' },
         confidence: 0.2,
       }
     }

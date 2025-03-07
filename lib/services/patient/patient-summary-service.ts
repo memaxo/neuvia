@@ -16,12 +16,15 @@ import logger from '@/lib/logger'
  */
 import { generateText } from 'ai'
 
-// Import types
-import type { DocumentType, ExtractedData } from '@/lib/types'
-import { DocumentCategory } from '@/lib/types'
-import type { ResearchOptions, ResearchResult } from '@/lib/types'
-import type { VerificationItem } from '@/lib/types'
-import { VerificationStatus as VerificationStatusEnum } from '@/lib/types'
+// Import types and values
+import { DocumentCategory, VerificationStatus as VerificationStatusEnum } from '@/lib/types'
+import type { 
+  DocumentType, 
+  ExtractedData, 
+  ResearchOptions, 
+  ResearchResult,
+  VerificationItem 
+} from '@/lib/types'
 
 // Local custom types - not yet migrated to centralized type system
 type DocumentExtraction = {
@@ -344,7 +347,7 @@ export class PatientSummaryService {
           data: { 
             documentId, 
             responseLength: response.text.length,
-            responsePreview: response.text.substring(0, 100) + '...'
+            responsePreview: `${response.text.substring(0, 100)  }...`
           },
           cause: parseError
         });
@@ -634,6 +637,7 @@ export class PatientSummaryService {
         cause: error
       });
     }
+  }
 
   /**
    * Parse the summary response from OpenAI into structured sections

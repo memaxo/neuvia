@@ -1,17 +1,8 @@
 import { createBrowserClient } from '@/lib/supabase/clients'
 import logger from '@/lib/logger'
 import { normalizeError, ApplicationError } from '@/lib/errors'
-import type {
-  ExtractedDocument,
-  ExtractedData,
-  DocumentType,
-} from '@/lib/types/document' // use import type for these interfaces
-import {
-  DocumentLifecycleStage,
-  DocumentProcessingStatus,
-  DocumentCategory,
-} from '@/lib/types/document' // normal import for enums used as values
-import type { ProcessingStatus } from '@/lib/types/document' // we have a 'currentStep?: string' in it
+import type { ExtractedDocument, DocumentType, ProcessingStatus } from '@/lib/types/document'
+import { DocumentLifecycleStage, DocumentProcessingStatus, DocumentCategory } from '@/lib/types/document'
 import {
   ProcessingPhase
 } from '@/lib/types/workflow' // normal import for enum usage
@@ -19,7 +10,6 @@ import type { UUID } from '@/lib/types/base'
 import { DocumentAnalysisService } from './analysis-service'
 import { DocumentExtractionService } from './extraction-service'
 import { DocumentStorageService } from './storage-service'
-// Remove extractedDocumentToDb import because it's unused
 import { documentFromDb } from '@/lib/types/db-adapters'
 
 // For random UUID generation
@@ -540,7 +530,7 @@ export class DocumentService {
       }
 
       // Convert DB doc to typed domain doc
-      const domainDoc = documentFromDb(dbDocument as Record<string, unknown>)
+      const domainDoc = documentFromDb(dbDocument as unknown as any)
 
       const { data: urlData, error: urlError } = await this.supabase.storage
         .from('documents')

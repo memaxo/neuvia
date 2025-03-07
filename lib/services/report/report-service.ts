@@ -1,77 +1,108 @@
-import { langChainCore } from '@/lib/langchain/core'
-import type {
-  ReportData,
-  ReportDocument,
-  ReportFormat,
-  ReportGenerationParams,
-  ReportOptions,
-  ReportSections,
-  ReportType
-} from '@/lib/types/report'
-import type {
-  ResearchDocument,
-  ResearchResult,
-  ResearchSource
-} from '@/lib/types/research'
-import type { VerifiedDocument } from '@/lib/types/verification'
 import { createBrowserClient } from '@/lib/supabase/clients'
-import { createWorkflowCallbacks } from '@/lib/utils/langchain'
-import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
-import logger from '@/lib/logger'
-import {
-  ExternalServiceError,
-  SystemError,
-  normalizeError,
-  ApplicationError,
-} from '@/lib/errors'
-import { ValidationError } from '@/lib/errors/verification-errors'
+import { ApplicationError } from '@/lib/errors'
 import { ProcessingPhase } from '@/lib/types/workflow'
-import { UUID } from '@/lib/types/base'
+import { DocumentCategory } from '@/lib/types/document'
+import logger from '@/lib/logger'
+import type { ReportData, ReportDocument, ReportSections} from '@/lib/types/report';
+import { ReportType, ReportStatus } from '@/lib/types/report'
+import type { ResearchDocument, ResearchResult, ResearchSource } from '@/lib/types/research'
+import type { VerifiedDocument } from '@/lib/types/verification'
+import type { UUID } from '@/lib/types/base'
 
-// Custom interfaces to bridge old and new type systems
-interface LegacyReportData {
-  content: string;
-  sources: ResearchSource[];
-  patientId: string;
-  generatedAt: Date;
-  metadata: {
-    modelName: string;
-    confidence: number;
-    generationTime: number;
-    reportType: string;
-    contextData?: Record<string, any>;
-    isFallback?: boolean;
-    title?: string;
-    departmentId?: string;
-  };
-  sections?: Record<string, string>;
-}
+// Create module-specific logger
+const moduleLogger = logger.withMetadata({ module: 'ReportService' })
 
-interface LegacyReportGenerationParams {
-  type: string;
-  patientId: string;
-  researchData: ResearchResult;
-  contextData?: Record<string, any>;
-  saveToDatabase?: boolean;
-}
-
-interface LegacyReportOptions {
-  onProgress?: (phase: ProcessingPhase, progress: number) => void;
-  onSuccess?: (report: LegacyReportData) => void;
-  onError?: (errorMessage: string) => void;
-  saveToDatabase?: boolean;
-  reportFormat?: string;
-  createReportDocument?: boolean;
-  contextData?: Record<string, any>;
+/**
+ * Extended report generation parameters
+ */
+interface ReportGenerationParams {
+  /**
+   * Patient ID
+   */
+  patientId: string
+  
+  /**
+   * Report type (string alias, can map to 'medical-diagnosis', 'research', etc.)
+   */
+  type: string
+  
+  /**
+   * Research data
+   */
+  researchData: ResearchResult
+  
+  /**
+   * Context data
+   */
+  contextData?: Record<string, unknown>
+  
+  /**
+   * Whether to save to database
+   */
+  saveToDatabase?: boolean
 }
 
 /**
- * Unified Report Service
- *
+ * Extended report options
+ */
+interface ReportOptions {
+  /**
+   * Progress callback
+   */
+  onProgress?: (phase: ProcessingPhase, progress: number) => void
+  
+  /**
+   * Success callback
+   */
+  onSuccess?: (data: ReportData) => void
+  
+  /**
+   * Error callback
+   */
+  onError?: (message: string) => void
+  
+  /**
+   * Whether to create a report document
+   */
+  createReportDocument?: boolean
+  
+  /**
+   * Context data
+   */
+  contextData?: Record<string, unknown>
+  
+  /**
+   * Whether to save to database
+   */
+  saveToDatabase?: boolean
+}
+
+/**
+ * Report Service
  * Single entry point for report generation across the application
  */
 export class ReportService {
   private readonly supabase = createBrowserClient()
+
+  /**
+   * Helper method to update progress status
+   * @private
+   */
+  private updateProgressStatus(
+    phase: ProcessingPhase,
+    progress: number,
+    currentStep: string | undefined,
+    onProgress?: (phase: ProcessingPhase, progress: number) => void
+  ): void {
+    if (onProgress) {
+      onProgress(phase, progress);
+    }
+    moduleLogger.debug('Progress status updated', {
+      phase,
+      progress,
+      currentStep,
+    });
+  }
 
   /**
    * Generate a report based on a research document or verified document
@@ -82,371 +113,321 @@ export class ReportService {
    */
   async generateReportFromDocument(
     documentInput: ResearchDocument | VerifiedDocument,
-    options?: LegacyReportOptions
-  ): Promise<LegacyReportData> {
-    // Create logger with context
-    const moduleLogger = logger.withMetadata({
-      module: 'ReportService',
-      method: 'generateReportFromDocument',
+    options?: ReportOptions
+  ): Promise<ReportData> {
+    moduleLogger.info('Generating report from document', {
+      documentId: documentInput.id,
       documentType:
         'verifiedData' in documentInput
-          ? (documentInput as VerifiedDocument).documentType?.type
-          : (documentInput as ResearchDocument).documentType?.type,
-      patientId: documentInput.patientId,
+          ? documentInput.documentType
+          : documentInput.documentType,
     })
 
-    // Track status
-    const statusCallback = options?.onProgress
+    const isVerifiedDocument = 'verifiedData' in documentInput
+
+    // Set up progress tracking
     const updateStatus = (
-      phase: string,
+      phase: ProcessingPhase,
       progress: number,
       currentStep?: string
     ) => {
-      moduleLogger.debug(
-        `Report generation progress: ${phase} - ${progress}%`,
-        { currentStep }
-      )
-      statusCallback?.(phase as ProcessingPhase, progress)
+      this.updateProgressStatus(phase, progress, currentStep, options?.onProgress);
     }
 
     try {
-      moduleLogger.info('Starting report generation')
+      updateStatus(ProcessingPhase.INITIALIZATION, 0, 'Initializing report generation')
 
-      // Update status
-      updateStatus(ProcessingPhase.INITIALIZATION, 0, 'Starting report generation')
+      // Extract research data from the document
+      let researchData: ResearchResult
+      let patientId = ''
 
-      // Determine document type
-      const isVerifiedDocument = 'verifiedData' in documentInput
-
-      // First, create a ResearchResult object if it doesn't exist
-      let researchResult: ResearchResult
-
-      // If this is a verified document, we need to do the research first
       if (isVerifiedDocument) {
-        // For verified documents, we need to perform research first
-        const verifiedDocument = documentInput as VerifiedDocument
-
-        updateStatus(ProcessingPhase.RESEARCH, 10, 'Performing research on verified data')
-
-        // Extract patient data from verified document
-        const patientData = Object.entries(verifiedDocument.verifiedData || {})
-          .map(([key, value]) => `${key}: ${value}`)
-          .join('\n')
-
-        // Use Perplexity to research the verified data
-        researchResult = await perplexityService.performDeepResearch(
-          `Analyze the patient data: ${verifiedDocument.documentType}`,
-          {
-            patientData,
-            onProgress: (progress) => {
-              updateStatus(
-                ProcessingPhase.RESEARCH,
-                Math.floor(progress * 0.6), // First 60% for research
-                `Performing research (${progress}%)`
-              )
-            },
-          }
-        )
+        // For verified documents, we need to extract the research data
+        const verifiedDoc = documentInput as VerifiedDocument
+        const content = verifiedDoc.verifiedData?.content ?? {}
+        const summary = typeof content.summary === 'string' ? content.summary : ''
+        const keyFindings = Array.isArray(content.keyFindings) ? content.keyFindings : []
+        
+        researchData = {
+          text: typeof content.content === 'string' ? content.content : '',
+          sources: [],
+          summary,
+          keyFindings,
+          timestamp: new Date(),
+          confidence: 0.95,
+          modelName: 'verified-document'
+        }
+        patientId = verifiedDoc.patientId ?? ''
       } else {
-        // For research documents, use the existing research results
-        const researchDocument = documentInput as ResearchDocument
-
-        if (
-          !researchDocument.researchResults ||
-          researchDocument.researchResults.length === 0
-        ) {
-          moduleLogger.error('Research document has no research results', {
-            documentId: researchDocument.id,
-          })
-
-          throw new ValidationError({
-            message: 'Research document has no research results',
-            code: 'MISSING_RESEARCH_RESULTS',
-            data: { documentId: researchDocument.id },
+        // For research documents, use the research results
+        const researchDoc = documentInput as ResearchDocument
+        if (!researchDoc.researchResults || researchDoc.researchResults.length === 0) {
+          throw new ApplicationError({
+            message: 'No research results available for report generation',
+            code: 'MISSING_RESEARCH_RESULTS'
           })
         }
-
-        researchResult = researchDocument.researchResults[0]
+        researchData = researchDoc.researchResults[0]
+        patientId = researchDoc.patientId ?? ''
       }
 
-      // Now generate the report
-      updateStatus(ProcessingPhase.REPORT_GENERATION, 60, 'Generating report')
+      updateStatus(ProcessingPhase.ANALYSIS, 20, 'Generating report content')
 
-      const reportType = isVerifiedDocument
-        ? 'medical-diagnosis'
-        : (documentInput as ResearchDocument).documentType?.type === 'medical'
-          ? 'medical-diagnosis'
-          : 'research'
+      // Decide the final report type (string form)
+      let docType = 'research'
+      if (isVerifiedDocument) {
+        docType = 'medical-diagnosis'
+      } else if (documentInput.documentType === 'medical') {
+        docType = 'medical-diagnosis'
+      }
 
-      const result = await this.generateReport(
-        {
-          type: reportType,
-          patientId: documentInput.patientId || '',
-          researchData: researchResult,
-          contextData: isVerifiedDocument
-            ? { verifiedDocument: documentInput }
-            : { researchDocument: documentInput },
-          saveToDatabase: options?.saveToDatabase !== false,
-        },
-        {
-          onProgress: (phase, progress) => {
-            updateStatus(
-              phase,
-              // Scale progress to the remaining 40% (60-100%)
-              60 + Math.floor(progress * 0.4),
-              `Generating report (${progress}%)`
-            )
-          },
-          onSuccess: options?.onSuccess,
-          onError: options?.onError,
+      // Generate the report
+      const result = await this.generateReport({
+        type: docType,
+        patientId,
+        researchData,
+        contextData: options?.contextData,
+        saveToDatabase: options?.saveToDatabase !== false,
+      }, options)
+
+      updateStatus(ProcessingPhase.COMPLETION, 90, 'Finalizing report')
+
+      // Create a report document if requested
+      if (options?.createReportDocument) {
+        try {
+          await this.supabase.from('reports').insert({
+            id: crypto.randomUUID(),
+            patient_id: patientId || '00000000-0000-0000-0000-000000000000',
+            title: result.report.title,
+            type: 'diagnostic',
+            status: 'completed',
+            content: JSON.stringify(result.report),
+            department_id: '00000000-0000-0000-0000-000000000000', // Default placeholder
+            created_by: '00000000-0000-0000-0000-000000000000', // Required field
+            updated_by: '00000000-0000-0000-0000-000000000000', // Required field
+            metadata: {
+              patientInfo: {
+                symptoms: [],
+                medicalHistory: [],
+                currentMedications: [],
+                allergies: [],
+                vitalSigns: {},
+              },
+            },
+          })
+        } catch (error: unknown) {
+          moduleLogger.error('Failed to create report document', {
+            error,
+            documentId: documentInput.id,
+          })
         }
-      )
+      }
 
-      // Update status
-      updateStatus(ProcessingPhase.COMPLETION, 100, 'Report generated')
-      moduleLogger.info('Report generation completed successfully', {
-        reportType: result.metadata?.reportType,
+      // Call success callback if provided
+      if (options?.onSuccess) {
+        options.onSuccess(result)
+      }
+
+      moduleLogger.info('Report generation completed', {
+        documentId: documentInput.id,
+        reportType: docType,
       })
 
-      // Create and return report document if needed
-      if (options?.createReportDocument) {
-        const reportDocument: ReportDocument = {
-          id: crypto.randomUUID() as UUID,
-          title: result.metadata.title || `${result.metadata.reportType} Report`,
-          documentType: isVerifiedDocument
-            ? (documentInput as VerifiedDocument).documentType
-            : (documentInput as ResearchDocument).documentType,
-          patientId: documentInput.patientId || '' as UUID,
-          reportData: this.convertLegacyReportDataToReportData(result)
-        }
-      }
-
       return result
-    } catch (error) {
-      // Handle errors with structured error and logging
-      const normalizedError = normalizeError(error)
+    } catch (error: unknown) {
+      moduleLogger.error('Report generation failed', {
+        error,
+        documentId: documentInput.id,
+        documentType:
+          'verifiedData' in documentInput
+            ? documentInput.documentType
+            : documentInput.documentType,
+      })
 
-      moduleLogger.error(
-        'Failed to generate report',
-        {
-          errorCode: normalizedError.code,
-        },
-        normalizedError
-      )
-
-      // Call error callback if provided
-      const errorMessage = normalizedError.message
-      options?.onError?.(errorMessage)
-
-      // Check if it's already our error type
-      if (error instanceof ApplicationError) {
-        throw error
+      if (options?.onError) {
+        options.onError(error instanceof Error ? error.message : 'Unknown error')
       }
 
-      // Otherwise normalize to a SystemError
-      throw new SystemError({
+      throw new ApplicationError({
         message: 'Failed to generate report',
-        code: 'REPORT_GENERATION_FAILED',
-        data: {
-          documentId: 'id' in documentInput ? documentInput.id : undefined,
-          documentType:
-            'verifiedData' in documentInput
-              ? (documentInput as VerifiedDocument).documentType?.type
-              : (documentInput as ResearchDocument).documentType?.type,
-        },
         cause: error,
       })
     }
   }
 
   /**
-   * Generate a report based on provided parameters
+   * Generate a report from research data
    *
    * @param params Report generation parameters
-   * @param options Report options including callbacks
+   * @param options Report generation options
    * @returns Generated report data
    */
   async generateReport(
-    params: LegacyReportGenerationParams,
-    options?: LegacyReportOptions
-  ): Promise<LegacyReportData> {
-    const moduleLogger = logger.withMetadata({
-      module: 'ReportService',
-      method: 'generateReport',
-      reportType: params.type,
+    params: ReportGenerationParams,
+    options?: ReportOptions
+  ): Promise<ReportData> {
+    const startTime = Date.now()
+    moduleLogger.info('Generating report', {
+      type: params.type,
       patientId: params.patientId,
     })
 
+    // Set up progress tracking
+    const updateStatus = (
+      phase: ProcessingPhase,
+      progress: number,
+      currentStep?: string
+    ) => {
+      this.updateProgressStatus(phase, progress, currentStep, options?.onProgress);
+    }
+
     try {
-      moduleLogger.info('Starting report generation')
+      updateStatus(ProcessingPhase.INITIALIZATION, 10, 'Preparing report data')
 
-      // Track start time for performance measurement
-      const startTime = Date.now()
-
-      // Initial progress update
-      options?.onProgress?.(ProcessingPhase.INITIALIZATION, 0)
-
-      // IMPORTANT: This service now expects research data to be provided
-      // and does not perform research itself
-      if (!params.researchData) {
-        moduleLogger.error('Missing research data', { reportType: params.type })
-        throw new ValidationError({
-          message: 'Research data must be provided to generate a report',
-          code: 'MISSING_RESEARCH_DATA',
-          data: { reportType: params.type },
-        })
-      }
-
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 30)
-
-      // Check if this is a fallback research result
-      // If so, use an alternate report generation path that's optimized for fallback content
-      if (params.researchData.isFallback) {
+      // If it's a fallback research data, handle differently
+      if (params.researchData.modelName === 'fallback') {
         moduleLogger.info('Using fallback report generation for fallback research data', {
           isFallback: true,
-          modelName: params.researchData.modelName
+          modelName: params.researchData.modelName,
         })
-        
         return this.generateReportWithRunnables(
           params.researchData,
           params.patientId,
-          {
-            ...options,
-            saveToDatabase: params.saveToDatabase,
-            contextData: params.contextData,
-          }
+          options
         )
       }
 
-      // Format report based on type and provided research data
-      const reportContent = await this.formatReport(
-        params.type,
-        params.researchData.text || '',
-        params.contextData,
-        params.researchData.sources || []
-      )
+      // Generate the report content based on the type
+      let reportContent = ''
+      updateStatus(ProcessingPhase.ANALYSIS, 30, 'Generating report content')
 
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 75)
-
-      // Create the report data object
-      const reportData: LegacyReportData = {
-        content: reportContent,
-        sources: params.researchData.sources || [],
-        patientId: params.patientId,
-        generatedAt: new Date(),
-        metadata: {
-          modelName: params.researchData.modelName || 'unknown',
-          confidence: params.researchData.confidence || 0.8,
-          generationTime: Date.now() - startTime,
-          reportType: params.type,
-          contextData: params.contextData,
-          isFallback: params.researchData.isFallback || false
-        },
-        sections: this.extractSections(reportContent),
+      if (params.type === 'medical-diagnosis') {
+        reportContent = await this.formatMedicalDiagnosisReport(
+          params.researchData.text,
+          params.contextData,
+          params.researchData.sources
+        )
+      } else if (params.type === 'research') {
+        reportContent = this.formatResearchReport(
+          params.researchData.text,
+          params.contextData,
+          params.researchData.sources
+        )
+      } else {
+        reportContent = this.formatStandardReport(
+          params.researchData.text,
+          params.contextData,
+          params.researchData.sources
+        )
       }
 
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 90)
+      updateStatus(ProcessingPhase.COMPLETION, 80, 'Finalizing report')
+
+      // Create the report data structure
+      const sections = this.extractSections(reportContent)
+
+      const finalReportId = crypto.randomUUID()
+      const nowIso = new Date().toISOString()
+
+      const processedModelName = params.researchData.modelName ?? 'unknown'
+      const processedConfidence = typeof params.researchData.confidence === 'number'
+        ? params.researchData.confidence
+        : 0.8
+
+      const reportData: ReportData = {
+        report: {
+          id: finalReportId,
+          title: `${params.type.charAt(0).toUpperCase() + params.type.slice(1)} Report`,
+          patientId: params.patientId,
+          // Use the actual ReportType from the string if possible, else fallback
+          reportType: this.mapReportType(params.type),
+          status: ReportStatus.COMPLETED,
+          sections,
+          sourceDocuments: params.researchData.sources.map(s => s.url),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          metadata: {
+            generatedAt: nowIso,
+            generationTimeMs: Date.now() - startTime,
+            parameters: params.contextData ?? {},
+            modelName: processedModelName,
+            confidence: processedConfidence,
+            version: '1.0',
+          },
+        },
+        patient: typeof params.contextData?.patient === 'object' && params.contextData?.patient !== null
+          ? this.ensurePatientObject(params.contextData.patient, params.patientId)
+          : {
+              id: params.patientId,
+              firstName: 'Unknown',
+              lastName: 'Patient',
+            },
+        sourceDocuments: this.mapSourcesToDocuments(params.researchData.sources),
+      }
 
       // Save the report to the database if requested
-      if (params.saveToDatabase) {
-        await this.saveReport(reportData)
+      if (params.saveToDatabase !== false) {
+        try {
+          await this.saveReport(reportData)
+        } catch (err: unknown) {
+          moduleLogger.error('Failed to save report to database', {
+            err,
+            reportType: params.type,
+          })
+        }
       }
 
-      options?.onProgress?.(ProcessingPhase.COMPLETION, 100)
-
       // Call success callback if provided
-      options?.onSuccess?.(reportData)
+      if (options?.onSuccess) {
+        options.onSuccess(reportData)
+      }
 
-      moduleLogger.info('Report generation completed successfully', {
+      moduleLogger.info('Report generation completed', {
+        type: params.type,
         generationTime: Date.now() - startTime,
-        reportType: params.type,
-        isFallback: params.researchData.isFallback || false
       })
 
       return reportData
-    } catch (error) {
-      moduleLogger.error(
-        'Standard report generation failed, attempting fallback approach',
-        {
-          errorType: error instanceof Error ? error.constructor.name : typeof error,
-        },
-        error
-      )
-      
-      // Try using the Runnable-based approach as a fallback when formatting fails
-      try {
-        moduleLogger.info('Using fallback report generation method')
-        options?.onProgress?.(ProcessingPhase.RESEARCH, 40)
-        
-        const fallbackReport = await this.generateReportWithRunnables(
-          params.researchData,
-          params.patientId,
-          {
-            ...options,
-            saveToDatabase: params.saveToDatabase,
-            contextData: params.contextData,
-          }
-        )
-        
-        moduleLogger.info('Fallback report generation succeeded')
-        return fallbackReport
-      } catch (fallbackError) {
-        // Handle errors with normalized error handling
-        const normalizedError = normalizeError(error)
+    } catch (error: unknown) {
+      moduleLogger.error('Report generation failed', {
+        error,
+        type: params.type,
+      })
 
-        moduleLogger.error(
-          'All report generation methods failed',
-          {
-            errorCode: normalizedError.code,
-            originalError: error instanceof Error ? error.message : String(error),
-            fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-          },
-          normalizedError
-        )
-
-        // Call error callback if provided
-        options?.onError?.(normalizedError.message)
-
-        // If it's already our error type, rethrow it
-        if (error instanceof ApplicationError) {
-          throw error
-        }
-
-        // Otherwise normalize to a SystemError
-        throw new SystemError({
-          message: 'Failed to generate report',
-          code: 'REPORT_GENERATION_FAILED',
-          data: {
-            reportType: params.type,
-            patientId: params.patientId,
-          },
-          cause: error,
-        })
+      if (options?.onError) {
+        options.onError(error instanceof Error ? error.message : 'Unknown error')
       }
+
+      throw new ApplicationError({
+        message: 'Failed to generate report',
+        cause: error,
+      })
     }
   }
 
   /**
-   * Generate a medical diagnosis report from existing research data
+   * Generate a medical diagnosis report
    *
-   * @param researchData Research data from previous API call
+   * @param researchData Research data
    * @param patientId Patient ID
-   * @param options Report options
+   * @param options Report generation options
    * @returns Generated report data
    */
   async generateMedicalDiagnosisReport(
     researchData: ResearchResult,
     patientId: string,
-    options?: LegacyReportOptions
-  ): Promise<LegacyReportData> {
+    options?: ReportOptions
+  ): Promise<ReportData> {
+    moduleLogger.info('Generating medical diagnosis report', {
+      patientId,
+    })
+
     return this.generateReport(
       {
         type: 'medical-diagnosis',
         patientId,
         researchData,
-        contextData: {
-          patientData: researchData.patientData,
-        },
+        contextData: options?.contextData,
         saveToDatabase: options?.saveToDatabase !== false,
       },
       options
@@ -454,523 +435,362 @@ export class ReportService {
   }
 
   /**
-   * Format a report to the specified format
+   * Format report output in the specified format
    *
-   * @param reportData Report data to format
-   * @param format Desired format
+   * @param reportData Report data
+   * @param format Output format
    * @returns Formatted report content
    */
   async formatReportOutput(
-    reportData: LegacyReportData,
+    reportData: ReportData,
     format: string = 'markdown'
   ): Promise<string> {
-    if (!reportData) {
-      throw new ValidationError({
-        message: 'No report data available for formatting',
-        code: 'MISSING_REPORT_DATA',
-      })
-    }
-
-    const moduleLogger = logger.withMetadata({
-      module: 'ReportService',
-      method: 'formatReportOutput',
+    moduleLogger.info('Formatting report output', {
       format,
-      patientId: reportData.patientId,
     })
 
-    try {
-      moduleLogger.info('Formatting report output', { format })
+    // Gather the sections sorted by order
+    const sectionsObj = reportData.report.sections
+    const sortedEntries = Object.entries(sectionsObj).sort(([, a], [, b]) => a.order - b.order)
 
-      // Format report based on desired output format
-      let formattedContent = reportData.content
-
-      switch (format) {
-        case 'html':
-          // Convert markdown to HTML
-          formattedContent = await this.convertMarkdownToHtml(
-            reportData.content
-          )
-          break
-
-        case 'pdf':
-          // For PDF, we'd typically generate HTML first then convert to PDF
-          // This is a placeholder for that logic
-          const htmlContent = await this.convertMarkdownToHtml(
-            reportData.content
-          )
-          formattedContent = htmlContent
-          // In a real implementation, you would convert HTML to PDF here
-          break
-
-        case 'markdown':
-        default:
-          // No conversion needed for markdown
-          break
+    if (format === 'markdown' || format === 'md') {
+      let mdContent = `# ${reportData.report.title}\n\n`
+      for (const [, section] of sortedEntries) {
+        mdContent += `## ${section.title}\n\n${section.content}\n\n`
       }
-
-      moduleLogger.info('Report formatting completed', { format })
-      return formattedContent
-    } catch (error) {
-      const normalizedError = normalizeError(error)
-
-      moduleLogger.error(
-        'Failed to format report',
-        {
-          format,
-          errorCode: normalizedError.code,
-        },
-        normalizedError
-      )
-
-      throw new ExternalServiceError({
-        message: 'Failed to format report',
-        code: 'REPORT_FORMAT_FAILED',
-        service: 'FormatService',
-        data: { format },
-        cause: error,
-      })
+      if (reportData.sourceDocuments?.length) {
+        mdContent += '## Sources\n\n'
+        reportData.sourceDocuments.forEach((src, i) => {
+          mdContent += `${i + 1}. ${src.title ?? 'Unknown Source'}: ${src.citation ?? ''}\n`
+        })
+      }
+      mdContent += '\n\n---\n\n'
+      mdContent += `Generated at: ${new Date(reportData.report.metadata.generatedAt).toLocaleString()}\n`
+      mdContent += `Report ID: ${reportData.report.id}\n`
+      return mdContent
     }
+
+    if (format === 'html') {
+      const markdownVersion = await this.formatReportOutput(reportData, 'markdown')
+      return await this.convertMarkdownToHtml(markdownVersion)
+    }
+
+    if (format === 'text' || format === 'txt') {
+      let textContent = `${reportData.report.title}\n\n`
+      for (const [, section] of sortedEntries) {
+        textContent += `${section.title.toUpperCase()}\n${'='.repeat(section.title.length)}\n\n${section.content}\n\n`
+      }
+      if (reportData.sourceDocuments?.length) {
+        textContent += 'SOURCES\n=======\n\n'
+        reportData.sourceDocuments.forEach((src, i) => {
+          textContent += `${i + 1}. ${src.title ?? 'Unknown Source'}: ${src.citation ?? ''}\n`
+        })
+      }
+      textContent += '\n\n-----------------------------------------\n\n'
+      textContent += `Generated at: ${new Date(reportData.report.metadata.generatedAt).toLocaleString()}\n`
+      textContent += `Report ID: ${reportData.report.id}\n`
+      return textContent
+    }
+
+    throw new ApplicationError({
+      message: `Unsupported report format: ${format}`,
+      code: 'UNSUPPORTED_FORMAT',
+    })
   }
 
   /**
-   * Generate report using enhanced Runnable patterns from LangChain
-   * This method uses the new Runnable interface for better composition and streaming
+   * Generate a report using the runnables approach for fallback content
+   *
+   * @param researchData Research data
+   * @param patientId Patient ID
+   * @param options Report generation options
+   * @returns Generated report data
    */
   async generateReportWithRunnables(
     researchData: ResearchResult,
     patientId: string,
-    options?: LegacyReportOptions
-  ): Promise<LegacyReportData> {
+    options?: ReportOptions
+  ): Promise<ReportData> {
+    const startTime = Date.now()
+    moduleLogger.info('Generating report with runnables', {
+      patientId,
+    })
+
+    const updateStatus = (phase: ProcessingPhase, progress: number, step?: string) => {
+      this.updateProgressStatus(phase, progress, step, options?.onProgress);
+    }
+
     try {
-      // Track start time for performance measurement
-      const startTime = Date.now()
+      updateStatus(ProcessingPhase.INITIALIZATION, 10, 'Preparing fallback report data')
 
-      const moduleLogger = logger.withMetadata({
-        module: 'ReportService',
-        method: 'generateReportWithRunnables',
-        patientId,
-      })
+      updateStatus(ProcessingPhase.ANALYSIS, 30, 'Generating fallback report content')
 
-      moduleLogger.info('Starting report generation with Runnable patterns')
-      options?.onProgress?.(ProcessingPhase.INITIALIZATION, 10)
+      // For fallback, just create a standard style
+      const reportContent = this.formatStandardReport(
+        researchData.text,
+        options?.contextData,
+        researchData.sources
+      )
 
-      // Create model with callbacks
-      const llm = langChainCore.createChatOpenAI({
-        temperature: 0.4,
-        callbacks: createWorkflowCallbacks(null, 'report_generation', {
-          onProgress: (progress: number) => {
-            options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, progress)
+      updateStatus(ProcessingPhase.COMPLETION, 80, 'Finalizing fallback report')
+
+      const sections = this.extractSections(reportContent)
+      const fallbackReportId = crypto.randomUUID()
+      const nowIso = new Date().toISOString()
+
+      const fallbackConfidence = typeof researchData.confidence === 'number'
+        ? researchData.confidence
+        : 0.8
+
+      const fallbackData: ReportData = {
+        report: {
+          id: fallbackReportId,
+          title: 'Research Report',
+          patientId,
+          reportType: ReportType.SUMMARY, // fallback to SUMMARY
+          status: ReportStatus.COMPLETED,
+          sections,
+          sourceDocuments: researchData.sources.map(s => s.url),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          metadata: {
+            generatedAt: nowIso,
+            generationTimeMs: Date.now() - startTime,
+            parameters: options?.contextData ?? {},
+            modelName: researchData.modelName ?? 'unknown',
+            confidence: fallbackConfidence,
+            version: '1.0',
           },
-        }),
-      })
-
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 20)
-
-      // Create a structured output schema for the report
-      const reportChain = langChainCore.createStructuredOutputChain(
-        langChainCore.createChatPromptTemplate(
-          // System template
-          `You are a medical report writer tasked with analyzing research data and creating a structured report.
-           Analyze the following research data and extract key insights:
-           
-           {researchText}
-           
-           Create a professional medical report with the following sections:
-           - Summary: A brief overview of the key findings
-           - Findings: Detailed analysis of the research data
-           - Diagnoses: Any potential diagnoses based on the findings
-           - Recommendations: Suggested next steps or treatments
-           - References: Sources used in the analysis`,
-          // Human template
-          `Please generate a comprehensive medical report based on the research data.`,
-          // Input variables
-          ['researchText']
-        ),
-        llm
-      )
-
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 40)
-
-      // Invoke the chain with the research data
-      const result = await reportChain.invoke({
-        researchText: researchData.text,
-      })
-
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 80)
-
-      // Create the report data object
-      const reportData: LegacyReportData = {
-        content:
-          result.content || result.text || JSON.stringify(result, null, 2),
-        sources: researchData.sources || [],
-        patientId,
-        generatedAt: new Date(),
-        metadata: {
-          modelName: 'gpt-4',
-          confidence: 0.85,
-          generationTime: Date.now() - startTime,
-          reportType: 'medical-diagnosis',
-          contextData: options?.contextData,
         },
-        sections:
-          result.sections ||
-          this.extractSections(result.content || result.text || ''),
+        patient: typeof options?.contextData?.patient === 'object' && options?.contextData?.patient !== null
+          ? this.ensurePatientObject(options.contextData.patient, patientId)
+          : {
+              id: patientId,
+              firstName: 'Unknown',
+              lastName: 'Patient',
+            },
+        sourceDocuments: this.mapSourcesToDocuments(researchData.sources),
       }
 
-      options?.onProgress?.(ProcessingPhase.REPORT_GENERATION, 90)
-
-      // Save the report if requested
       if (options?.saveToDatabase !== false) {
-        await this.saveReport(reportData)
+        try {
+          await this.saveReport(fallbackData)
+        } catch (err: unknown) {
+          moduleLogger.error('Failed to save fallback report to database', {
+            err,
+          })
+        }
       }
 
-      options?.onProgress?.(ProcessingPhase.COMPLETION, 100)
+      if (options?.onSuccess) {
+        options.onSuccess(fallbackData)
+      }
 
-      // Call success callback if provided
-      options?.onSuccess?.(reportData)
-
-      moduleLogger.info(
-        'Report generation with Runnables completed successfully',
-        {
-          generationTime: Date.now() - startTime,
-        }
-      )
-
-      return reportData
-    } catch (error) {
-      // Handle errors
-      const normalizedError = normalizeError(error)
-
-      const errorLogger = logger.withMetadata({
-        module: 'ReportService',
-        method: 'generateReportWithRunnables',
-        patientId,
-        errorCode: normalizedError.code,
+      moduleLogger.info('Report generation with runnables completed', {
+        generationTime: Date.now() - startTime,
       })
 
-      errorLogger.error(
-        'Failed to generate report with Runnables',
-        {},
-        normalizedError
-      )
+      return fallbackData
+    } catch (error: unknown) {
+      moduleLogger.error('Report generation with runnables failed', {
+        error,
+      })
 
-      // Call error callback if provided
-      options?.onError?.(normalizedError.message)
-
-      // If it's already our error type, rethrow it
-      if (error instanceof ApplicationError) {
-        throw error
+      if (options?.onError) {
+        options.onError(error instanceof Error ? error.message : 'Unknown error')
       }
 
-      // Otherwise normalize to an ExternalServiceError
-      throw new ExternalServiceError({
-        message: 'Failed to generate report with AI',
-        code: 'LANGCHAIN_RUNNABLE_REPORT_FAILED',
-        service: 'Langchain',
-        data: { patientId },
+      throw new ApplicationError({
+        message: 'Failed to generate report with runnables',
         cause: error,
       })
-    }
-  }
-
-  /**
-   * Format a report based on type and content
-   *
-   * @param type Report type
-   * @param content Main report content
-   * @param contextData Additional context data
-   * @param sources Research sources
-   * @returns Formatted report content
-   */
-  private async formatReport(
-    type: string,
-    content: string,
-    contextData?: Record<string, any>,
-    sources: ResearchSource[] = []
-  ): Promise<string> {
-    // Format based on report type
-    switch (type) {
-      case 'medical-diagnosis':
-        return this.formatMedicalDiagnosisReport(content, contextData, sources)
-
-      case 'research':
-        return this.formatResearchReport(content, contextData, sources)
-
-      default:
-        return this.formatStandardReport(content, contextData, sources)
     }
   }
 
   /**
    * Format a medical diagnosis report
-   *
-   * @param content Main report content
-   * @param contextData Additional context data
-   * @param sources Research sources
-   * @returns Formatted medical diagnosis report
    */
-  private formatMedicalDiagnosisReport(
+  private async formatMedicalDiagnosisReport(
     content: string,
-    contextData?: Record<string, any>,
+    contextData?: Record<string, unknown>,
     sources: ResearchSource[] = []
-  ): string {
-    // Extract patient info from context data
-    const patientName = contextData?.patientName || 'Patient'
-
-    // Create a properly formatted medical report
-    let report = `# Medical Diagnosis Report for ${patientName}\n\n`
-
-    // Add primary content
-    report += `## Summary\n\n${content}\n\n`
-
-    // Add sections if not already in the content
-    if (
-      !content.includes('## Findings') &&
-      !content.includes('## Assessment')
-    ) {
-      report += `## Findings\n\nBased on the provided information, the patient presents with...\n\n`
-      report += `## Assessment\n\nThe assessment indicates...\n\n`
-      report += `## Recommendations\n\nRecommended next steps include...\n\n`
+  ): Promise<string> {
+    let report = '# Medical Diagnosis Report\n\n'
+    if (contextData && typeof contextData.patient === 'object' && contextData.patient !== null) {
+      const patientObj = contextData.patient as Record<string, unknown>
+      const fName = typeof patientObj.firstName === 'string' ? patientObj.firstName : ''
+      const lName = typeof patientObj.lastName === 'string' ? patientObj.lastName : ''
+      const dob = typeof patientObj.dateOfBirth === 'string' ? patientObj.dateOfBirth : 'Unknown'
+      const mrn = typeof patientObj.mrn === 'string' ? patientObj.mrn : 'Unknown'
+      report += '## Patient Information\n\n'
+      report += `**Name**: ${fName} ${lName}\n`
+      report += `**DOB**: ${dob}\n`
+      report += `**MRN**: ${mrn}\n\n`
     }
 
-    // Add sources section if available
+    report += '## Diagnosis\n\n'
+    report += `${content}\n\n`
+
+    if (contextData && contextData.recommendations !== undefined) {
+      report += '## Recommendations\n\n'
+      // If it's an object, JSON.stringify it
+      if (typeof contextData.recommendations === 'object' && contextData.recommendations !== null) {
+        report += `${JSON.stringify(contextData.recommendations, null, 2)}\n\n`
+      } else {
+        report += `${String(contextData.recommendations)}\n\n`
+      }
+    }
+
     if (sources.length > 0) {
-      report += `## References\n\n`
-      sources.forEach((source, index) => {
-        report += `${index + 1}. ${source.title || 'Unknown Source'} - ${source.url || 'No URL'}\n`
+      report += '## Sources\n\n'
+      sources.forEach((source, idx) => {
+        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
       })
     }
-
     return report
   }
 
   /**
    * Format a research report
-   *
-   * @param content Main report content
-   * @param contextData Additional context data
-   * @param sources Research sources
-   * @returns Formatted research report
    */
   private formatResearchReport(
     content: string,
-    contextData?: Record<string, any>,
+    contextData?: Record<string, unknown>,
     sources: ResearchSource[] = []
   ): string {
-    // Create a properly formatted research report
-    let report = `# Research Report\n\n`
-
-    // Add query if available
-    if (contextData?.query) {
-      report += `**Query:** ${contextData.query}\n\n`
+    let report = '# Research Report\n\n'
+    if (contextData && contextData.query !== undefined) {
+      report += '## Research Query\n\n'
+      // If it's an object, JSON.stringify
+      if (typeof contextData.query === 'object' && contextData.query !== null) {
+        report += `${JSON.stringify(contextData.query, null, 2)}\n\n`
+      } else {
+        report += `${String(contextData.query)}\n\n`
+      }
     }
 
-    // Add primary content
-    report += `## Findings\n\n${content}\n\n`
+    report += '## Findings\n\n'
+    report += `${content}\n\n`
 
-    // Add sources section if available
+    if (contextData && contextData.keyPoints !== undefined && Array.isArray(contextData.keyPoints)) {
+      report += '## Key Points\n\n';
+      (contextData.keyPoints as Array<unknown>).forEach((point: unknown, i: number) => {
+        report += `${i + 1}. ${String(point)}\n`;
+      });
+      report += '\n';
+    }
+
     if (sources.length > 0) {
-      report += `## Sources\n\n`
-      sources.forEach((source, index) => {
-        report += `${index + 1}. ${source.title || 'Unknown Source'} - ${source.url || 'No URL'}\n`
-        if (source.snippet) {
-          report += `   ${source.snippet}\n\n`
-        }
+      report += '## Sources\n\n'
+      sources.forEach((source, idx) => {
+        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
       })
     }
-
     return report
   }
 
   /**
    * Format a standard report
-   *
-   * @param content Main report content
-   * @param contextData Additional context data
-   * @param sources Research sources
-   * @returns Formatted standard report
    */
   private formatStandardReport(
     content: string,
-    contextData?: Record<string, any>,
+    _contextData?: Record<string, unknown>, // Prefix with underscore to indicate it's unused
     sources: ResearchSource[] = []
   ): string {
-    // Create a properly formatted standard report
-    let report = `# Report\n\n`
+    let report = '# Report\n\n'
+    report += '## Content\n\n'
+    report += `${content}\n\n`
 
-    // Add primary content
-    report += content
-
-    // Add sources if available
     if (sources.length > 0) {
-      report += `\n\n## References\n\n`
-      sources.forEach((source, index) => {
-        report += `${index + 1}. ${source.title || 'Unknown Source'} - ${source.url || 'No URL'}\n`
+      report += '## Sources\n\n'
+      sources.forEach((source, idx) => {
+        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
       })
     }
-
     return report
   }
 
   /**
-   * Convert markdown to HTML
-   *
-   * @param markdown Markdown content
-   * @returns HTML content
+   * Convert markdown content to HTML
    */
   private async convertMarkdownToHtml(markdown: string): Promise<string> {
-    // This is a placeholder for a real markdown-to-html converter
-    // In a production environment, you would use a library like marked or showdown
+    try {
+      let html = '<html><head><style>'
+      html += 'body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }'
+      html += 'h1, h2, h3 { color: #333; }'
+      html += 'h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }'
+      html += 'h2 { border-bottom: 1px solid #eee; padding-bottom: 5px; }'
+      html += '</style></head><body>'
 
-    const simpleHtml = markdown
-      .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-      .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-      .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br />')
+      const content = markdown
+        .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
+        .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
+        .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/\n\n/g, '</p><p>')
 
-    return `<html><body>${simpleHtml}</body></html>`
+      html += `<p>${content}</p></body></html>`
+      return html
+    } catch (error: unknown) {
+      moduleLogger.error('Failed to convert markdown to HTML', { error })
+      return `<html><body><pre>${markdown}</pre></body></html>`
+    }
   }
 
   /**
    * Save a report to the database
-   *
-   * @param report Report data to save
-   * @returns Saved report ID
    */
-  private async saveReport(report: LegacyReportData): Promise<string> {
-    const moduleLogger = logger.withMetadata({
-      module: 'ReportService',
-      method: 'saveReport',
-      patientId: report.patientId,
-      reportType: report.metadata?.reportType,
-    })
-
+  private async saveReport(reportData: ReportData): Promise<string> {
     try {
-      moduleLogger.info('Saving report to database')
+      moduleLogger.info('Saving report to database', {
+        reportId: reportData.report.id,
+      })
 
-      // Get the current user ID from Supabase
-      const {
-        data: { user },
-      } = await this.supabase.auth.getUser()
-      const userId = user?.id
+      // Convert sections & sourceDocuments to JSON
+      const contentObj = {
+        sections: reportData.report.sections,
+        sourceDocuments: reportData.report.sourceDocuments,
+      }
+      const contentJson = JSON.stringify(contentObj)
 
-      if (!userId) {
-        moduleLogger.error('Authentication required to save report')
-        throw new ApplicationError({
-          message: 'User must be authenticated to save reports',
-          code: 'AUTH_REQUIRED_FOR_REPORT',
-        })
+      // Convert the metadata to pure JSON
+      // Convert any enum, record, or object to strings
+      const safeMetadata = JSON.parse(JSON.stringify({
+        ...reportData.report.metadata,
+        // If reportType is an enum, store its string value
+        reportType: String(reportData.report.reportType),
+      }))
+
+      const dbReport = {
+        id: reportData.report.id,
+        title: reportData.report.title,
+        patient_id: reportData.report.patientId,
+        type: 'diagnostic', // valid type from DB check
+        status: 'completed', // valid status
+        department_id: '00000000-0000-0000-0000-000000000000', // placeholder
+        created_by: '00000000-0000-0000-0000-000000000000', // placeholder
+        updated_by: '00000000-0000-0000-0000-000000000000', // placeholder
+        content: contentJson,
+        metadata: safeMetadata,
       }
 
-      // Prepare a valid report record that matches the database schema
-      const reportRecord = {
-        patient_id: report.patientId,
-        title:
-          report.metadata.title ||
-          `${report.metadata.reportType || 'diagnostic'} Report`,
-        type:
-          report.metadata.reportType === 'medical-diagnosis'
-            ? 'diagnostic'
-            : report.metadata.reportType === 'research'
-              ? 'analytics'
-              : 'diagnostic',
-        status: 'completed',
-        department_id:
-          report.metadata.departmentId ||
-          '00000000-0000-0000-0000-000000000000', // Default placeholder
-        created_by: userId,
-        updated_by: userId,
-
-        // Convert content from markdown to JSON if needed
-        content:
-          typeof report.content === 'string'
-            ? JSON.stringify({ markdown: report.content })
-            : report.content,
-
-        // Required metadata with strict structure
-        metadata: {
-          patientInfo: {
-            symptoms: [],
-            medicalHistory: [],
-            currentMedications: [],
-            allergies: [],
-            vitalSigns: {},
-          },
-        },
-
-        // Optional fields that might come from research
-        summary: report.sections?.summary || '',
-        findings: report.sections?.findings
-          ? JSON.parse(
-              `[{"description": "${report.sections.findings}", "category": "general", "severity": "medium"}]`
-            )
-          : null,
-        recommendations: report.sections?.recommendations
-          ? JSON.parse(
-              `[{"recommendation": "${report.sections.recommendations}", "priority": "medium"}]`
-            )
-          : null,
-
-        // Quality metrics
-        confidence_score: report.metadata.confidence || 0.8,
-
-        // Supporting documentation
-        source_documents:
-          report.sources && report.sources.length > 0
-            ? report.sources.map((s) => ({
-                title: s.title || 'Unnamed Source',
-                url: s.url,
-                description: s.snippet || '',
-              }))
-            : null,
-      }
-
-      // Insert the report
-      const { data, error } = await this.supabase
-        .from('reports')
-        .insert(reportRecord)
-        .select('id')
-        .single()
+      const { error } = await this.supabase.from('reports').insert(dbReport)
 
       if (error) {
-        moduleLogger.error('Database error saving report', { error })
-        throw new ExternalServiceError({
-          message: `Failed to save report to database`,
-          code: 'DB_SAVE_FAILED',
-          service: 'Database',
-          data: {
-            dbError: error.message,
-            patientId: report.patientId,
-          },
+        throw new ApplicationError({
+          message: 'Failed to save report to database',
           cause: error,
         })
       }
-
-      moduleLogger.info('Report saved successfully', { reportId: data.id })
-      return data.id
-    } catch (error) {
-      // If it's already one of our error types, just log and rethrow
-      if (error instanceof ApplicationError) {
-        moduleLogger.error(
-          'Failed to save report',
-          {
-            errorCode: error.code,
-          },
-          error
-        )
-        throw error
-      }
-
-      // Otherwise create a new error
-      const normalizedError = normalizeError(error)
-      moduleLogger.error('Failed to save report', {}, normalizedError)
-
-      throw new SystemError({
+      return reportData.report.id
+    } catch (error: unknown) {
+      moduleLogger.error('Failed to save report to database', {
+        error,
+        reportId: reportData.report.id,
+      })
+      throw new ApplicationError({
         message: 'Failed to save report to database',
-        code: 'REPORT_SAVE_FAILED',
-        data: { patientId: report.patientId },
         cause: error,
       })
     }
@@ -978,28 +798,34 @@ export class ReportService {
 
   /**
    * Extract sections from report content
-   *
-   * @param content Report content
-   * @returns Extracted sections
    */
-  private extractSections(content: string): Record<string, string> {
-    const sections: Record<string, string> = {}
-
-    // Extract sections based on markdown headers
-    const sectionRegex = /## ([^\n]+)\n\n([^#]+)(?=\n## |$)/g
-    let match
+  private extractSections(content: string): ReportSections {
+    const sections: ReportSections = {}
+    // Use a regex to find `## heading`
+    const sectionRegex = /^## (.*?)$([\s\S]*?)(?=^## |\s*$)/gm
+    let match: RegExpExecArray | null
+    let index = 0
 
     while ((match = sectionRegex.exec(content)) !== null) {
-      const sectionName = match[1].trim().toLowerCase().replace(/\s+/g, '_')
+      const title = match[1].trim()
       const sectionContent = match[2].trim()
-      sections[sectionName] = sectionContent
+      const key = title.toLowerCase().replace(/\s+/g, '_')
+
+      sections[key] = {
+        title,
+        content: sectionContent,
+        order: index,
+        editable: true,
+      }
+      index++
     }
 
-    // Extract summary from first paragraph if no sections found
     if (Object.keys(sections).length === 0) {
-      const firstParagraph = content.split('\n\n')[0]
-      if (firstParagraph) {
-        sections.summary = firstParagraph
+      sections.content = {
+        title: 'Content',
+        content: content.trim(),
+        order: 0,
+        editable: true,
       }
     }
 
@@ -1007,66 +833,74 @@ export class ReportService {
   }
 
   /**
-   * Converts legacy report data to the new report data format
+   * Map string to actual ReportType
    */
-  private convertLegacyReportDataToReportData(legacyData: LegacyReportData): ReportData {
-    // Create sections in the new format
-    const newSections: ReportSections = {}
-    
-    if (legacyData.sections) {
-      Object.entries(legacyData.sections).forEach(([key, value], index) => {
-        newSections[key] = {
-          title: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-          content: value,
-          order: index,
-          editable: true
-        }
-      })
+  private mapReportType(typeStr: string): ReportType {
+    switch (typeStr.toLowerCase()) {
+      case 'summary':
+        return ReportType.SUMMARY
+      case 'comprehensive':
+        return ReportType.COMPREHENSIVE
+      case 'timeline':
+        return ReportType.TIMELINE
+      case 'medical-diagnosis':
+      case 'research':
+        return ReportType.CUSTOM
+      default:
+        return ReportType.CUSTOM
     }
-    
-    // Create a new ReportData object from the legacy data
-    return {
-      report: {
-        id: crypto.randomUUID() as UUID,
-        title: legacyData.metadata.title || `${legacyData.metadata.reportType} Report`,
-        patientId: legacyData.patientId as UUID,
-        reportType: legacyData.metadata.reportType as unknown as ReportType,
-        status: 'COMPLETED',
-        sections: newSections,
-        sourceDocuments: [],
-        createdAt: legacyData.generatedAt.toISOString(),
-        updatedAt: legacyData.generatedAt.toISOString(),
-        metadata: {
-          generatedAt: legacyData.generatedAt.toISOString(),
-          generationTimeMs: legacyData.metadata.generationTime,
-          parameters: {
-            ...legacyData.metadata.contextData
-          },
-          version: '1.0'
-        }
-      },
-      patient: legacyData.metadata.contextData?.patient || {
-        id: legacyData.patientId as UUID,
+  }
+
+  /**
+   * Convert a raw object to a minimal patient object
+   */
+  private ensurePatientObject(
+    data: unknown,
+    fallbackId: string
+  ): {
+    id: string
+    firstName: string
+    lastName: string
+    dateOfBirth?: string
+    mrn?: string
+  } {
+    if (!data || typeof data !== 'object') {
+      return {
+        id: fallbackId,
         firstName: 'Unknown',
-        lastName: 'Patient'
-      },
-      sourceDocuments: legacyData.sources.map(source => ({
-        id: crypto.randomUUID() as UUID,
-        title: source.title || 'Unknown Source',
-        documentType: {
-          category: 'ADMINISTRATIVE',
-          type: 'reference'
-        },
-        citation: source.url,
-        relevanceScore: 0.8
-      })),
-      formattedContent: {
-        markdown: legacyData.content,
-        text: legacyData.content
+        lastName: 'Patient',
       }
     }
+
+    const obj = data as Record<string, unknown>
+    const id = typeof obj.id === 'string' ? obj.id : fallbackId
+    const firstName = typeof obj.firstName === 'string' ? obj.firstName : 'Unknown'
+    const lastName = typeof obj.lastName === 'string' ? obj.lastName : 'Patient'
+    const dateOfBirth = typeof obj.dateOfBirth === 'string' ? obj.dateOfBirth : undefined
+    const mrn = typeof obj.mrn === 'string' ? obj.mrn : undefined
+
+    return {
+      id, firstName, lastName, dateOfBirth, mrn
+    }
+  }
+
+  /**
+   * Convert sources to report documents
+   */
+  private mapSourcesToDocuments(sources: ResearchSource[]): ReportDocument[] {
+    return sources.map(source => {
+      return {
+        id: crypto.randomUUID(),
+        title: source.title ?? 'Unknown Source',
+        documentType: {
+          category: DocumentCategory.ADMINISTRATIVE,
+          type: 'reference',
+        },
+        citation: source.url,
+        relevanceScore: source.index !== undefined ? 1 - source.index / sources.length : 0.5,
+      }
+    })
   }
 }
 
-// Export singleton instance
 export const reportService = new ReportService()

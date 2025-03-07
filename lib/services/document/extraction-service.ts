@@ -10,13 +10,104 @@ import { Document } from 'langchain/document'
 import { TextLoader } from 'langchain/document_loaders/fs/text'
 import logger from '@/lib/logger'
 import { mistral } from '@ai-sdk/mistral'
-import { normalizeError, ValidationError, SystemError, ApplicationError, ExternalServiceError } from '@/lib/errors'
+import { normalizeError, SystemError, ApplicationError, ExternalServiceError } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors/verification-errors'
 
 import type { 
   DocumentType, 
   ExtractedData, 
   ProcessingStatus,
+  DocumentMetadata
 } from '@/lib/types/document'
+
+// Define interfaces for Mistral SDK extensions
+interface MistralFiles {
+  upload: (params: { file: { fileName: string, content: Uint8Array }, purpose: string }) => Promise<{ id: string }>
+  getSignedUrl: (params: { file_id: string }) => Promise<{ url: string }>
+}
+
+interface MistralOCR {
+  process: (params: { model: string, document: { type: string, document_url: string } }) => Promise<MistralOCRResult>
+}
+
+interface MistralSDK {
+  files: MistralFiles
+  ocr: MistralOCR
+}
+
+// Define interfaces for data structures
+interface OcrPage {
+  content: string
+  bounds?: any
+  coordinates?: any
+  confidence?: number
+  pageNumber?: number
+  paragraphs?: OcrParagraph[]
+  tables?: OcrTable[]
+}
+
+interface OcrParagraph {
+  content: string
+  bounds?: any
+  confidence?: number
+  isTable?: boolean
+  sectionType?: string | null
+  index?: number
+}
+
+interface OcrTable {
+  content?: string
+  text?: string
+  cells?: any[]
+  bounds?: any
+  rows?: number
+  columns?: number
+  pageNumber?: number
+  confidence?: number
+}
+
+interface MistralOCRResult {
+  text: string
+  pages?: OcrPage[]
+  sections?: any[]
+  structure?: { sections?: any[], documentStructure?: string }
+  confidence?: number
+  tables?: OcrTable[]
+  processing_time?: number
+  metadata?: Record<string, any>
+  paragraphCount?: number
+  processingTime?: number
+  detectedSections?: string[]
+}
+
+// Use a type that doesn't conflict with the DocumentMetadata interface
+type ExtractedMetadata = DocumentMetadata & {
+  chunkCount?: number
+  filename?: string
+  fileFormat?: string
+  fileSize?: string | number
+  extractedAt?: Date
+  extractionMethod?: string
+  documentStructure?: string
+  hasStructuredData?: boolean
+  processingComplete?: boolean
+  processingTimestamp?: string
+  errorCode?: string
+  errorTimestamp?: string
+  paragraphCount?: number
+  tableCount?: number
+  ocrConfidence?: number
+  pageCount?: number
+  hasTables?: boolean
+  sectionTypes?: string[]
+  lineCount?: number
+  imageType?: string
+  detectedSections?: string[]
+  hasPageBoundaries?: boolean
+  processingTime?: number
+  // Use string for the documentType category which will be more flexible
+  documentTypeCategory?: string
+}
 
 /**
  * Enhanced extraction options
@@ -167,7 +258,7 @@ export class DocumentExtractionService {
         metadata?: Record<string, any>
       }[] = []
       // Initialize common metadata across all document types
-      const metadata: Record<string, any> = {
+      const metadata: ExtractedMetadata = {
         filename: file.name,
         fileFormat: file.type,
         fileSize: file.size,
@@ -194,7 +285,7 @@ export class DocumentExtractionService {
           // Create chunks preserving Mistral's document structure
           if (result.pages && result.pages.length > 0) {
             // Process page by page to preserve document structure
-            result.pages.forEach((page, pageIndex) => {
+            result.pages.forEach((page: OcrPage, pageIndex: number) => {
               const pageNumber = pageIndex + 1;
               
               if (page.content) {
@@ -204,14 +295,14 @@ export class DocumentExtractionService {
                 // Check if page has paragraphs or blocks of text
                 if (page.paragraphs && page.paragraphs.length > 0) {
                   // Create chunk per paragraph to preserve structure
-                  page.paragraphs.forEach((paragraph, paragraphIndex) => {
+                  page.paragraphs.forEach((paragraph: OcrParagraph, paragraphIndex: number) => {
                     chunks.push({
                       content: paragraph.content,
-                      pageNumber: pageNumber,
-                      paragraphIndex: paragraphIndex,
+                      pageNumber,
+                      paragraphIndex,
                       metadata: { 
                         source: 'mistral-ocr',
-                        pageNumber: pageNumber,
+                        pageNumber,
                         docType: fileType,
                         bounds: paragraph.bounds || null,
                         confidence: paragraph.confidence || result.confidence,
@@ -225,14 +316,14 @@ export class DocumentExtractionService {
                 // Check if page has identified tables
                 else if (page.tables && page.tables.length > 0) {
                   // Create chunk per table
-                  page.tables.forEach((table, tableIndex) => {
+                  page.tables.forEach((table: OcrTable, tableIndex: number) => {
                     chunks.push({
                       content: table.content || table.text || JSON.stringify(table.cells),
-                      pageNumber: pageNumber,
-                      tableIndex: tableIndex,
+                      pageNumber,
+                      tableIndex,
                       metadata: { 
                         source: 'mistral-ocr',
-                        pageNumber: pageNumber,
+                        pageNumber,
                         docType: fileType,
                         bounds: table.bounds || null,
                         isTable: true,
@@ -248,10 +339,10 @@ export class DocumentExtractionService {
                 else {
                   chunks.push({
                     content: page.content,
-                    pageNumber: pageNumber,
+                    pageNumber,
                     metadata: { 
                       source: 'mistral-ocr',
-                      pageNumber: pageNumber,
+                      pageNumber,
                       docType: fileType,
                       bounds: pageBounds,
                       confidence: page.confidence || result.confidence,
@@ -263,7 +354,7 @@ export class DocumentExtractionService {
             });
           } 
           // If Mistral didn't provide page structure but has sections
-          else if (result.detectedSections && result.detectedSections.length > 0) {
+          else if (result.sections && result.sections.length > 0) {
             // Process the text by sections
             const sectionChunks = this.splitTextBySections(rawText);
             chunks.push(
@@ -287,7 +378,7 @@ export class DocumentExtractionService {
               this.defaultChunkingOptions,
               { 
                 pages: result.pages,
-                sections: result.detectedSections
+                sections: result.sections
               }
             );
             
@@ -306,15 +397,15 @@ export class DocumentExtractionService {
           }
 
           // Add comprehensive metadata from the extraction result
-          metadata.detectedSections = result.detectedSections
+          metadata.detectedSections = result.detectedSections || result.sections
           metadata.ocrConfidence = result.confidence
           metadata.pageCount = result.pages?.length || 1
-          metadata.hasTables = result.metadata?.hasTables || false
+          metadata.hasTables = result.tables && result.tables.length > 0 || false
           metadata.tableCount = result.tables?.length || 0
-          metadata.paragraphCount = result.metadata?.paragraphCount || 0
+          metadata.paragraphCount = result.paragraphCount || result.metadata?.paragraphCount || 0
           metadata.extractionMethod = 'mistral-ocr'
-          metadata.processingTime = result.metadata?.processingTime
-          metadata.documentStructure = result.metadata?.documentStructure || 'basic'
+          metadata.processingTime = result.processingTime || result.processing_time
+          metadata.documentStructure = result.structure?.documentStructure || 'basic'
           
           // Store section types distribution for content analysis
           const sectionTypes = new Set<string>();
@@ -336,12 +427,12 @@ export class DocumentExtractionService {
           
           // Add specific metadata based on document type
           if (fileType === 'application/pdf') {
-            metadata.documentType = 'pdf'
+            metadata.documentTypeCategory = 'pdf'
           } else if (fileType.startsWith('image/')) {
-            metadata.documentType = 'image'
+            metadata.documentTypeCategory = 'image'
             metadata.imageType = fileType
           } else if (fileType.includes('wordprocessingml') || fileType === 'application/msword') {
-            metadata.documentType = 'word'
+            metadata.documentTypeCategory = 'word'
           }
           
           break
@@ -378,7 +469,7 @@ export class DocumentExtractionService {
           // Add text-specific metadata
           metadata.lineCount = textContent.split('\n').length
           metadata.detectedSections = detectedSections
-          metadata.documentType = 'plaintext'
+          metadata.documentTypeCategory = 'plaintext'
           metadata.extractionMethod = 'direct-text'
           metadata.hasStructuredData = chunks.length > 0
           break
@@ -395,12 +486,7 @@ export class DocumentExtractionService {
       // Create the unified extracted data object
       const extractedData: ExtractedData = {
         rawText,                                     // Always include raw text
-        metadata: {
-          ...metadata,                               // Include all collected metadata
-          chunkCount: chunks.length,                 // Add chunk count
-          processingComplete: true,                  // Flag that processing is complete
-          processingTimestamp: new Date().toISOString() // Add timestamp
-        },
+        metadata: metadata as ExtractedMetadata,     // Cast to our flexible metadata type
         chunks: chunks.length > 0 ? chunks : []      // Always include chunks array (empty if none)
       }
 
@@ -432,7 +518,7 @@ export class DocumentExtractionService {
           error: normError.message,
           errorCode: normError.code,
           errorTimestamp: new Date().toISOString()
-        },
+        } as ExtractedMetadata,
         chunks: [] // Empty chunks array for consistency
       };
       
@@ -559,14 +645,7 @@ export class DocumentExtractionService {
     blob: Blob,
     fileType: string,
     options: EnhancedExtractionOptions
-  ): Promise<{
-    text: string;
-    pages?: any[];
-    detectedSections?: string[];
-    confidence?: number;
-    tables?: any[];
-    metadata?: Record<string, any>;
-  }> {
+  ): Promise<MistralOCRResult> {
     const moduleLogger = logger.withMetadata({
       module: 'DocumentExtractionService',
       method: 'extractViaMistralOCR',
@@ -590,8 +669,9 @@ export class DocumentExtractionService {
       else if (fileType === 'application/msword') fileExtension = 'doc';
       else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') fileExtension = 'docx';
       
-      // Upload to Mistral
-      const uploaded = await mistral.files.upload({
+      // Upload to Mistral - use type assertion for Mistral SDK
+      const mistralExt = mistral as unknown as MistralSDK;
+      const uploaded = await mistralExt.files.upload({
         file: {
           fileName: `document.${fileExtension}`,
           content: fileBytes
@@ -600,7 +680,7 @@ export class DocumentExtractionService {
       });
 
       // Get signed URL
-      const signed = await mistral.files.getSignedUrl({
+      const signed = await mistralExt.files.getSignedUrl({
         file_id: uploaded.id
       });
 
@@ -611,7 +691,7 @@ export class DocumentExtractionService {
       }
 
       // Process with OCR
-      const ocrResult = await mistral.ocr.process({
+      const ocrResult = await mistralExt.ocr.process({
         model: 'mistral-ocr-latest',
         document: {
           type: documentType,
@@ -625,10 +705,10 @@ export class DocumentExtractionService {
       // First check if Mistral provided section information
       if (ocrResult.sections && ocrResult.sections.length > 0) {
         // Use Mistral's sections directly if available
-        detectedSections = ocrResult.sections.map(section => section.type || section.name || section.title);
-      } else if (ocrResult.structure && ocrResult.structure.sections) {
+        detectedSections = ocrResult.sections.map((section: any) => section.type || section.name || section.title);
+      } else if (ocrResult.structure?.sections) {
         // Alternative structure format
-        detectedSections = ocrResult.structure.sections.map(section => section.type || section.name || section.title);
+        detectedSections = ocrResult.structure.sections.map((section: any) => section.type || section.name || section.title);
       } else {
         // Fall back to our own section detection
         detectedSections = this.detectSectionsInText(ocrResult.text);
@@ -661,7 +741,7 @@ export class DocumentExtractionService {
       
       // If pages exist but don't have paragraph structure, try to create it
       if (enhancedPages.length > 0) {
-        enhancedPages = enhancedPages.map((page, index) => {
+        enhancedPages = enhancedPages.map((page: OcrPage, index: number) => {
           // If page already has paragraphs, keep them
           if (page.paragraphs && page.paragraphs.length > 0) {
             return page;
@@ -671,8 +751,8 @@ export class DocumentExtractionService {
           if (page.content && typeof page.content === 'string') {
             const paragraphs = page.content
               .split(/\n\s*\n/)
-              .filter(p => p.trim().length > 0)
-              .map((text, paragraphIndex) => {
+              .filter((p: string) => p.trim().length > 0)
+              .map((text: string, paragraphIndex: number) => {
                 // Detect if paragraph contains table-like content
                 const isTable = this.detectTableMarkers(text);
                 
@@ -700,11 +780,11 @@ export class DocumentExtractionService {
       const tables = ocrResult.tables || [];
       if (tables.length === 0) {
         // Try to find tables in the pages/paragraphs
-        enhancedPages.forEach(page => {
+        enhancedPages.forEach((page: OcrPage) => {
           if (page.paragraphs) {
-            const tableParagraphs = page.paragraphs.filter(p => p.isTable);
+            const tableParagraphs = page.paragraphs.filter((p: OcrParagraph) => p.isTable);
             if (tableParagraphs.length > 0) {
-              tableParagraphs.forEach(tableParagraph => {
+              tableParagraphs.forEach((tableParagraph: OcrParagraph) => {
                 tables.push({
                   content: tableParagraph.content,
                   pageNumber: page.pageNumber,
@@ -725,10 +805,11 @@ export class DocumentExtractionService {
         metadata: {
           ...extractedMetadata,
           documentStructure: 'enhanced',
-          paragraphCount: enhancedPages.reduce((count, page) => 
+          paragraphCount: enhancedPages.reduce((count: number, page: OcrPage) => 
             count + (page.paragraphs?.length || 0), 0),
           tableCount: tables.length
-        }
+        },
+        processingTime: ocrResult.processing_time
       };
     } catch (error) {
       moduleLogger.error('Mistral OCR extraction failed', {
@@ -899,8 +980,8 @@ export class DocumentExtractionService {
     text: string,
     options: ChunkingOptions,
     structuredData?: {
-      pages?: any[],
-      paragraphs?: any[],
+      pages?: OcrPage[],
+      paragraphs?: OcrParagraph[],
       sections?: string[]
     }
   ): Promise<Document[]> {
@@ -909,12 +990,12 @@ export class DocumentExtractionService {
     // STRATEGY 1: Use Mistral's page and paragraph structure if available
     if (structuredData?.pages && structuredData.pages.length > 0) {
       // For each page in the structured data
-      structuredData.pages.forEach((page, pageIndex) => {
+      structuredData.pages.forEach((page: OcrPage, pageIndex: number) => {
         const pageNumber = pageIndex + 1;
         
         // If page has paragraphs, create chunk per paragraph
         if (page.paragraphs && page.paragraphs.length > 0) {
-          page.paragraphs.forEach((paragraph, paragraphIndex) => {
+          page.paragraphs.forEach((paragraph: OcrParagraph, paragraphIndex: number) => {
             if (paragraph.content && typeof paragraph.content === 'string') {
               documents.push(new Document({
                 pageContent: paragraph.content,
