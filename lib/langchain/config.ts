@@ -17,20 +17,11 @@ const EnvSchema = z.object({
   // OpenAI configuration
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().default('o3-mini'),
-  OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  
+  // Mistral configuration
+  MISTRAL_API_KEY: z.string().min(1),
+  MISTRAL_EMBEDDING_MODEL: z.string().default('mistral-embed'),
 
-  // Gemini configuration
-  GEMINI_API_KEY: z.string().optional().refine(
-    (val) => process.env.FORCE_GEMINI !== 'true' || (val && val.length > 0),
-    {
-      message: "Gemini API key is required when FORCE_GEMINI is set to 'true'",
-    }
-  ),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
-  FORCE_GEMINI: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((val) => val === 'true'),
 
   // Perplexity configuration
   PERPLEXITY_API_KEY: z.string().optional().refine(
@@ -74,19 +65,17 @@ export interface LangChainConfig {
   openai: {
     apiKey: string
     chatModel: string
-    embeddingModel: string
     temperature: number
+  }
+  
+  /**
+   * Mistral configuration
+   */
+  mistral: {
+    apiKey: string
+    embeddingModel: string
   }
 
-  /**
-   * Gemini configuration (Gemini 2.0 Flash)
-   */
-  gemini?: {
-    apiKey: string
-    modelName: string
-    temperature: number
-    forceUse?: boolean
-  }
 
   /**
    * Perplexity configuration
@@ -112,10 +101,8 @@ function loadEnvConfig(): Partial<z.infer<typeof EnvSchema>> {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_MODEL: process.env.OPENAI_MODEL,
-    OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-    GEMINI_MODEL: process.env.GEMINI_MODEL,
-    FORCE_GEMINI: process.env.FORCE_GEMINI,
+    MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
+    MISTRAL_EMBEDDING_MODEL: process.env.MISTRAL_EMBEDDING_MODEL,
     PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY,
     PERPLEXITY_MODEL: process.env.PERPLEXITY_MODEL,
     FORCE_PERPLEXITY: process.env.FORCE_PERPLEXITY,
@@ -165,25 +152,14 @@ export function getDefaultConfig(): LangChainConfig {
     openai: {
       apiKey: env.OPENAI_API_KEY,
       chatModel: env.OPENAI_MODEL,
-      embeddingModel: env.OPENAI_EMBEDDING_MODEL,
       temperature: 0.7,
+    },
+    mistral: {
+      apiKey: env.MISTRAL_API_KEY,
+      embeddingModel: env.MISTRAL_EMBEDDING_MODEL,
     },
   }
 
-  // Add Gemini configuration if API key is available or if forced
-  if (env.GEMINI_API_KEY || env.FORCE_GEMINI) {
-    config.gemini = {
-      apiKey: env.GEMINI_API_KEY || '', // Empty string if missing but forced
-      modelName: env.GEMINI_MODEL,
-      temperature: 0.7,
-      forceUse: env.FORCE_GEMINI || false,
-    }
-    
-    // Log warning if forced but missing API key
-    if (env.FORCE_GEMINI && !env.GEMINI_API_KEY) {
-      console.warn('WARNING: Gemini is forced but API key is missing. This will cause errors.')
-    }
-  }
 
   // Add Perplexity configuration if API key is available or if forced
   if (env.PERPLEXITY_API_KEY || env.FORCE_PERPLEXITY) {

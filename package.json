@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^1.1.16",
+    "@ai-sdk/mistral": "^1.1.14",
     "@ai-sdk/openai": "1.1.9",
     "@ai-sdk/perplexity": "^1.0.1",
     "@ducanh2912/next-pwa": "^10.2.9",
@@ -139,8 +140,8 @@
     "resend": "^4.1.2",
     "sharp": "^0.32.6",
     "sonner": "^1.5.0",
-    "swagger-typescript-api": "^13.0.3",
     "svelte": "4.2.19",
+    "swagger-typescript-api": "^13.0.3",
     "tailwind-merge": "^2.2.0",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.7.0",

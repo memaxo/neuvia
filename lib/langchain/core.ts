@@ -10,7 +10,6 @@ import {
   JsonOutputParser,
 } from '@langchain/core/output_parsers'
 import { ChatPromptTemplate, PromptTemplate } from '@langchain/core/prompts'
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
 import {
   ExternalServiceError,
   SystemError,
@@ -146,10 +145,6 @@ export class LangChainCore {
       })
     }
 
-    // Validate Gemini configuration if being used
-    if (this.config.gemini && !this.config.gemini.apiKey) {
-      moduleLogger.warn('Gemini config present but API key is missing')
-    }
 
     moduleLogger.info('LangChain configuration validated successfully')
 
@@ -211,139 +206,9 @@ export class LangChainCore {
     }
   }
 
-  /**
-   * Create a Gemini chat model (Gemini 2.0 Flash)
-   *
-   * @param options Optional configuration for the chat model
-   * @returns Gemini chat model or falls back to OpenAI if Gemini is not available
-   */
-  public createChatGemini(options?: {
-    modelName?: string
-    temperature?: number
-    streaming?: boolean
-    callbacks?: BaseCallbackHandler[]
-    fallbackToOpenAI?: boolean
-  }) {
-    const fallbackToOpenAI = options?.fallbackToOpenAI ?? true
-    const moduleLogger = logger.withMetadata({
-      module: 'LangChainCore',
-      method: 'createChatGemini',
-      modelName: options?.modelName || this.config.gemini?.modelName,
-      streaming: options?.streaming ?? false,
-      fallbackToOpenAI,
-    })
 
-    try {
-      this.ensureInitialized()
-
-      // Check if Gemini API key is available
-      if (!this.config.gemini?.apiKey) {
-        moduleLogger.warn('Gemini API key is not configured - using fallback model')
-        
-        if (fallbackToOpenAI) {
-          moduleLogger.info('Falling back to OpenAI model')
-          return this.createChatOpenAI({
-            temperature: options?.temperature,
-            streaming: options?.streaming,
-            callbacks: options?.callbacks,
-          })
-        }
-        
-        throw new ApplicationError({
-          message: 'Gemini API key is not configured and fallback is disabled',
-          code: 'MISSING_GEMINI_API_KEY',
-        })
-      }
-
-      moduleLogger.info('Creating Gemini chat model')
-
-      return new ChatGoogleGenerativeAI({
-        apiKey: this.config.gemini.apiKey,
-        modelName: options?.modelName || this.config.gemini.modelName, // Defaults to 'gemini-2.0-flash'
-        temperature: options?.temperature ?? 0.7,
-        streaming: options?.streaming ?? false,
-        callbacks: options?.callbacks,
-      })
-    } catch (error) {
-      moduleLogger.error('Failed to create Gemini chat model', {}, error)
-
-      if (error instanceof ApplicationError) {
-        // If fallback is enabled and this is a configuration error, try OpenAI
-        if (fallbackToOpenAI && error.code === 'MISSING_GEMINI_API_KEY') {
-          moduleLogger.info('Falling back to OpenAI model after Gemini configuration error')
-          return this.createChatOpenAI({
-            temperature: options?.temperature,
-            streaming: options?.streaming,
-            callbacks: options?.callbacks,
-          })
-        }
-        
-        // Otherwise rethrow application errors
-        throw error
-      }
-
-      // If fallback is enabled, try OpenAI for other errors
-      if (fallbackToOpenAI) {
-        moduleLogger.info('Falling back to OpenAI model after Gemini error', {
-          errorType: error instanceof Error ? error.constructor.name : typeof error,
-        })
-        return this.createChatOpenAI({
-          temperature: options?.temperature,
-          streaming: options?.streaming,
-          callbacks: options?.callbacks,
-        })
-      }
-
-      throw new ExternalServiceError({
-        message: 'Failed to create Gemini chat model',
-        service: 'Google Gemini',
-        code: 'GEMINI_MODEL_CREATION_FAILED',
-        cause: error,
-      })
-    }
-  }
-
-  /**
-   * Create OpenAI embeddings
-   *
-   * @param options Optional configuration for the embeddings
-   */
-  public createEmbeddings(options?: {
-    modelName?: string
-    batchSize?: number
-  }) {
-    const moduleLogger = logger.withMetadata({
-      module: 'LangChainCore',
-      method: 'createEmbeddings',
-      modelName: options?.modelName || this.config.openai.embeddingModel,
-    })
-
-    try {
-      this.ensureInitialized()
-
-      moduleLogger.info('Creating OpenAI embeddings')
-
-      return new OpenAIEmbeddings({
-        openAIApiKey: this.config.openai.apiKey,
-        modelName: options?.modelName || this.config.openai.embeddingModel, // text-embedding-3-small
-        batchSize: options?.batchSize,
-      })
-    } catch (error) {
-      moduleLogger.error('Failed to create OpenAI embeddings', {}, error)
-
-      if (error instanceof ApplicationError) {
-        // Rethrow application errors
-        throw error
-      }
-
-      throw new ExternalServiceError({
-        message: 'Failed to create OpenAI embeddings',
-        service: 'OpenAI',
-        code: 'OPENAI_EMBEDDINGS_CREATION_FAILED',
-        cause: error,
-      })
-    }
-  }
+    // Note: The createEmbeddings method has been removed as the application now uses
+  // Mistral embeddings exclusively via the Mistral AI SDK integration in supabase-store.ts
 
   /**
    * Create a prompt template

@@ -934,9 +934,10 @@ Additional Query: {query}`,
 
   /**
    * Perform medical diagnosis using Perplexity API
+   * Uses the verified o3-mini summary as the source of truth
    *
    * @param query User query
-   * @param patientData Patient data
+   * @param patientData Patient data from the o3-mini verified summary
    * @param options Research options
    * @returns Research result
    */

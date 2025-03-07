@@ -4,15 +4,13 @@
  * Responsible for extracting text and content from various document formats
  * using specialized strategies for each format type.
  */
-
+import crypto from 'crypto'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { Document } from 'langchain/document'
-import { DocxLoader } from '@langchain/community/document_loaders/fs/docx'
-import { WebPDFLoader } from '@langchain/community/document_loaders/web/pdf'
 import { TextLoader } from 'langchain/document_loaders/fs/text'
-import * as pdfjsLib from 'pdfjs-dist'
 import logger from '@/lib/logger'
-import { normalizeError, ValidationError, SystemError, ApplicationError } from '@/lib/errors'
+import { mistral } from '@ai-sdk/mistral'
+import { normalizeError, ValidationError, SystemError, ApplicationError, ExternalServiceError } from '@/lib/errors'
 
 import type { 
   DocumentType, 
@@ -160,88 +158,229 @@ export class DocumentExtractionService {
     try {
       const fileType = file.type
       let rawText = ''
+      // Use a consistent chunk structure across all document types
       const chunks: {
         content: string
         pageNumber?: number
+        paragraphIndex?: number
+        tableIndex?: number
         metadata?: Record<string, any>
       }[] = []
+      // Initialize common metadata across all document types
       const metadata: Record<string, any> = {
         filename: file.name,
         fileFormat: file.type,
         fileSize: file.size,
         extractedAt: new Date(),
+        extractionMethod: 'unknown', // Will be set properly based on method used
+        documentStructure: 'unknown', // Will be detected during processing
+        hasStructuredData: false      // Default, will be updated if structures are found
       }
 
       // Create a blob from the file for processing
       const blob = new Blob([await file.arrayBuffer()], { type: fileType })
 
-      // Determine appropriate extraction method
+      // Use unified Mistral OCR extraction for all supported document types
       switch (fileType) {
-        case 'application/pdf': {
-          // Enhanced PDF extraction with page splitting and table detection
-          const result = await this.extractPdfWithEnhancement(blob, options)
+        case 'application/pdf':
+        case 'image/jpeg':
+        case 'image/png':
+        case 'application/msword':
+        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
+          // Use unified Mistral OCR for all document types
+          const result = await this.extractViaMistralOCR(blob, fileType, options)
           rawText = result.text
-          chunks.push(...result.chunks)
 
-          // Add PDF-specific metadata
-          metadata.pageCount = result.pageCount
-          metadata.hasImages = result.hasImages
-          metadata.hasTables = result.hasTables
+          // Create chunks preserving Mistral's document structure
+          if (result.pages && result.pages.length > 0) {
+            // Process page by page to preserve document structure
+            result.pages.forEach((page, pageIndex) => {
+              const pageNumber = pageIndex + 1;
+              
+              if (page.content) {
+                // Store any page-level bounding boxes or coordinates
+                const pageBounds = page.bounds || page.coordinates || null;
+                
+                // Check if page has paragraphs or blocks of text
+                if (page.paragraphs && page.paragraphs.length > 0) {
+                  // Create chunk per paragraph to preserve structure
+                  page.paragraphs.forEach((paragraph, paragraphIndex) => {
+                    chunks.push({
+                      content: paragraph.content,
+                      pageNumber: pageNumber,
+                      paragraphIndex: paragraphIndex,
+                      metadata: { 
+                        source: 'mistral-ocr',
+                        pageNumber: pageNumber,
+                        docType: fileType,
+                        bounds: paragraph.bounds || null,
+                        confidence: paragraph.confidence || result.confidence,
+                        isTable: paragraph.isTable || false,
+                        sectionType: this.detectSectionType(paragraph.content),
+                        structureType: 'paragraph'
+                      }
+                    });
+                  });
+                }
+                // Check if page has identified tables
+                else if (page.tables && page.tables.length > 0) {
+                  // Create chunk per table
+                  page.tables.forEach((table, tableIndex) => {
+                    chunks.push({
+                      content: table.content || table.text || JSON.stringify(table.cells),
+                      pageNumber: pageNumber,
+                      tableIndex: tableIndex,
+                      metadata: { 
+                        source: 'mistral-ocr',
+                        pageNumber: pageNumber,
+                        docType: fileType,
+                        bounds: table.bounds || null,
+                        isTable: true,
+                        tableData: table.cells || null,
+                        tableRows: table.rows || null,
+                        tableCols: table.columns || null,
+                        structureType: 'table'
+                      }
+                    });
+                  });
+                }
+                // If no paragraphs or tables, use the whole page content
+                else {
+                  chunks.push({
+                    content: page.content,
+                    pageNumber: pageNumber,
+                    metadata: { 
+                      source: 'mistral-ocr',
+                      pageNumber: pageNumber,
+                      docType: fileType,
+                      bounds: pageBounds,
+                      confidence: page.confidence || result.confidence,
+                      structureType: 'page'
+                    }
+                  });
+                }
+              }
+            });
+          } 
+          // If Mistral didn't provide page structure but has sections
+          else if (result.detectedSections && result.detectedSections.length > 0) {
+            // Process the text by sections
+            const sectionChunks = this.splitTextBySections(rawText);
+            chunks.push(
+              ...sectionChunks.map((section) => ({
+                content: section.content,
+                metadata: { 
+                  section: section.section,
+                  source: 'mistral-ocr',
+                  docType: fileType,
+                  confidence: result.confidence,
+                  structureType: 'section'
+                }
+              }))
+            );
+          }
+          // Fallback: If no structured data from Mistral, use semantic chunking
+          else if (rawText) {
+            // Pass Mistral's structured data to the chunking method
+            const semanticChunks = await this.createSemanticChunks(
+              rawText,
+              this.defaultChunkingOptions,
+              { 
+                pages: result.pages,
+                sections: result.detectedSections
+              }
+            );
+            
+            chunks.push(
+              ...semanticChunks.map((chunk: Document) => ({
+                content: chunk.pageContent,
+                metadata: {
+                  ...chunk.metadata,
+                  source: 'mistral-ocr',
+                  docType: fileType,
+                  confidence: result.confidence,
+                  structureType: 'semantic'
+                },
+              }))
+            );
+          }
+
+          // Add comprehensive metadata from the extraction result
           metadata.detectedSections = result.detectedSections
-          metadata.textQuality = result.textQuality
+          metadata.ocrConfidence = result.confidence
+          metadata.pageCount = result.pages?.length || 1
+          metadata.hasTables = result.metadata?.hasTables || false
+          metadata.tableCount = result.tables?.length || 0
+          metadata.paragraphCount = result.metadata?.paragraphCount || 0
+          metadata.extractionMethod = 'mistral-ocr'
+          metadata.processingTime = result.metadata?.processingTime
+          metadata.documentStructure = result.metadata?.documentStructure || 'basic'
+          
+          // Store section types distribution for content analysis
+          const sectionTypes = new Set<string>();
+          chunks.forEach(chunk => {
+            if (chunk.metadata?.sectionType) {
+              sectionTypes.add(chunk.metadata.sectionType);
+            }
+          });
+          metadata.sectionTypes = Array.from(sectionTypes);
+          
+          // Merge any additional metadata provided by Mistral OCR
+          if (result.metadata) {
+            Object.assign(metadata, result.metadata);
+          }
+          
+          // Add structured data flags
+          metadata.hasStructuredData = chunks.length > 0;
+          metadata.hasPageBoundaries = result.pages?.some(p => p.bounds || p.coordinates) || false;
+          
+          // Add specific metadata based on document type
+          if (fileType === 'application/pdf') {
+            metadata.documentType = 'pdf'
+          } else if (fileType.startsWith('image/')) {
+            metadata.documentType = 'image'
+            metadata.imageType = fileType
+          } else if (fileType.includes('wordprocessingml') || fileType === 'application/msword') {
+            metadata.documentType = 'word'
+          }
+          
           break
         }
 
         case 'text/plain': {
-          // Simple text extraction
+          // Simple text extraction without OCR for plaintext
           const textContent = await file.text()
+          rawText = textContent
 
           // Process the text to detect sections
-          const processedText = await this.processTextDocument(
+          const detectedSections = this.detectSectionsInText(textContent)
+          
+          // Use the same semantic chunking approach for consistency
+          const semanticChunks = await this.createSemanticChunks(
             textContent,
-            options
-          )
-          rawText = processedText.text
-          chunks.push(...processedText.chunks)
+            this.defaultChunkingOptions,
+            { sections: detectedSections }
+          );
+          
+          // Convert LangChain documents to our chunk format
+          chunks.push(
+            ...semanticChunks.map((chunk: Document) => ({
+              content: chunk.pageContent,
+              metadata: {
+                ...chunk.metadata,
+                source: 'text-direct',
+                docType: fileType,
+                structureType: chunk.metadata.chunkType || 'text'
+              },
+            }))
+          );
 
           // Add text-specific metadata
           metadata.lineCount = textContent.split('\n').length
-          metadata.detectedSections = processedText.detectedSections
-          break
-        }
-
-        case 'application/msword':
-        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
-          // Enhanced Word document extraction
-          const result = await this.extractWordDocument(blob, options)
-          rawText = result.text
-          chunks.push(...result.chunks)
-
-          // Add Word-specific metadata
-          metadata.pageCount = result.pageCount
-          metadata.hasTables = result.hasTables
-          metadata.detectedSections = result.detectedSections
-          break
-        }
-
-        case 'image/jpeg':
-        case 'image/png': {
-          // Process images with OCR if enabled
-          if (options.ocrImages) {
-            const result = await this.performOcrOnImage(blob)
-            rawText = result.text
-
-            // Add image-specific metadata
-            metadata.imageWidth = result.width
-            metadata.imageHeight = result.height
-            metadata.ocrConfidence = result.confidence
-          } else {
-            throw new ValidationError({
-              message: 'OCR is required for image processing but is disabled',
-              code: 'OCR_DISABLED',
-              data: { fileType },
-            })
-          }
+          metadata.detectedSections = detectedSections
+          metadata.documentType = 'plaintext'
+          metadata.extractionMethod = 'direct-text'
+          metadata.hasStructuredData = chunks.length > 0
           break
         }
 
@@ -253,11 +392,16 @@ export class DocumentExtractionService {
           })
       }
 
-      // Create the extracted data object
+      // Create the unified extracted data object
       const extractedData: ExtractedData = {
-        rawText,
-        metadata,
-        chunks: chunks.length > 0 ? chunks : undefined,
+        rawText,                                     // Always include raw text
+        metadata: {
+          ...metadata,                               // Include all collected metadata
+          chunkCount: chunks.length,                 // Add chunk count
+          processingComplete: true,                  // Flag that processing is complete
+          processingTimestamp: new Date().toISOString() // Add timestamp
+        },
+        chunks: chunks.length > 0 ? chunks : []      // Always include chunks array (empty if none)
       }
 
       return extractedData
@@ -272,104 +416,33 @@ export class DocumentExtractionService {
 
       moduleLogger.error('Failed to extract text from document', {}, error)
 
-      // If it's already a normalized error, rethrow it
-      if (error instanceof ValidationError || error instanceof SystemError) {
-        throw error
-      }
-
-      // Otherwise, normalize the error with the appropriate context
-      throw new SystemError({
-        message: 'Failed to extract text from document',
-        code: 'EXTRACTION_FAILED',
-        data: {
-          fileType: file.type,
-          fileName: file.name,
+      // Create a unified error result structure with the same shape as success
+      const normError = normalizeError(error);
+      const errorExtractedData: ExtractedData = {
+        rawText: '',
+        metadata: {
+          filename: file.name,
+          fileFormat: file.type,
+          fileSize: file.size,
+          extractedAt: new Date(),
+          extractionMethod: 'failed',
+          documentStructure: 'unknown',
+          hasStructuredData: false,
+          processingComplete: false,
+          error: normError.message,
+          errorCode: normError.code,
+          errorTimestamp: new Date().toISOString()
         },
-        cause: error,
-      })
+        chunks: [] // Empty chunks array for consistency
+      };
+      
+      // Return consistent error structure
+      return errorExtractedData
     }
   }
 
-  /**
-   * Enhanced PDF extraction with page analysis, table detection, and sectioning
-   */
-  private async extractPdfWithEnhancement(
-    blob: Blob,
-    options: EnhancedExtractionOptions
-  ): Promise<{
-    text: string
-    chunks: Array<{ content: string; pageNumber: number; metadata?: any }>
-    pageCount: number
-    hasImages: boolean
-    hasTables: boolean
-    detectedSections: string[]
-    textQuality: number
-  }> {
-    // Use LangChain's WebPDFLoader to load PDF pages
-    const loader = new WebPDFLoader(blob);
-    const docs = await loader.load(); // Each Document represents a PDF page
-    const pageCount = docs.length;
-    let fullText = '';
-    const chunks: Array<{ content: string; pageNumber: number; metadata?: any }> = [];
-    let detectedSections: string[] = [];
-    let hasImages = false; // WebPDFLoader does not extract images, so default is false
-    let hasTables = false;
-  
-    for (let i = 0; i < docs.length; i++) {
-      const doc = docs[i];
-      const pageText = doc.pageContent;
-      fullText += pageText + "\n\n";
-  
-      // Detect sections in the page using our custom logic
-      const pageSections = this.detectSectionsInText(pageText);
-      detectedSections = detectedSections.concat(pageSections);
-  
-      // Simple table detection using regex on the page text
-      if (/\b(table|row)\b/i.test(pageText)) {
-        hasTables = true;
-      }
-  
-      // Create a chunk for the page
-      chunks.push({
-        content: pageText,
-        pageNumber: i + 1,
-        metadata: { sections: pageSections }
-      });
-  
-      // Additional semantic chunking if pageText is too long
-      if (options.splitPages && pageText.length > (options.maxPageLength || 5000)) {
-        const pageChunks = await this.createSemanticChunks(pageText, {
-          ...this.defaultChunkingOptions,
-          chunkSize: options.maxPageLength || 5000,
-        });
-        pageChunks.forEach((chunk, index) => {
-          chunks.push({
-            content: chunk.pageContent,
-            pageNumber: i + 1,
-            metadata: { ...chunk.metadata, chunkIndex: index }
-          });
-        });
-      }
-    }
-  
-    fullText = fullText.trim();
-    detectedSections = Array.from(new Set(detectedSections));
-  
-    const charCount = fullText.replace(/\s+/g, '').length;
-    const nonAlphaCount = fullText.replace(/[a-zA-Z0-9\s]/g, '').length;
-    const nonAlphaRatio = charCount > 0 ? nonAlphaCount / charCount : 0;
-    const textQuality = Math.max(0.1, 1.0 - (nonAlphaRatio > 0.3 ? 0.5 : 0));
-  
-    return {
-      text: fullText,
-      chunks,
-      pageCount,
-      hasImages,
-      hasTables,
-      detectedSections,
-      textQuality,
-    };
-  }
+  // The extractPdfWithEnhancement method has been replaced by extractViaMistralOCR
+  // This provides a more reliable and consistent extraction approach for PDFs
 
   /**
    * Detect tables in PDF page by analyzing text positioning
@@ -404,6 +477,9 @@ export class DocumentExtractionService {
 
   /**
    * Process a text document to detect sections and create chunks
+   * 
+   * This method is now simplified to use our unified chunking approach
+   * for all document types, ensuring consistency across formats.
    */
   private async processTextDocument(
     text: string,
@@ -413,140 +489,317 @@ export class DocumentExtractionService {
     chunks: Array<{ content: string; metadata?: any }>
     detectedSections: string[]
   }> {
-    const chunks: Array<{ content: string; metadata?: any }> = []
-    let detectedSections: string[] = []
-
     // Detect sections in the text
-    if (options.detectSections) {
-      detectedSections = this.detectSectionsInText(text)
-    }
-
-    // Create chunks based on sections if sections found
-    if (detectedSections.length > 0) {
-      const sectionChunks = this.splitTextBySections(text)
-      chunks.push(
-        ...sectionChunks.map((section) => ({
-          content: section.content,
-          metadata: { section: section.section },
-        }))
-      )
-    } else {
-      // Use semantic chunking as fallback
-      const semanticChunks = await this.createSemanticChunks(
-        text,
-        this.defaultChunkingOptions
-      )
-      chunks.push(
-        ...semanticChunks.map((chunk: Document) => ({
-          content: chunk.pageContent,
-          metadata: chunk.metadata,
-        }))
-      )
-    }
+    const detectedSections = options.detectSections 
+      ? this.detectSectionsInText(text)
+      : [];
+      
+    // Use our unified semantic chunking strategy
+    const semanticChunks = await this.createSemanticChunks(
+      text,
+      this.defaultChunkingOptions,
+      { sections: detectedSections }
+    );
+    
+    // Convert LangChain document format to our chunk format
+    const chunks = semanticChunks.map((chunk: Document) => ({
+      content: chunk.pageContent,
+      metadata: {
+        ...chunk.metadata,
+        structureType: chunk.metadata.chunkType || 'text',
+        source: 'direct-text'
+      },
+    }));
 
     return { text, chunks, detectedSections }
   }
-
   /**
-   * Extract text from a Word document with enhanced processing
+   * Detect section type from paragraph text
+   * 
+   * @param text Paragraph or section text to analyze
+   * @returns Identified section type or null
    */
-  private async extractWordDocument(
+  private detectSectionType(text: string): string | null {
+    if (!text || text.trim().length === 0) {
+      return null;
+    }
+    
+    // Common section markers in medical documents
+    const sectionPatterns = [
+      { type: 'header', pattern: /^#+ |^TITLE:|^title:/i },
+      { type: 'patient_info', pattern: /^(?:patient|personal|demographic|identification) (?:information|data|details)/i },
+      { type: 'medical_history', pattern: /^(?:medical|clinical|health) (?:history|record)/i },
+      { type: 'medications', pattern: /^(?:current )?(?:medication|drug|prescription)s?/i },
+      { type: 'allergies', pattern: /^(?:drug |known |medication )?allerg(?:y|ies)/i },
+      { type: 'vital_signs', pattern: /^(?:vital|physical) (?:signs|measurements)/i },
+      { type: 'assessment', pattern: /^(?:assessment|diagnosis|impression)/i },
+      { type: 'plan', pattern: /^(?:plan|treatment|recommendation|intervention)/i },
+      { type: 'lab_results', pattern: /^(?:lab(?:oratory)?|test) (?:results|studies|findings)/i },
+      { type: 'imaging', pattern: /^(?:imaging|radiology|xray|x-ray|ct|mri|ultrasound) (?:results|studies|findings)/i },
+      { type: 'summary', pattern: /^(?:summary|conclusion|impression)/i },
+      { type: 'footer', pattern: /^(?:footer|end of document|copyright|prepared by)/i }
+    ];
+    
+    // Check if text matches any section pattern
+    for (const { type, pattern } of sectionPatterns) {
+      if (pattern.test(text.trim().substring(0, 30))) {
+        return type;
+      }
+    }
+    
+    // Check for list items or bullet points
+    if (/^(?:\s*[-•*]\s|\s*\d+\.\s)/.test(text.trim())) {
+      return 'list_item';
+    }
+    
+    return 'body_text';
+  }
+  
+  private async extractViaMistralOCR(
     blob: Blob,
+    fileType: string,
     options: EnhancedExtractionOptions
   ): Promise<{
-    text: string
-    chunks: Array<{ content: string; metadata?: any }>
-    pageCount: number
-    hasTables: boolean
-    detectedSections: string[]
+    text: string;
+    pages?: any[];
+    detectedSections?: string[];
+    confidence?: number;
+    tables?: any[];
+    metadata?: Record<string, any>;
   }> {
-    // Use LangChain DocxLoader
-    const loader = new DocxLoader(blob)
-    const docs = await loader.load()
+    const moduleLogger = logger.withMetadata({
+      module: 'DocumentExtractionService',
+      method: 'extractViaMistralOCR',
+      fileType
+    });
 
-    // Extract text and estimate page count based on content length
-    const fullText = docs.map((doc) => doc.pageContent).join('\n\n')
-    const estimatedPageCount = Math.max(1, Math.ceil(fullText.length / 3000))
+    moduleLogger.info('Extracting document content using Mistral OCR', {
+      fileType,
+      ocrOptions: options
+    });
 
-    // Detect sections
-    const detectedSections = this.detectSectionsInText(fullText)
+    try {
+      // Convert blob to array buffer
+      const arrayBuffer = await blob.arrayBuffer();
+      const fileBytes = new Uint8Array(arrayBuffer);
+      
+      // Determine file extension based on MIME type
+      let fileExtension = 'pdf'; // Default
+      if (fileType === 'image/jpeg') fileExtension = 'jpg';
+      else if (fileType === 'image/png') fileExtension = 'png';
+      else if (fileType === 'application/msword') fileExtension = 'doc';
+      else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') fileExtension = 'docx';
+      
+      // Upload to Mistral
+      const uploaded = await mistral.files.upload({
+        file: {
+          fileName: `document.${fileExtension}`,
+          content: fileBytes
+        },
+        purpose: 'ocr'
+      });
 
-    // Check for potential tables
-    const hasTables =
-      /\b(table|row)\b/i.test(fullText) ||
-      fullText.split('\n').some((line) => line.split(/\s+/).length > 6)
+      // Get signed URL
+      const signed = await mistral.files.getSignedUrl({
+        file_id: uploaded.id
+      });
 
-    // Create chunks - preferring section-based if sections found
-    let chunks: Array<{ content: string; metadata?: any }> = []
+      // Determine document type for Mistral OCR
+      let documentType = 'document_url';
+      if (fileType.startsWith('image/')) {
+        documentType = 'image_url';
+      }
 
-    if (detectedSections.length > 0 && options.detectSections) {
-      const sectionChunks = this.splitTextBySections(fullText)
-      chunks = sectionChunks.map((section) => ({
-        content: section.content,
-        metadata: { section: section.section },
-      }))
-    } else {
-      // Fallback to semantic chunking
-      const semanticChunks = await this.createSemanticChunks(
-        fullText,
-        this.defaultChunkingOptions
-      )
-      chunks = semanticChunks.map((chunk: Document) => ({
-        content: chunk.pageContent,
-        metadata: chunk.metadata,
-      }))
+      // Process with OCR
+      const ocrResult = await mistral.ocr.process({
+        model: 'mistral-ocr-latest',
+        document: {
+          type: documentType,
+          document_url: signed.url
+        }
+      });
+
+      // Extract sections if not already provided by Mistral
+      let detectedSections: string[] = [];
+      
+      // First check if Mistral provided section information
+      if (ocrResult.sections && ocrResult.sections.length > 0) {
+        // Use Mistral's sections directly if available
+        detectedSections = ocrResult.sections.map(section => section.type || section.name || section.title);
+      } else if (ocrResult.structure && ocrResult.structure.sections) {
+        // Alternative structure format
+        detectedSections = ocrResult.structure.sections.map(section => section.type || section.name || section.title);
+      } else {
+        // Fall back to our own section detection
+        detectedSections = this.detectSectionsInText(ocrResult.text);
+      }
+
+      // Extract metadata
+      const extractedMetadata: Record<string, any> = {
+        ocrConfidence: ocrResult.confidence || 0.9,
+        pageCount: ocrResult.pages?.length || 1,
+        processingTime: ocrResult.processing_time,
+        fileFormat: fileType,
+        extractionMethod: 'mistral-ocr'
+      };
+
+      // Detect potential tables based on layout or explicit table markers in the text
+      const hasTables = this.detectTableMarkers(ocrResult.text);
+      if (hasTables) {
+        extractedMetadata.hasTables = true;
+      }
+
+      moduleLogger.info('Mistral OCR extraction completed successfully', {
+        textLength: ocrResult.text.length,
+        sectionsDetected: detectedSections.length,
+        pageCount: ocrResult.pages?.length || 1,
+        hasTables
+      });
+
+      // Process and enhance the pages data to include structured paragraph information
+      let enhancedPages = ocrResult.pages || [];
+      
+      // If pages exist but don't have paragraph structure, try to create it
+      if (enhancedPages.length > 0) {
+        enhancedPages = enhancedPages.map((page, index) => {
+          // If page already has paragraphs, keep them
+          if (page.paragraphs && page.paragraphs.length > 0) {
+            return page;
+          }
+          
+          // Try to break content into paragraphs based on double newlines
+          if (page.content && typeof page.content === 'string') {
+            const paragraphs = page.content
+              .split(/\n\s*\n/)
+              .filter(p => p.trim().length > 0)
+              .map((text, paragraphIndex) => {
+                // Detect if paragraph contains table-like content
+                const isTable = this.detectTableMarkers(text);
+                
+                return {
+                  content: text,
+                  index: paragraphIndex,
+                  isTable,
+                  confidence: page.confidence || ocrResult.confidence || 0.9,
+                  sectionType: this.detectSectionType(text)
+                };
+              });
+            
+            return {
+              ...page,
+              paragraphs,
+              pageNumber: index + 1
+            };
+          }
+          
+          return page;
+        });
+      }
+      
+      // Look for tables in the structure if not already identified
+      const tables = ocrResult.tables || [];
+      if (tables.length === 0) {
+        // Try to find tables in the pages/paragraphs
+        enhancedPages.forEach(page => {
+          if (page.paragraphs) {
+            const tableParagraphs = page.paragraphs.filter(p => p.isTable);
+            if (tableParagraphs.length > 0) {
+              tableParagraphs.forEach(tableParagraph => {
+                tables.push({
+                  content: tableParagraph.content,
+                  pageNumber: page.pageNumber,
+                  confidence: tableParagraph.confidence
+                });
+              });
+            }
+          }
+        });
+      }
+      
+      return {
+        text: ocrResult.text,
+        pages: enhancedPages,
+        detectedSections,
+        confidence: ocrResult.confidence || 0.9,
+        tables,
+        metadata: {
+          ...extractedMetadata,
+          documentStructure: 'enhanced',
+          paragraphCount: enhancedPages.reduce((count, page) => 
+            count + (page.paragraphs?.length || 0), 0),
+          tableCount: tables.length
+        }
+      };
+    } catch (error) {
+      moduleLogger.error('Mistral OCR extraction failed', {
+        fileType,
+        error: error instanceof Error ? error.message : String(error)
+      }, error);
+      
+      throw new ExternalServiceError({
+        message: 'Failed to extract text using Mistral OCR',
+        service: 'Mistral OCR',
+        code: 'MISTRAL_OCR_FAILED',
+        data: { fileType },
+        cause: error
+      });
     }
-
-    return {
-      text: fullText,
-      chunks,
-      pageCount: estimatedPageCount,
-      hasTables,
-      detectedSections,
+  }
+  
+  /**
+   * Helper method to detect table markers in text
+   * 
+   * @param text The extracted text to analyze
+   * @returns Boolean indicating if tables are likely present
+   */
+  private detectTableMarkers(text: string): boolean {
+    // Look for explicit table markers
+    const tableMarkers = [
+      /table \d+/i,
+      /\btable\b/i,
+      /\btables\b/i,
+      /\bfigure \d+\b/i,
+      // Patterns suggesting tabular data
+      /\|\s*\w+\s*\|/,
+      /\+[-+]+\+/,
+      /\+={2,}\+/,
+      // Column headers
+      /\b(column|col\.?)\s+\d+\b/i
+    ];
+    
+    // Check for table markers
+    for (const marker of tableMarkers) {
+      if (marker.test(text)) {
+        return true;
+      }
     }
+    
+    // Check for consistent spacing patterns that might indicate tables
+    const lines = text.split('\n');
+    let potentialTableRows = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      // Look for lines with multiple spaces in sequence, which often indicates column alignment
+      if (/\S+\s{2,}\S+\s{2,}\S+/.test(lines[i])) {
+        potentialTableRows++;
+        // If we find 3+ consecutive rows with this pattern, it's likely a table
+        if (potentialTableRows >= 3) {
+          return true;
+        }
+      } else {
+        potentialTableRows = 0;
+      }
+    }
+    
+    return false;
   }
 
   /**
-   * Perform OCR on an image to extract text
-   * This would use a proper OCR service in production
-   */
-  private async performOcrOnImage(blob: Blob): Promise<{
-    text: string
-    width: number
-    height: number
-    confidence: number
-  }> {
-    // This is a mock implementation - in a real system, you would:
-    // 1. Use a dedicated OCR service like Google Cloud Vision, Tesseract.js, or a HIPAA-compliant medical OCR service
-    // 2. Process the image to improve OCR quality (deskew, enhance contrast, etc.)
-    // 3. Apply medical-specific OCR models if available
+  // The extractWordDocument method has been replaced by extractViaMistralOCR
+  // This provides a more consistent extraction approach across document types
 
-    // Simulate creating an image to get dimensions
-    const url = URL.createObjectURL(blob)
-    const img = document.createElement('img')
-    img.src = url
-
-    // Wait for image to load
-    await new Promise((resolve) => {
-      img.onload = resolve
-    })
-
-    // Get dimensions
-    const width = img.width
-    const height = img.height
-
-    // Clean up
-    URL.revokeObjectURL(url)
-
-    // In a real implementation, you would call an OCR service here
-    // For this example, return a mock result
-    return {
-      text: 'This is placeholder text that would come from an OCR service. In a real implementation, the image would be processed to extract actual text content.',
-      width,
-      height,
-      confidence: 0.75,
-    }
-  }
+  // The performOcrOnImage method has been replaced by extractViaMistralOCR
+  // Using Mistral OCR provides more accurate and reliable text extraction from images
 
   /**
    * Detect medical document sections from text
@@ -629,13 +882,98 @@ export class DocumentExtractionService {
   }
 
   /**
-   * Create semantic chunks from text using LangChain's RecursiveCharacterTextSplitter
+   * Create semantic chunks from text using LangChain
+   * 
+   * This method implements a smart chunking strategy that:
+   * 1. First respects Mistral's structure if available
+   * 2. Uses section-based chunking if sections are detected
+   * 3. Falls back to standard RecursiveCharacterTextSplitter
+   * 
+   * @param text Raw text to chunk
+   * @param options Chunking options
+   * @param structuredData Optional Mistral structured data (pages, paragraphs)
+   * @param detectedSections Optional section information
+   * @returns Array of LangChain Document objects
    */
   private async createSemanticChunks(
     text: string,
-    options: ChunkingOptions
+    options: ChunkingOptions,
+    structuredData?: {
+      pages?: any[],
+      paragraphs?: any[],
+      sections?: string[]
+    }
   ): Promise<Document[]> {
-    // Create a text splitter
+    const documents: Document[] = [];
+    
+    // STRATEGY 1: Use Mistral's page and paragraph structure if available
+    if (structuredData?.pages && structuredData.pages.length > 0) {
+      // For each page in the structured data
+      structuredData.pages.forEach((page, pageIndex) => {
+        const pageNumber = pageIndex + 1;
+        
+        // If page has paragraphs, create chunk per paragraph
+        if (page.paragraphs && page.paragraphs.length > 0) {
+          page.paragraphs.forEach((paragraph, paragraphIndex) => {
+            if (paragraph.content && typeof paragraph.content === 'string') {
+              documents.push(new Document({
+                pageContent: paragraph.content,
+                metadata: {
+                  pageNumber,
+                  paragraphIndex,
+                  source: 'mistral-ocr',
+                  confidence: paragraph.confidence || page.confidence || 0.9,
+                  isTable: paragraph.isTable || false,
+                  sectionType: paragraph.sectionType || this.detectSectionType(paragraph.content),
+                  bounds: paragraph.bounds || null,
+                  chunkType: 'paragraph'
+                }
+              }));
+            }
+          });
+        } 
+        // If no paragraphs but page has content, create chunk for the page
+        else if (page.content && typeof page.content === 'string') {
+          documents.push(new Document({
+            pageContent: page.content,
+            metadata: {
+              pageNumber,
+              source: 'mistral-ocr',
+              confidence: page.confidence || 0.9,
+              bounds: page.bounds || null,
+              chunkType: 'page'
+            }
+          }));
+        }
+      });
+      
+      // If we found chunks using page structure, return them
+      if (documents.length > 0) {
+        return documents;
+      }
+    }
+    
+    // STRATEGY 2: Use section-based chunking if sections are detected
+    if (structuredData?.sections && structuredData.sections.length > 0) {
+      const sectionChunks = this.splitTextBySections(text);
+      
+      sectionChunks.forEach(section => {
+        documents.push(new Document({
+          pageContent: section.content,
+          metadata: {
+            section: section.section,
+            chunkType: 'section'
+          }
+        }));
+      });
+      
+      // If we found section chunks, return them
+      if (documents.length > 0) {
+        return documents;
+      }
+    }
+    
+    // STRATEGY 3: Fall back to standard RecursiveCharacterTextSplitter
     const splitter = new RecursiveCharacterTextSplitter({
       chunkSize: options.chunkSize,
       chunkOverlap: options.chunkOverlap,
@@ -648,16 +986,18 @@ export class DocumentExtractionService {
         ', ', // Commas may separate list items
         ' ', // Last resort - split on spaces
       ],
-    })
+    });
 
     // Create a document with the text
     const doc = new Document({
       pageContent: text,
-      metadata: {},
-    })
+      metadata: {
+        chunkType: 'auto-split'
+      },
+    });
 
     // Split the document
-    return await splitter.splitDocuments([doc])
+    return await splitter.splitDocuments([doc]);
   }
 
   /**

@@ -16,7 +16,8 @@ import logger from '@/lib/logger'
  */
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase'
 import { Document } from '@langchain/core/documents'
-import { OpenAIEmbeddings } from '@langchain/openai'
+import { mistral } from '@ai-sdk/mistral'
+import { Embeddings } from '@langchain/core/embeddings'
 import { type SupabaseClient, createClient } from '@supabase/supabase-js'
 
 // Match documents function parameter type from the database
@@ -33,7 +34,7 @@ type MatchDocumentsParams = {
  */
 export class EnhancedSupabaseVectorStore extends SupabaseVectorStore {
   constructor(
-    private readonly embeddingModel: OpenAIEmbeddings,
+    private readonly embeddingModel: Embeddings,
     private readonly supabaseClient: SupabaseClient<Database>,
     private readonly config: {
       tableName: keyof Database['public']['Tables']
@@ -327,7 +328,7 @@ export class EnhancedSupabaseVectorStore extends SupabaseVectorStore {
         moduleLogger.error('Error generating query embedding', {}, embeddingError)
         throw new ExternalServiceError({
           message: 'Failed to generate embeddings for query',
-          service: 'OpenAI Embeddings',
+          service: 'Mistral Embeddings',
           code: 'EMBEDDING_FAILED',
           data: { queryLength: query.length },
           cause: embeddingError
@@ -420,11 +421,25 @@ export function createSupabaseVectorStore(): EnhancedSupabaseVectorStore {
   // Use the admin client instead of creating a new client
   const supabaseClient = createAdminClient()
 
-  // Create embeddings model
-  const embeddings = new OpenAIEmbeddings({
-    openAIApiKey: config.openai.apiKey,
-    modelName: config.openai.embeddingModel,
-  })
+  // Create Mistral embeddings model
+  const mistralEmbeddingModel = mistral.embedding(config.mistral.embeddingModel)
+  
+  // Create LangChain embeddings wrapper for Mistral
+  const embeddings: Embeddings = {
+    embedQuery: async (text: string): Promise<number[]> => {
+      const response = await mistralEmbeddingModel.embed({ text })
+      return response
+    },
+    embedDocuments: async (documents: string[]): Promise<number[][]> => {
+      const results = await Promise.all(
+        documents.map(async (doc) => {
+          const response = await mistralEmbeddingModel.embed({ text: doc })
+          return response
+        })
+      )
+      return results
+    }
+  }
 
   // Create vector store
   return new EnhancedSupabaseVectorStore(embeddings, supabaseClient, {
