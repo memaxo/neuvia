@@ -14,6 +14,7 @@ import {
   ValidationError 
 } from '@/lib/errors'
 import type { UUID } from '@/lib/types'
+import { CHAT_ERROR_CODES } from '@/lib/errors/error-codes'
 
 /**
  * Database representation of a chat message
@@ -91,7 +92,7 @@ export class ChatService {
       if (!userId) {
         throw new ValidationError({
           message: 'User ID is required to create a chat',
-          code: 'CHAT_MISSING_USER_ID'
+          code: CHAT_ERROR_CODES.CREATION_FAILED
         });
       }
       
@@ -113,7 +114,7 @@ export class ChatService {
       if (error) {
         throw new SystemError({
           message: `Error creating chat: ${error.message}`,
-          code: 'CHAT_CREATION_FAILED',
+          code: CHAT_ERROR_CODES.CREATION_FAILED,
           cause: error,
           data: { userId }
         });
@@ -122,7 +123,7 @@ export class ChatService {
       if (!data) {
         throw new SystemError({
           message: 'Chat creation did not return data',
-          code: 'CHAT_CREATION_NO_DATA',
+          code: CHAT_ERROR_CODES.CREATION_FAILED,
           data: { userId }
         });
       }
@@ -135,7 +136,7 @@ export class ChatService {
       
       throw new SystemError({
         message: `Failed to create chat: ${error instanceof Error ? error.message : String(error)}`,
-        code: 'CHAT_CREATION_FAILED',
+        code: CHAT_ERROR_CODES.CREATION_FAILED,
         cause: error,
         data: { userId }
       });
@@ -184,7 +185,7 @@ export class ChatService {
       if (!chatId) {
         throw new ValidationError({
           message: 'Chat ID is required to save a message',
-          code: 'CHAT_MESSAGE_MISSING_CHAT_ID'
+          code: CHAT_ERROR_CODES.MESSAGE_FAILED
         });
       }
       
@@ -193,7 +194,7 @@ export class ChatService {
       if (validationError) {
         throw new ValidationError({
           message: validationError,
-          code: 'CHAT_MESSAGE_INVALID',
+          code: CHAT_ERROR_CODES.MESSAGE_FAILED,
           data: { chatId }
         });
       }
@@ -213,7 +214,7 @@ export class ChatService {
       if (error) {
         throw new SystemError({
           message: `Error saving message: ${error.message}`,
-          code: 'CHAT_MESSAGE_SAVE_FAILED',
+          code: CHAT_ERROR_CODES.MESSAGE_FAILED,
           cause: error,
           data: { chatId }
         });
@@ -222,7 +223,7 @@ export class ChatService {
       if (!data) {
         throw new SystemError({
           message: 'Message save did not return data',
-          code: 'CHAT_MESSAGE_SAVE_NO_DATA',
+          code: CHAT_ERROR_CODES.MESSAGE_FAILED,
           data: { chatId }
         });
       }
@@ -243,7 +244,7 @@ export class ChatService {
       
       throw new SystemError({
         message: `Failed to save message: ${error instanceof Error ? error.message : String(error)}`,
-        code: 'CHAT_MESSAGE_SAVE_FAILED',
+        code: CHAT_ERROR_CODES.MESSAGE_FAILED,
         cause: error,
         data: { chatId }
       });

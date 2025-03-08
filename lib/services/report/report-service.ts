@@ -8,6 +8,8 @@ import { ReportType, ReportStatus } from '@/lib/types/report'
 import type { ResearchDocument, ResearchResult, ResearchSource } from '@/lib/types/research'
 import type { VerifiedDocument } from '@/lib/types/verification'
 import type { UUID } from '@/lib/types/base'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '@/lib/types/database'
 
 // Create module-specific logger
 const moduleLogger = logger.withMetadata({ module: 'ReportService' })
@@ -82,7 +84,11 @@ interface ReportOptions {
  * Single entry point for report generation across the application
  */
 export class ReportService {
-  private readonly supabase = createBrowserClient()
+  private readonly supabase: SupabaseClient<Database>
+
+  constructor(supabaseClient?: SupabaseClient<Database>) {
+    this.supabase = supabaseClient || createBrowserClient()
+  }
 
   /**
    * Helper method to update progress status
@@ -94,7 +100,7 @@ export class ReportService {
     currentStep: string | undefined,
     onProgress?: (phase: ProcessingPhase, progress: number) => void
   ): void {
-    if (onProgress) {
+    if (onProgress !== null && onProgress !== undefined) {
       onProgress(phase, progress);
     }
     moduleLogger.debug('Progress status updated', {
@@ -161,7 +167,7 @@ export class ReportService {
       } else {
         // For research documents, use the research results
         const researchDoc = documentInput as ResearchDocument
-        if (!researchDoc.researchResults || researchDoc.researchResults.length === 0) {
+        if (researchDoc.researchResults === null || researchDoc.researchResults === undefined || researchDoc.researchResults.length === 0) {
           throw new ApplicationError({
             message: 'No research results available for report generation',
             code: 'MISSING_RESEARCH_RESULTS'
@@ -864,7 +870,7 @@ export class ReportService {
     dateOfBirth?: string
     mrn?: string
   } {
-    if (!data || typeof data !== 'object') {
+    if (data === null || data === undefined || typeof data !== 'object') {
       return {
         id: fallbackId,
         firstName: 'Unknown',

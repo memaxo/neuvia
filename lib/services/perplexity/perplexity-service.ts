@@ -3,6 +3,7 @@ import researchConfig, {
   type ResearchDepthConfig,
 } from '@/lib/config/research'
 import { langChainCore } from '@/lib/langchain/core'
+import type { LangChainCore } from '@/lib/langchain/core'
 import type {
   ResearchOptions,
   ResearchResult,
@@ -12,37 +13,49 @@ import { createWorkflowCallbacks, runWithWorkflow } from '@/lib/utils/langchain'
 import logger from '@/lib/logger'
 import {
   ExternalServiceError,
-  normalizeError
+  normalizeError,
+  SystemError
 } from '@/lib/errors'
 import { ValidationError } from '@/lib/errors/verification-errors'
+import { withRetry } from '@/lib/utils/retry'
 /**
  * Unified Perplexity Service
  *
- * Single entry point for all Perplexity API interactions across the application
+ * Single entry point for all Perplexity API interactions across the application.
+ * 
+ * @description
+ * The PerplexityService provides a standardized interface for performing deep
+ * research operations using the Perplexity API via LangChain integration.
+ * It supports various research types including medical diagnosis, general research,
+ * and offers features like result caching, error handling, and retry logic.
+ * 
+ * @example
+ * ```ts
+ * // Perform general research
+ * const result = await perplexityService.performDeepResearch(
+ *   "What are the latest treatments for diabetes?",
+ *   { depth: "comprehensive" }
+ * );
+ * 
+ * // Perform medical diagnosis
+ * const diagnosis = await perplexityService.performMedicalDiagnosis(
+ *   "What is the likely diagnosis?",
+ *   patientSummary,
+ *   { temperature: 0.2 }
+ * );
+ * ```
  */
 import { StructuredOutputParser } from 'langchain/output_parsers'
 import { z } from 'zod'
 import { RunnableBranch } from '@langchain/core/runnables'
 import type { RunnableConfig } from '@langchain/core/runnables'
 
-/**
- * Interface for the Perplexity API source information
- */
-interface PerplexitySource {
-  title?: string
-  url: string
-  snippet?: string
-  [key: string]: unknown
-}
-
-/**
- * Interface for the Perplexity API completion
- */
-interface PerplexityCompletion {
-  text: string
-  sources?: (PerplexitySource | string)[]
-  [key: string]: unknown
-}
+// Import types from centralized type files
+import type { 
+  PerplexitySource, 
+  PerplexityCompletion,
+  ParsedResearchOutput 
+} from '@/lib/types/perplexity'
 
 /**
  * Helper function to get URL from source object or string
@@ -176,15 +189,7 @@ const medicalDiagnosisParser = StructuredOutputParser.fromZodSchema(
 // Default debug flag - use research config for consistency
 const DEFAULT_DEBUG = researchConfig.debug
 
-/**
- * Interface for parsed output from LangChain output parser
- */
-interface ParsedResearchOutput {
-  text: string
-  sources: ResearchSource[]
-  summary: string
-  keyFindings: string[]
-}
+// ParsedResearchOutput interface now imported from @/lib/types/perplexity
 
 /**
  * Utility class for text extraction operations
@@ -412,6 +417,17 @@ export class PerplexityService {
     string,
     { result: ResearchResult; timestamp: Date }
   >()
+  
+  private readonly langChain: LangChainCore
+  private readonly logger: typeof logger
+
+  constructor(
+    langChainProvider?: LangChainCore,
+    loggerInstance?: typeof logger
+  ) {
+    this.langChain = langChainProvider || langChainCore
+    this.logger = loggerInstance || logger
+  }
 
   /**
    * Get a unique cache key for a research query and options
@@ -472,7 +488,7 @@ export class PerplexityService {
     text: string
   ): ParsedResearchOutput {
     // Create a logger with context metadata
-    const moduleLogger = logger.withMetadata({
+    const moduleLogger = this.logger.withMetadata({
       module: 'PerplexityService',
       method: 'handleParsingError',
       textLength: text.length,
@@ -628,6 +644,9 @@ export class PerplexityService {
 
   /**
    * Execute an async operation with retry logic
+   * 
+   * @deprecated Use the centralized withRetry utility from '@/lib/utils/retry' instead.
+   * This method is kept for backward compatibility and delegates to the centralized utility.
    *
    * @param operation The operation to execute
    * @param maxRetries Maximum number of retries
@@ -640,27 +659,17 @@ export class PerplexityService {
     maxRetries: number = 3,
     delay: number = 1000
   ): Promise<T> {
-    let lastError: unknown
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation()
-      } catch (error) {
-        lastError = error
-
-        // Don't retry if it's a validation error
+    return withRetry(operation, {
+      maxRetries,
+      baseDelay: delay,
+      retryCondition: (error) => {
+        // Don't retry validation errors
         if (error instanceof ValidationError) {
-          throw error
+          return false;
         }
-
-        // Wait before retrying
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, delay * attempt))
-        }
+        return true;
       }
-    }
-
-    throw lastError
+    });
   }
 
   /**
@@ -677,7 +686,7 @@ export class PerplexityService {
     error: unknown
   ): void {
     const normalizedError = normalizeError(error)
-    logger
+    this.logger
       .withMetadata({
         module: 'PerplexityService',
         method: 'handleResearchError',
@@ -696,7 +705,7 @@ export class PerplexityService {
     maxTokens?: number; 
   }) {
     // Create model without callbacks
-    return langChainCore.createChatOpenAI({
+    return this.langChain.createChatOpenAI({
       modelName: options.modelName,
       temperature: options.temperature ?? 0.3,
     })
@@ -713,7 +722,7 @@ export class PerplexityService {
       const formatInstructions = await outputParser.getFormatInstructions()
 
       // Create the prompt template using a single template literal
-      const researchPrompt = langChainCore.createPromptTemplate(
+      const researchPrompt = this.langChain.createPromptTemplate(
         `You are a research assistant specializing in medical information analysis.
 Research the following query thoroughly: {query}
 
@@ -766,7 +775,7 @@ ${formatInstructions}`,
         await medicalDiagnosisParser.getFormatInstructions()
 
       // Create the prompt template
-      const researchPrompt = langChainCore.createPromptTemplate(
+      const researchPrompt = this.langChain.createPromptTemplate(
         `${MEDICAL_DIAGNOSIS_SYSTEM_PROMPT}
 
 ${formatInstructions}
@@ -807,12 +816,37 @@ Additional Query: {query}`,
   }
 
   /**
-   * Perform deep research using Perplexity API with improved Runnable pattern
+   * Perform deep research using Perplexity API with the LangChain Runnable pattern
    *
-   * @param query Research query
-   * @param options Research options
-   * @param debug Enable debug logging
-   * @returns Research result
+   * @param query - The research query or question to be answered
+   * @param options - Optional configuration for the research process
+   * @param options.model - The specific Perplexity model to use (defaults to config value)
+   * @param options.temperature - Controls randomness in response generation (0.0-1.0)
+   * @param options.maxTokens - Maximum number of tokens in the response
+   * @param options.depth - Research depth level ("basic", "standard", "comprehensive")
+   * @param options.onProgress - Callback for tracking progress percentage (0-100)
+   * @param options.isMedicalDiagnosis - Whether this is a medical diagnosis query
+   * @param options.patientData - Patient data to include for medical diagnosis
+   * @param debug - Whether to enable detailed debug logging
+   * @param config - Additional LangChain RunnableConfig for advanced scenarios
+   * 
+   * @returns A structured research result object with text, sources, summary, and key findings
+   * 
+   * @throws {ValidationError} For invalid inputs or configuration
+   * @throws {ExternalServiceError} For Perplexity API or network errors
+   * @throws {SystemError} For unexpected system errors
+   * 
+   * @example
+   * ```ts
+   * const result = await perplexityService.performDeepResearch(
+   *   "What are the potential implications of quantum computing on cryptography?",
+   *   { 
+   *     depth: "comprehensive",
+   *     temperature: 0.3,
+   *     onProgress: (progress) => console.log(`Research progress: ${progress}%`) 
+   *   }
+   * );
+   * ```
    */
   async performDeepResearch(
     query: string,
@@ -934,12 +968,40 @@ Additional Query: {query}`,
 
   /**
    * Perform medical diagnosis using Perplexity API
-   * Uses the verified o3-mini summary as the source of truth
+   * Uses the verified patient data as the source of truth for analysis
    *
-   * @param query User query
-   * @param patientData Patient data from the o3-mini verified summary
-   * @param options Research options
-   * @returns Research result
+   * @param query - The clinical query or diagnostic question
+   * @param patientData - Patient data from the verified summary
+   * @param options - Optional configuration for the diagnosis process
+   * @param options.model - The specific Perplexity model to use (defaults to config value)
+   * @param options.temperature - Controls randomness in response generation (0.0-1.0)
+   * @param options.maxTokens - Maximum number of tokens in the response
+   * @param options.depth - Research depth (defaults to "comprehensive" for diagnoses)
+   * @param options.onProgress - Callback for tracking progress percentage (0-100)
+   * @param config - Additional LangChain RunnableConfig for advanced scenarios
+   * 
+   * @returns A structured diagnosis result with potential conditions, confidence levels, and sources
+   * 
+   * @throws {ValidationError} For invalid inputs or missing patient data
+   * @throws {ExternalServiceError} For Perplexity API or network errors
+   * @throws {SystemError} For unexpected system errors
+   * 
+   * @remarks
+   * This method specifically follows medical diagnosis protocols, using a specialized prompt
+   * that asks for confidence ratings and treatment recommendations for each potential diagnosis.
+   * The results are formatted with differential diagnoses, evidence-based rationales, and
+   * potential treatments.
+   * 
+   * @example
+   * ```ts
+   * const diagnosis = await perplexityService.performMedicalDiagnosis(
+   *   "What are the most likely diagnoses for this patient?",
+   *   patientSummaryData,
+   *   { temperature: 0.2 }
+   * );
+   * 
+   * console.log("Top diagnosis:", diagnosis.keyFindings[0]);
+   * ```
    */
   async performMedicalDiagnosis(
     query: string,
@@ -962,7 +1024,35 @@ Additional Query: {query}`,
   }
 
   /**
-   * Perform research using Langchain for improved structure and reasoning
+   * Perform research using LangChain for improved structure and reasoning
+   *
+   * @param query - The research query or question to be answered
+   * @param options - Optional configuration for the research process
+   * @param options.model - The specific model to use (defaults to Perplexity's sonar-deep-research)
+   * @param options.temperature - Controls randomness in response generation (0.0-1.0)
+   * @param options.maxTokens - Maximum number of tokens in the response
+   * @param options.depth - Research depth level ("basic", "standard", "comprehensive")
+   * @param options.onProgress - Callback for tracking progress percentage (0-100)
+   * @param config - Additional LangChain RunnableConfig for advanced scenarios
+   *
+   * @returns A structured research result with text, sources, summary, and key findings
+   *
+   * @throws {ValidationError} For invalid inputs or configuration
+   * @throws {ExternalServiceError} For API or network errors
+   * @throws {SystemError} For unexpected system errors
+   *
+   * @remarks
+   * This method specifically uses LangChain's structured output parsing to ensure
+   * consistent, well-formatted research results. It leverages the Zod schema to
+   * validate and structure the AI's output.
+   *
+   * @example
+   * ```ts
+   * const result = await perplexityService.performResearchWithLangchain(
+   *   "What are the environmental impacts of lithium mining?", 
+   *   { depth: "comprehensive" }
+   * );
+   * ```
    */
   async performResearchWithLangchain(
     query: string,
@@ -986,13 +1076,13 @@ Depth: {depth}
 
 ${formatInstructions}`;
 
-      const researchPrompt = langChainCore.createPromptTemplate(
+      const researchPrompt = this.langChain.createPromptTemplate(
         promptTemplate,
         ['query', 'depth']
       )
 
       // Create Perplexity model (instead of OpenAI)
-      const model = langChainCore.createPerplexityChat({
+      const model = this.langChain.createPerplexityChat({
         model: 'sonar-deep-research',
         temperature: options?.temperature ?? 0.3,
         maxTokens: options?.maxTokens ?? 3000,

@@ -157,6 +157,21 @@ class ExtractionError extends ApplicationError {
  */
 export class DocumentExtractionService {
   /**
+   * Logger instance
+   */
+  private readonly logger: typeof logger
+
+  /**
+   * Mistral AI client
+   */
+  private readonly mistralClient: typeof mistral
+
+  constructor(loggerInstance?: typeof logger, mistralClient?: typeof mistral) {
+    this.logger = loggerInstance || logger
+    this.mistralClient = mistralClient || mistral
+  }
+
+  /**
    * Default enhanced extraction options
    */
   private readonly defaultExtractionOptions: EnhancedExtractionOptions = {
@@ -493,7 +508,7 @@ export class DocumentExtractionService {
       return extractedData
     } catch (error) {
       // Enhanced error handling with structured logging
-      const moduleLogger = logger.withMetadata({
+    const moduleLogger = this.logger.withMetadata({
         module: 'DocumentExtractionService',
         method: 'extractText',
         fileType: file.type,
@@ -670,7 +685,7 @@ export class DocumentExtractionService {
       else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') fileExtension = 'docx';
       
       // Upload to Mistral - use type assertion for Mistral SDK
-      const mistralExt = mistral as unknown as MistralSDK;
+      const mistralExt = this.mistralClient as unknown as MistralSDK;
       const uploaded = await mistralExt.files.upload({
         file: {
           fileName: `document.${fileExtension}`,
@@ -1110,7 +1125,7 @@ export class DocumentExtractionService {
       return results
     } catch (error) {
       // Log error
-      const moduleLogger = logger.withMetadata({
+      const moduleLogger = this.logger.withMetadata({
         module: 'DocumentExtractionService',
         method: 'processDocuments',
         fileCount: files.length,

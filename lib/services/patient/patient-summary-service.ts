@@ -26,86 +26,16 @@ import type {
   VerificationItem 
 } from '@/lib/types'
 
-// Local custom types - not yet migrated to centralized type system
-type DocumentExtraction = {
-  documentId: UUID;
-  documentType: DocumentType;
-  documentDate: string;
-  sections: Record<string, ExtractedSection>;
-  metadata: {
-    extractionConfidence: number;
-    extractionDate: string;
-  };
-}
-
-type ExtractedSection = {
-  items: Array<{
-    text: string;
-    importance: number;
-    confidence: number;
-    temporalMarker: string;
-  }>;
-}
-
-type PatientSummary = {
-  patientInfo: PatientSummarySection;
-  medicalHistory: PatientSummarySection;
-  currentConditions: PatientSummarySection;
-  medications: PatientSummarySection;
-  recentFindings: PatientSummarySection;
-  treatmentPlans: PatientSummarySection;
-  labResults: PatientSummarySection;
-  imagingResults: PatientSummarySection;
-  recommendations: PatientSummarySection;
-  metadata: {
-    generatedAt: string;
-    documentCount: number;
-    documents: Array<{
-      id: string;
-      type: DocumentType;
-      title: string;
-      date: string;
-    }>;
-    verificationInfo?: {
-      verifiedAt?: string;
-      verifiedBy?: string;
-      status?: string;
-    };
-  };
-}
-
-type PatientSummarySection = {
-  title: string;
-  content: string;
-  sources: string[];
-}
-
-type VerifiedPatientSummary = PatientSummary & {
-  verificationItems: VerificationItem[];
-  verificationStatus: {
-    isVerified: boolean;
-    verifiedAt?: string;
-    verifiedBy?: string;
-    corrections?: {
-      comments?: string;
-    };
-  };
-  verificationMetadata: {
-    verifiedAt: string;
-    verifiedBy: string;
-  };
-}
-
-// Alias UUID type for local use
-type UUID = string;
-
-// Local interface for patient document
-interface PatientDocument {
-  id: string;
-  content_text?: string;
-  document_type?: DocumentType | Record<string, string>;
-  document_date?: string;
-}
+// Import centralized patient types
+import type {
+  DocumentExtraction,
+  ExtractedSection,
+  PatientSummary,
+  PatientSummarySection,
+  VerifiedPatientSummary,
+  UUID,
+  PatientDocument
+} from '@/lib/types/patient'
 
 /**
  * Essential extraction prompt template for individual documents
@@ -214,24 +144,21 @@ Each section should be clear, concise, and clinically relevant.
  * Handles the generation of comprehensive patient summaries
  */
 export class PatientSummaryService {
-  private static instance: PatientSummaryService
   private supabase: ReturnType<typeof createServerClient>
+  
+  // Add singleton instance
+  private static instance: PatientSummaryService | null = null;
 
-  /**
-   * Private constructor to enforce singleton pattern
-   */
   private constructor() {
     this.supabase = createServerClient()
   }
 
-  /**
-   * Get the singleton instance
-   */
+  // Static method to get the singleton instance
   public static getInstance(): PatientSummaryService {
     if (!PatientSummaryService.instance) {
-      PatientSummaryService.instance = new PatientSummaryService()
+      PatientSummaryService.instance = new PatientSummaryService();
     }
-    return PatientSummaryService.instance
+    return PatientSummaryService.instance;
   }
 
   /**
@@ -1383,5 +1310,5 @@ Documents Analyzed: ${summary.metadata.documentCount}
   }
 }
 
-// Export singleton instance
-export const patientSummaryService = PatientSummaryService.getInstance()
+// Create and export singleton instance
+export const patientSummaryService = PatientSummaryService.getInstance();

@@ -14,6 +14,7 @@ import {
   normalizeError,
   ApplicationError,
 } from '@/lib/errors'
+import { withRetry } from '@/lib/utils/retry'
 
 /**
  * Centralized service for handling all file uploads in the application
@@ -105,101 +106,52 @@ export class UploadService {
       // Update progress
       options.onProgress?.(10, 'Uploading file...')
 
-      // Retry logic for transient storage errors
-      let uploadError: StorageError | null = null
-      let attemptCount = 0
-
-      while (attemptCount < this.RETRY_ATTEMPTS) {
-        try {
+      // Use standardized retry utility
+      const uploadResult = await withRetry(
+        async () => {
           // Upload to Supabase Storage
-          const uploadResult = await this.supabase.storage
+          const result = await this.supabase.storage
             .from(bucketName)
             .upload(filePath, file, {
               cacheControl: '3600',
               upsert: true,
               contentType: file.type,
-            })
-
-          uploadError = uploadResult.error
-
-          // If upload succeeded, break retry loop
-          if (!uploadError) break
-
-          // If error is not retryable, don't retry
-          const storageError = this.handleStorageError(uploadError)
-          if (!storageError.data.retryable) {
-            moduleLogger.warn('Non-retryable storage error, aborting retry', {
-              errorCode: storageError.code,
-              attempt: attemptCount + 1,
-            })
-            throw storageError
+            });
+          
+          if (result.error) {
+            throw this.handleStorageError(result.error);
           }
-
-          // Log retry attempt
-          attemptCount++
-          if (attemptCount < this.RETRY_ATTEMPTS) {
-            const backoffTime = this.RETRY_DELAY * Math.pow(2, attemptCount - 1)
-            moduleLogger.warn('Retrying upload after error', {
-              attempt: attemptCount,
-              maxAttempts: this.RETRY_ATTEMPTS,
-              backoffTime,
-              errorCode: (uploadError as StorageApiError).status,
-              errorMessage: uploadError.message,
-            })
-
-            // Notify user of retry
-            options.onProgress?.(10, `Retry attempt ${attemptCount}...`)
-
-            // Wait before retry with exponential backoff
-            await new Promise((resolve) => setTimeout(resolve, backoffTime))
-          }
-        } catch (retryError) {
-          // If this is an ApplicationError thrown from inside our retry logic
-          // (like a non-retryable storage error), propagate it
-          if (retryError instanceof ApplicationError) {
-            throw retryError
-          }
-
-          // Otherwise treat as a generic upload failure and retry if possible
-          uploadError = retryError as StorageError
-          attemptCount++
-
-          if (attemptCount < this.RETRY_ATTEMPTS) {
-            const backoffTime = this.RETRY_DELAY * Math.pow(2, attemptCount - 1)
-            moduleLogger.warn('Unexpected error during upload, retrying', {
-              attempt: attemptCount,
-              maxAttempts: this.RETRY_ATTEMPTS,
-              backoffTime,
-              error:
-                retryError instanceof Error
-                  ? retryError.message
-                  : String(retryError),
-            })
-
-            // Wait before retry with exponential backoff
-            await new Promise((resolve) => setTimeout(resolve, backoffTime))
+          
+          return result;
+        },
+        {
+          maxRetries: this.RETRY_ATTEMPTS,
+          baseDelay: this.RETRY_DELAY,
+          retryCondition: (error) => {
+            // Only retry certain types of errors
+            if (error instanceof ExternalServiceError) {
+              moduleLogger.warn('Storage error, determining if retryable', {
+                errorCode: error.code,
+                retryable: error.data.retryable === true
+              });
+              
+              // Notify user of retry if onProgress callback exists
+              if (error.data.retryable === true) {
+                options.onProgress?.(10, `Retrying upload...`);
+              }
+              
+              return error.data.retryable === true;
+            }
+            return false;
           }
         }
-      }
-
-      // If we exhausted all retries and still have an error, throw it
-      if (uploadError) {
-        moduleLogger.error(
-          'Storage upload failed after retries',
-          {
-            bucketName,
-            filePath,
-            attempts: attemptCount,
-          },
-          uploadError
-        )
-        throw this.handleStorageError(uploadError)
-      }
+      );
+      
+      // If we got here, the upload succeeded
 
       moduleLogger.info('File uploaded to storage successfully', {
         bucketName,
-        filePath,
-        attempts: attemptCount > 0 ? attemptCount : 1,
+        filePath
       })
 
       options.onProgress?.(80, 'Processing upload...')
@@ -261,8 +213,7 @@ export class UploadService {
       // Add tracking information to metadata
       const enhancedMetadata = {
         ...metadata,
-        uploadedAt: new Date().toISOString(),
-        uploadAttempts: attemptCount > 0 ? attemptCount : 1,
+        uploadedAt: new Date().toISOString()
       }
 
       moduleLogger.info('File upload and processing completed successfully', {
@@ -558,6 +509,19 @@ export class UploadService {
 
   /**
    * Validate a file based on upload options
+   * 
+   * @param file - The file to validate
+   * @param options - Upload configuration options
+   * 
+   * @throws {ValidationError} If the file fails validation checks
+   * 
+   * @remarks
+   * Performs multiple validation checks including:
+   * - File size validation against type-specific and custom limits
+   * - File MIME type validation against allowed types
+   * - Type-specific validation for different upload categories
+   * 
+   * @internal
    */
   private validateFile(file: File, options: UploadOptions): void {
     // Check file size
@@ -630,7 +594,18 @@ export class UploadService {
   }
 
   /**
-   * Get default max file size based on upload type
+   * Get default maximum file size based on upload type
+   * 
+   * @param type - The type of upload being performed
+   * @returns The maximum file size in bytes for the specified upload type
+   * 
+   * @remarks
+   * Each upload type has a different size limit appropriate for its use case:
+   * - Avatars: 5MB (smaller size for profile images)
+   * - Documents: 20MB (larger size for medical documents, PDFs, etc.)
+   * - Chat attachments: 10MB (medium size for messaging attachments)
+   * 
+   * @internal
    */
   private getDefaultMaxSizeForType(type: UploadType): number {
     switch (type) {
@@ -738,6 +713,25 @@ export class UploadService {
 
   /**
    * Generate a unique file path for the upload
+   * 
+   * @param file - The file being uploaded
+   * @param options - Upload configuration options
+   * @returns A unique storage path for the file
+   * 
+   * @remarks
+   * Creates type-specific file paths with appropriate nesting and unique identifiers:
+   * - Avatars: "{userId}-{timestamp}.{extension}"
+   * - Patient documents: "{patientId}/{timestamp}-{randomId}.{extension}"
+   * - Chat attachments: "{chatId}/{timestamp}-{sanitizedFileName}"
+   * - Other types: "{type}/{timestamp}-{randomId}-{sanitizedFileName}"
+   * 
+   * File paths are designed to:
+   * - Be uniquely identifiable
+   * - Maintain proper organization by type and owner
+   * - Include timestamps for sorting and auditing
+   * - Retain original filename information when appropriate
+   * 
+   * @internal
    */
   private generateFilePath(file: File, options: UploadOptions): string {
     const timestamp = Date.now()
@@ -838,8 +832,27 @@ export class UploadService {
   /**
    * Handle Supabase storage errors with comprehensive classification
    *
-   * @param error The storage error from Supabase
+   * @param error - The storage error from Supabase
    * @returns A properly classified ExternalServiceError with retry information
+   *
+   * @remarks
+   * This method performs sophisticated error classification based on both error codes
+   * and message content to provide:
+   * 
+   * 1. Consistent error codes across different error scenarios
+   * 2. Human-readable error messages suitable for user display
+   * 3. Proper indication of whether the error is retryable
+   * 4. Enhanced contextual data for debugging and monitoring
+   * 
+   * The classification handles common storage error types including:
+   * - Server errors (5xx) - Generally retryable
+   * - Rate limiting (429) - Retryable after delay
+   * - Authentication/authorization failures (401/403) - Not retryable
+   * - Resource conflicts (409) - Not retryable
+   * - Network issues - Retryable
+   * - Quota exceeded errors - Not retryable
+   * 
+   * @internal
    */
   private handleStorageError(error: StorageError): ExternalServiceError {
     const storageError = error as StorageApiError

@@ -7,6 +7,7 @@ import {
   ProcessingPhase
 } from '@/lib/types/workflow' // normal import for enum usage
 import type { UUID } from '@/lib/types/base'
+import { DOCUMENT_ERROR_CODES, STORAGE_ERROR_CODES } from '@/lib/errors/error-codes'
 import { DocumentAnalysisService } from './analysis-service'
 import { DocumentExtractionService } from './extraction-service'
 import { DocumentStorageService } from './storage-service'
@@ -17,6 +18,7 @@ import { randomUUID } from 'crypto'
 
 // If there's a custom error "ValidationError" from a separate file:
 import { ValidationError } from '@/lib/errors/verification-errors'
+import { withRetry } from '@/lib/utils/retry'
 
 // Simplified "SystemError" removing "Error | unknown" => just "unknown"
 class SystemError extends ApplicationError {
@@ -118,7 +120,7 @@ export class DocumentService {
     if (!file) {
       throw new ValidationError({
         message: 'File is required',
-        code: 'MISSING_FILE'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
 
@@ -148,7 +150,7 @@ export class DocumentService {
       if (!isValidType) {
         throw new ValidationError({
           message: `Unsupported file type: ${file.type}`,
-          code: 'UNSUPPORTED_FILE_TYPE',
+          code: DOCUMENT_ERROR_CODES.INVALID_FORMAT,
           data: { fileType: file.type }
         })
       }
@@ -158,7 +160,7 @@ export class DocumentService {
       if (!isValidSize) {
         throw new ValidationError({
           message: `File size exceeds max of ${this.maxFileSize / (1024 * 1024)}MB`,
-          code: 'FILE_TOO_LARGE',
+          code: DOCUMENT_ERROR_CODES.SIZE_TOO_LARGE,
           data: { fileSize: file.size, maxSize: this.maxFileSize }
         })
       }
@@ -184,8 +186,27 @@ export class DocumentService {
         preserveLayout: extractionLevel === 'comprehensive',
       }
 
-      // Extract text
-      const extractedData = await this.extractionService.extractText(file, extractionOptions)
+      // Extract text with retry logic
+      const extractedData = await withRetry(
+        async () => this.extractionService.extractText(file, extractionOptions),
+        {
+          maxRetries: 3,
+          baseDelay: 2000,
+          retryCondition: (error) => {
+            // Only retry certain errors, not validation errors
+            if (error instanceof ValidationError) {
+              return false;
+            }
+            
+            // Consider most extraction errors as retryable
+            moduleLogger.warn('Document extraction error, retrying', { 
+              error: error instanceof Error ? error.message : String(error)
+            });
+            
+            return true;
+          }
+        }
+      )
 
       // analyzing content
       onStatusUpdate({
@@ -195,12 +216,30 @@ export class DocumentService {
         phase: ProcessingPhase.ANALYSIS
       })
 
-      // Document type detection
+      // Document type detection with retry logic
       let detectionResult: DetectionResultUnion
       if (options?.documentType) {
         detectionResult = { type: options.documentType, confidence: 1.0 }
       } else {
-        detectionResult = await this.analysisService.detectDocumentType(extractedData.rawText)
+        detectionResult = await withRetry(
+          async () => this.analysisService.detectDocumentType(extractedData.rawText),
+          {
+            maxRetries: 2,
+            baseDelay: 1000,
+            retryCondition: (error) => {
+              // Retry detection errors except validation errors
+              if (error instanceof ValidationError) {
+                return false;
+              }
+              
+              moduleLogger.warn('Document type detection error, retrying', {
+                error: error instanceof Error ? error.message : String(error)
+              });
+              
+              return true;
+            }
+          }
+        )
       }
 
       if ('detectedSections' in detectionResult && detectionResult.detectedSections?.length) {
@@ -308,16 +347,56 @@ export class DocumentService {
     })
 
     try {
-      const docId = await this.storageService.saveDocument(extractedDocument, departmentId)
+      // Use standardized retry logic for DB operations
+      const docId = await withRetry(
+        async () => this.storageService.saveDocument(extractedDocument, departmentId),
+        {
+          maxRetries: 3,
+          baseDelay: 1000,
+          maxDelay: 5000,
+          retryCondition: (error) => {
+            // Don't retry validation errors
+            if (error instanceof ValidationError) {
+              return false;
+            }
+            
+            // Retry database connection issues and transient errors
+            if (error instanceof ApplicationError) {
+              // Check if error code indicates a transient issue
+              const retryableCodes = [
+                DOCUMENT_ERROR_CODES.CONNECTION_ERROR,
+                DOCUMENT_ERROR_CODES.TIMEOUT,
+                STORAGE_ERROR_CODES.SERVICE_UNAVAILABLE
+              ];
+              
+              const shouldRetry = retryableCodes.includes(error.code ?? '');
+              
+              moduleLogger.warn('Document save error, determining if retryable', {
+                errorCode: error.code,
+                retryable: shouldRetry
+              });
+              
+              return shouldRetry;
+            }
+            
+            // For other errors, assume they may be transient network issues
+            return true;
+          }
+        }
+      );
+      
       moduleLogger.info(`Document saved successfully with ID: ${docId}`)
-      return docId
+      return docId;
     } catch (error) {
-      moduleLogger.error('Failed to save document to DB', {}, error)
+      moduleLogger.error('Failed to save document to DB after retries', {}, error)
       if (!(error instanceof ApplicationError)) {
         throw new SystemError({
           message: `Failed to save document: ${error instanceof Error ? error.message : String(error)}`,
-          code: 'DOCUMENT_SAVE_FAILED',
-          data: { documentId: extractedDocument.id },
+          code: DOCUMENT_ERROR_CODES.STORAGE_ERROR,
+          data: { 
+            documentId: extractedDocument.id,
+            retryable: false
+          },
           cause: error
         })
       }
@@ -339,13 +418,13 @@ export class DocumentService {
     if (!Array.isArray(files) || files.length === 0) {
       throw new ValidationError({
         message: 'Files array must contain at least one file',
-        code: 'EMPTY_FILES_ARRAY'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
     if (!patientId) {
       throw new ValidationError({
         message: 'Valid patient ID is required',
-        code: 'INVALID_PATIENT_ID'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
 
@@ -410,7 +489,7 @@ export class DocumentService {
       if (!(error instanceof ApplicationError)) {
         throw new SystemError({
           message: `Batch processing failed: ${error instanceof Error ? error.message : String(error)}`,
-          code: 'BATCH_PROCESSING_FAILED',
+          code: DOCUMENT_ERROR_CODES.PROCESSING_ERROR,
           data: { fileCount: files.length, patientId },
           cause: error
         })
@@ -436,20 +515,20 @@ export class DocumentService {
     if (!patientId) {
       throw new ValidationError({
         message: 'Valid patient ID is required',
-        code: 'INVALID_PATIENT_ID'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
     if (!file) {
       throw new ValidationError({
         message: 'Valid file is required',
-        code: 'INVALID_FILE'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
 
     if (!options?.documentType) {
       throw new ValidationError({
         message: 'Valid document type is required',
-        code: 'MISSING_DOCUMENT_TYPE'
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
 
@@ -487,7 +566,7 @@ export class DocumentService {
       if (!(error instanceof ApplicationError)) {
         throw new SystemError({
           message: `Document upload failed: ${error instanceof Error ? error.message : String(error)}`,
-          code: 'UPLOAD_FAILED',
+          code: DOCUMENT_ERROR_CODES.UPLOAD_FAILED,
           data: { fileName: file.name, patientId },
           cause: error
         })
@@ -516,7 +595,7 @@ export class DocumentService {
       if (docError || !dbDocument) {
         throw new DocumentServiceError({
           message: `Document not found: ${docError?.message ?? 'Unknown error'}`,
-          code: 'DOCUMENT_NOT_FOUND',
+          code: DOCUMENT_ERROR_CODES.NOT_FOUND,
           data: { documentId }
         })
       }
@@ -524,7 +603,7 @@ export class DocumentService {
       if (!dbDocument.file_path) {
         throw new DocumentServiceError({
           message: 'Document has no storage path',
-          code: 'MISSING_STORAGE_PATH',
+          code: STORAGE_ERROR_CODES.INVALID_PATH,
           data: { documentId }
         })
       }
@@ -539,7 +618,7 @@ export class DocumentService {
       if (urlError || !urlData?.signedUrl) {
         throw new DocumentServiceError({
           message: `Failed to generate signed URL: ${urlError?.message ?? 'Unknown error'}`,
-          code: 'SIGNED_URL_ERROR',
+          code: STORAGE_ERROR_CODES.DOWNLOAD_FAILED,
           data: { documentId }
         })
       }
@@ -585,7 +664,7 @@ export class DocumentService {
       }
       throw new DocumentServiceError({
         message: `Failed to retry extraction: ${error instanceof Error ? error.message : String(error)}`,
-        code: 'RETRY_FAILED',
+        code: DOCUMENT_ERROR_CODES.EXTRACTION_FAILED,
         data: { documentId },
         cause: error
       })

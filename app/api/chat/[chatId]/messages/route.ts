@@ -3,141 +3,144 @@
  * 
  * Handles retrieving and sending chat messages.
  */
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { createServerClient } from '@/lib/supabase/clients'
 import { v4 as uuidv4 } from 'uuid'
-import { withZodValidation, validateWithZod } from '@/lib/api/middleware/zod-validation'
+import { validateWithZod } from '@/lib/api/middleware/zod-validation'
 import { CreateMessageSchema } from '@/lib/schemas/chat'
 import { isChatMessage } from '@/lib/types/chat'
-import { ValidationError, zodErrorToValidationError } from '@/lib/errors'
+import { ValidationError } from '@/lib/errors'
+import { apiError, apiSuccess } from '@/lib/api/response-helpers'
+import { createApiRoute } from '@/lib/api/route-helpers'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import { AuthenticationError } from '@/lib/errors/auth-errors'
 
 /**
  * GET /api/chat/[chatId]/messages
  * Retrieves messages for a specific chat
  */
-export async function GET(
+export const GET = createApiRoute(async (
   req: NextRequest,
   { params }: { params: { chatId: string } }
-) {
-  try {
-    const supabase = createRouteHandlerClient({ cookies })
-    
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'You must be logged in to access chat messages.' },
-        { status: 401 }
-      )
-    }
-    
-    const chatId = params.chatId
-    const userId = session.user.id
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '50', 10)
-    const before = req.nextUrl.searchParams.get('before')
-    
-    // First verify the chat belongs to the user
-    const { data: chatExists, error: checkError } = await supabase
-      .from('chats')
-      .select('id')
-      .eq('id', chatId)
-      .eq('user_id', userId)
-      .single()
-    
-    if (checkError || !chatExists) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'Chat not found or you don\'t have access to it.' },
-        { status: 404 }
-      )
-    }
-    
-    // Build the query
-    let query = supabase
-      .from('chat_messages')
-      .select('*')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-    
-    // Add before timestamp filter if provided
-    if (before) {
-      query = query.lt('created_at', before)
-    }
-    
-    // Fetch the messages
-    const { data: messages, error } = await query
-    
-    if (error) {
-      console.error('Error fetching chat messages:', error)
-      return NextResponse.json(
-        { error: 'Database Error', message: 'Failed to retrieve chat messages.' },
-        { status: 500 }
-      )
-    }
-    
-    // Check if there are more messages
-    const { count, error: countError } = await supabase
-      .from('chat_messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('chat_id', chatId)
-      .lt('created_at', messages.length > 0 ? messages[messages.length - 1].created_at : new Date().toISOString())
-    
-    // Transform the messages for the API response
-    const formattedMessages = messages.map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      role: msg.role,
-      createdAt: msg.created_at,
-      metadata: msg.metadata || {}
-    }))
-    
-    // Return successful response
-    return NextResponse.json({
-      success: true,
-      data: {
-        messages: formattedMessages,
-        hasMore: !countError && count ? count > 0 : false
-      },
-      timestamp: new Date().toISOString()
+) => {
+  const supabase = createRouteHandlerClient({ cookies })
+  
+  // Verify authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    throw new AuthenticationError({
+      message: 'Authentication required to access chat messages',
+      code: 'AUTH_UNAUTHORIZED',
+      data: { error: authError?.message }
     })
-  } catch (error) {
-    console.error('Unexpected error in fetching chat messages:', error)
-    return NextResponse.json(
-      { error: 'Server Error', message: 'An unexpected error occurred.' },
-      { status: 500 }
-    )
   }
-}
+  
+  const chatId = params.chatId
+  const userId = user.id
+  const limit = parseInt(req.nextUrl.searchParams.get('limit') || '50', 10)
+  const before = req.nextUrl.searchParams.get('before')
+  
+  // First verify the chat belongs to the user
+  const { data: chatExists, error: checkError } = await supabase
+    .from('chats')
+    .select('id')
+    .eq('id', chatId)
+    .eq('user_id', userId)
+    .single()
+  
+  if (checkError || !chatExists) {
+    return apiError({
+      message: 'Chat not found or you don\'t have access to it.',
+      error: 'CHAT_NOT_FOUND',
+      status: 404
+    })
+  }
+  
+  // Build the query
+  let query = supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  
+  // Add before timestamp filter if provided
+  if (before) {
+    query = query.lt('created_at', before)
+  }
+  
+  // Fetch the messages
+  const { data: messages, error } = await query
+  
+  if (error) {
+    console.error('Error fetching chat messages:', error)
+    return apiError({
+      message: 'Failed to retrieve chat messages.',
+      error: 'DATABASE_ERROR',
+      status: 500
+    })
+  }
+  
+  // Check if there are more messages
+  const { count, error: countError } = await supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('chat_id', chatId)
+    .lt('created_at', messages.length > 0 ? messages[messages.length - 1].created_at : new Date().toISOString())
+  
+  // Transform the messages for the API response
+  const formattedMessages = messages.map(msg => ({
+    id: msg.id,
+    content: msg.content,
+    role: msg.role,
+    createdAt: msg.created_at,
+    metadata: msg.metadata || {}
+  }))
+  
+  // Return successful response
+  return apiSuccess({
+    messages: formattedMessages,
+    hasMore: !countError && count ? count > 0 : false
+  })
+}, {
+  openApiPath: '/chat/{chatId}/messages',
+  method: 'get',
+  validate: true,
+  logMetadata: {
+    endpoint: '/api/chat/[chatId]/messages',
+    method: 'GET'
+  }
+})
 
 /**
  * POST /api/chat/[chatId]/messages
  * Sends a new message in a chat
  */
-export async function POST(
+export const POST = createApiRoute(async (
   req: NextRequest,
   { params }: { params: { chatId: string } }
-) {
+) => {
+  const supabase = createRouteHandlerClient({ cookies })
+  
+  // Verify authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    throw new AuthenticationError({
+      message: 'Authentication required to send messages',
+      code: 'AUTH_UNAUTHORIZED',
+      data: { error: authError?.message }
+    })
+  }
+  
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const body = await req.json()
+    const validatedData = validateWithZod(CreateMessageSchema, body, 'Invalid message format')
     
-    // Verify authentication
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'You must be logged in to send messages.' },
-        { status: 401 }
-      )
-    }
-    
-    // We'll use our withZodValidation middleware to handle all this
-    try {
-      const body = await req.json()
-      const validatedData = validateWithZod(CreateMessageSchema, body, 'Invalid message format')
-      
-      const { content, metadata = {} } = validatedData
-      // Note: attachments are now part of metadata in our new schema
+    const { content, metadata = {} } = validatedData
+    // Note: attachments are now part of metadata in our new schema
     const chatId = params.chatId
-    const userId = session.user.id
+    const userId = user.id
     
     // First verify the chat belongs to the user
     const { data: chatExists, error: checkError } = await supabase
@@ -148,10 +151,11 @@ export async function POST(
       .single()
     
     if (checkError || !chatExists) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'Chat not found or you don\'t have access to it.' },
-        { status: 404 }
-      )
+      return apiError({
+        message: 'Chat not found or you don\'t have access to it.',
+        error: 'CHAT_NOT_FOUND',
+        status: 404
+      })
     }
     
     // Create message in database
@@ -173,10 +177,11 @@ export async function POST(
     
     if (insertError) {
       console.error('Error creating message:', insertError)
-      return NextResponse.json(
-        { error: 'Database Error', message: 'Failed to send message.' },
-        { status: 500 }
-      )
+      return apiError({
+        message: 'Failed to send message.',
+        error: 'DATABASE_ERROR',
+        status: 500
+      })
     }
     
     // In a real-world scenario, we'd likely:
@@ -238,29 +243,36 @@ export async function POST(
     }
     
     // Return successful response
-    return NextResponse.json({
-      success: true,
-      data: {
-        messageId,
-        chatId,
-        message: userMessage,
-        response: assistantMessage
-      },
-      timestamp: new Date().toISOString()
+    return apiSuccess({
+      messageId,
+      chatId,
+      message: userMessage,
+      response: assistantMessage
     })
   } catch (error) {
     console.error('Unexpected error in sending message:', error)
     
     if (error instanceof ValidationError) {
-      return NextResponse.json(
-        { error: error.code, message: error.message, details: error.data },
-        { status: error.statusCode }
-      )
+      return apiError({
+        message: error.message,
+        error: error.code,
+        errors: error.data,
+        status: error.statusCode
+      })
     }
     
-    return NextResponse.json(
-      { error: 'Server Error', message: 'An unexpected error occurred.' },
-      { status: 500 }
-    )
+    return apiError({
+      message: 'An unexpected error occurred.',
+      error: 'SERVER_ERROR',
+      status: 500
+    })
   }
-}
+}, {
+  openApiPath: '/chat/{chatId}/messages',
+  method: 'post',
+  validate: true,
+  logMetadata: {
+    endpoint: '/api/chat/[chatId]/messages',
+    method: 'POST'
+  }
+})

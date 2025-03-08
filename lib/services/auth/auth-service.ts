@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase'
 import { createBrowserClient } from '@/lib/supabase/clients'
+import { AUTH_ERROR_CODES } from '@/lib/errors/error-codes'
 
 /**
  * Service for handling authentication operations

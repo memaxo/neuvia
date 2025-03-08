@@ -6,7 +6,7 @@
  */
 
 import logger from '@/lib/logger'
-import { ApplicationError } from '@/lib/errors'
+import { ApplicationError, ExternalServiceError, SystemError } from '@/lib/errors'
 import { ValidationError } from '@/lib/errors/verification-errors'
 import type { DocumentType } from '@/lib/types/document'
 import { DocumentCategory } from '@/lib/types/document'

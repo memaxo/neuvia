@@ -1,7 +1,21 @@
 import logger from '@/lib/logger'
-import { normalizeError, ValidationError } from '@/lib/errors'
+import { normalizeError, ValidationError, ApplicationError } from '@/lib/errors'
 import type { VerificationServiceResult, GenerateVerificationOptions } from '@/lib/types/verification'
 import { verificationAdapter } from '@/lib/api/adapters/verification-adapter'
+import { DOCUMENT_ERROR_CODES, WORKFLOW_ERROR_CODES } from '@/lib/errors/error-codes'
+
+// Define VerificationError class
+class VerificationError extends ApplicationError {
+  constructor(options: {
+    message: string
+    code?: string
+    data?: Record<string, unknown>
+    cause?: unknown
+  }) {
+    super({ ...options, isOperational: true })
+    this.name = 'VerificationError'
+  }
+}
 
 /**
  * DocumentVerificationService
@@ -44,7 +58,7 @@ export class DocumentVerificationService {
       if (!result.success || !result.data?.summaryId) {
         throw new VerificationError({
           message: 'Failed to generate verification',
-          code: 'VERIFICATION_GENERATION_FAILED',
+          code: WORKFLOW_ERROR_CODES.VALIDATION_FAILED,
           data: { originalResult: result },
         })
       }
@@ -70,7 +84,7 @@ export class DocumentVerificationService {
         data: { summaryId: '', summary: '' },
         error: {
           message: normalized.message ?? 'Verification generation failed',
-          code: normalized.code ?? 'VERIFICATION_FAILED',
+          code: normalized.code ?? WORKFLOW_ERROR_CODES.VALIDATION_FAILED,
           details: normalized.data,
         },
         timestamp: new Date().toISOString(),
@@ -96,7 +110,7 @@ export class DocumentVerificationService {
       if (!result.success) {
         throw new ValidationError({
           message: 'Failed to retrieve document verification status',
-          code: 'DOCUMENT_VERIFICATION_FAILED',
+          code: DOCUMENT_ERROR_CODES.PROCESSING_ERROR,
           data: { originalResult: result },
         })
       }

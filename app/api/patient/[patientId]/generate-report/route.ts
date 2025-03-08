@@ -66,7 +66,7 @@ export async function POST(
     const body = await req.json()
     const validationResult = generatePatientReportSchema.safeParse(body)
 
-    if (!validationResult.success) {
+    if (validationResult.success === false) {
       return apiError({
         message: 'Invalid request data',
         status: 422,
