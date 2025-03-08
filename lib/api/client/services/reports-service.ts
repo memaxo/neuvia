@@ -1,8 +1,9 @@
 /**
  * Reports service implementation
  */
-import { Report } from '../models/data-contracts';
-import { ContentType, HttpClient, RequestParams } from "../models/http-client"
+import type { Report } from '../models/data-contracts';
+import type { HttpClient, RequestParams } from "../models/http-client";
+import { ContentType } from "../models/http-client"
 
 export class Reports<SecurityDataType = unknown> {
   http: HttpClient<SecurityDataType>;

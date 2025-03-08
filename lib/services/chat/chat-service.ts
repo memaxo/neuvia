@@ -13,7 +13,7 @@ import {
   SystemError, 
   ValidationError 
 } from '@/lib/errors'
-import { UUID } from '@/lib/types'
+import type { UUID } from '@/lib/types'
 
 /**
  * Database representation of a chat message

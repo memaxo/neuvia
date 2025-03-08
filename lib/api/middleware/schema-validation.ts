@@ -3,7 +3,8 @@
  * 
  * Middleware for validating API requests and responses against OpenAPI schemas
  */
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { validateRequest } from '../validation'
 import { ValidationError } from '@/lib/errors'
 import logger from '@/lib/logger'

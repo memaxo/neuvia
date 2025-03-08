@@ -517,7 +517,7 @@ export async function extractPatientSummary(
     return {
       success: true,
       summary: result,
-      structuredData: structuredData
+      structuredData
     }
   } catch (error) {
     // Handle extraction errors
@@ -708,7 +708,7 @@ export async function processCorrection(
     return {
       success: true,
       summary: result,
-      structuredData: structuredData
+      structuredData
     }
   } catch (error) {
     // Handle correction errors
@@ -1237,7 +1237,7 @@ function extractStructuredDataFromMarkdown(markdownText: string): PatientSummary
           const [name, value] = cleaned.split('|');
           
           // Try to extract unit from value
-          let unitMatch = value.match(/(.*?)\s+(\w+\/\w+|\w+)$/);
+          const unitMatch = value.match(/(.*?)\s+(\w+\/\w+|\w+)$/);
           if (unitMatch) {
             return {
               name: name.trim(),

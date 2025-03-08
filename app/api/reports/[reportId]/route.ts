@@ -1,7 +1,7 @@
 /**
  * API route for getting a specific report
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'
 import { ApplicationError } from '@/lib/errors'
 import { reportService } from '@/lib/services/report/report-service'

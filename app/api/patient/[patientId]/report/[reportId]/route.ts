@@ -3,10 +3,9 @@
  * 
  * This route handles retrieval of a generated report for a specific patient
  */
-import { NextRequest } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { apiError, apiSuccess } from '@/lib/api/response-helpers'
+import type { NextRequest } from 'next/server'
+import { createServerClient } from '@/lib/supabase/clients'
+import { apiError, apiSuccess } from '@/lib/api/route-helpers'
 
 /**
  * GET /api/patient/[patientId]/report/[reportId]
@@ -17,7 +16,7 @@ export async function GET(
   { params }: { params: { patientId: string, reportId: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createServerClient()
     
     // Verify authentication
     const { data: { session } } = await supabase.auth.getSession()

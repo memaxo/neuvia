@@ -58,17 +58,17 @@ export function WorkflowErrorDisplay({
     
     switch (category) {
       case WorkflowErrorCategory.NETWORK:
-        return <Network className="size-5 text-destructive" />
+        return <Network className="text-destructive size-5" />
       case WorkflowErrorCategory.PERMISSION:
-        return <ShieldAlert className="size-5 text-destructive" />
+        return <ShieldAlert className="text-destructive size-5" />
       case WorkflowErrorCategory.UPLOAD:
-        return <FileX className="size-5 text-destructive" />
+        return <FileX className="text-destructive size-5" />
       case WorkflowErrorCategory.PROCESSING:
-        return <FileWarning className="size-5 text-destructive" />
+        return <FileWarning className="text-destructive size-5" />
       case WorkflowErrorCategory.VERIFICATION:
-        return <AlertTriangle className="size-5 text-destructive" />
+        return <AlertTriangle className="text-destructive size-5" />
       default:
-        return <AlertCircle className="size-5 text-destructive" />
+        return <AlertCircle className="text-destructive size-5" />
     }
   }
   
@@ -118,8 +118,8 @@ export function WorkflowErrorDisplay({
   if (compact) {
     return (
       <Alert 
-        variant="destructive" 
-        className={cn("flex items-center justify-between", className)}
+        className={cn("flex items-center justify-between", className)} 
+        variant="destructive"
       >
         <div className="flex items-center gap-2">
           {showIcon && getErrorIcon()}
@@ -129,10 +129,10 @@ export function WorkflowErrorDisplay({
         <div className="flex items-center gap-2">
           {errorMetadata.retriable && (
             <Button 
+              className="h-7 gap-1 px-2" 
+              onClick={handleRetry} 
               size="sm" 
-              variant="outline" 
-              className="h-7 px-2 gap-1" 
-              onClick={handleRetry}
+              variant="outline"
             >
               <RefreshCw className="size-3" />
               <span className="text-xs">Retry</span>
@@ -140,10 +140,10 @@ export function WorkflowErrorDisplay({
           )}
           
           <Button 
+            className="size-7 p-0" 
+            onClick={handleDismiss} 
             size="sm" 
-            variant="ghost" 
-            className="h-7 w-7 p-0" 
-            onClick={handleDismiss}
+            variant="ghost"
           >
             <X className="size-3" />
             <span className="sr-only">Dismiss</span>
@@ -156,23 +156,23 @@ export function WorkflowErrorDisplay({
   // Full display with more details
   return (
     <Alert 
-      variant="destructive" 
-      className={cn("space-y-3", className)}
+      className={cn("space-y-3", className)} 
+      variant="destructive"
     >
       <div className="flex items-start justify-between">
         <div className="flex gap-2">
           {showIcon && getErrorIcon()}
           <div>
-            <AlertTitle className="font-medium mb-1">{getErrorTitle()}</AlertTitle>
+            <AlertTitle className="mb-1 font-medium">{getErrorTitle()}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </div>
         </div>
         
         <Button 
+          className="mt-1 size-7 p-0" 
+          onClick={handleDismiss} 
           size="sm" 
-          variant="ghost" 
-          className="h-7 w-7 p-0 mt-1" 
-          onClick={handleDismiss}
+          variant="ghost"
         >
           <X className="size-3" />
           <span className="sr-only">Dismiss</span>
@@ -188,10 +188,10 @@ export function WorkflowErrorDisplay({
       {errorMetadata.retriable && (
         <div className="flex items-center gap-2 pl-7 pt-1">
           <Button 
-            size="sm"
-            variant="outline" 
-            className="h-8 gap-1" 
-            onClick={handleRetry}
+            className="h-8 gap-1"
+            onClick={handleRetry} 
+            size="sm" 
+            variant="outline"
           >
             <RefreshCw className="size-3" />
             <span className="text-xs">Retry Operation</span>

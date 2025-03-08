@@ -381,7 +381,7 @@ export default function DocumentUploadPage() {
   }
 
   // API Client hooks
-  const documentProcessMutation = useDocumentProcess ? useDocumentProcess() : null
+  const documentProcessMutation = useDocumentProcess()
   
   const handleUpload = async () => {
     if (!selectedFile || !selectedCategory || !selectedType) {
@@ -599,24 +599,26 @@ export default function DocumentUploadPage() {
               <div className="space-y-4">
                 <Label>Upload File</Label>
                 <UnifiedDocumentUploader
-                  patientId={params.id as string}
+                  autoVerify={false}
+                  description="Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG"
+                  documentCategory={selectedCategory}
                   documentType={{
                     category: selectedCategory,
                     type: selectedType || 'document',
                   }}
-                  documentCategory={selectedCategory}
-                  storageContext="patient"
                   initiateProcessing={true}
-                  autoVerify={false}
-                  showProgressTracker={true}
-                  showWorkflowStatus={true}
-                  description="Supported formats: PDF, DOC, DOCX, TXT, JPG, PNG"
-                  title=""
                   onComplete={(fileUpload) => {
                     // Handle successful upload notification - the uploader will handle its own processing
                     toast({
                       title: 'Document Uploaded',
                       description: 'Document has been successfully uploaded.',
+                    })
+                  }}
+                  onError={(error) => {
+                    toast({
+                      title: 'Upload Error',
+                      description: error,
+                      variant: 'destructive',
                     })
                   }}
                   onProcessingComplete={(result) => {
@@ -640,13 +642,11 @@ export default function DocumentUploadPage() {
                       `/dashboard/patients/${params.id}/documents` as any
                     )
                   }}
-                  onError={(error) => {
-                    toast({
-                      title: 'Upload Error',
-                      description: error,
-                      variant: 'destructive',
-                    })
-                  }}
+                  patientId={params.id as string}
+                  showProgressTracker={true}
+                  showWorkflowStatus={true}
+                  storageContext="patient"
+                  title=""
                 />
               </div>
             </CardContent>

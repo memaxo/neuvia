@@ -4,7 +4,7 @@
  * These schemas define the structure of chat objects used in the API,
  * closely aligning with the existing TypeScript types
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 export const chatSchemas: Record<string, OpenAPIV3.SchemaObject> = {
   /**

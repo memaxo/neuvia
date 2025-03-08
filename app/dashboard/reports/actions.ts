@@ -314,7 +314,7 @@ export async function generateReport(
     // 3. Call deep-research or LLM API
     moduleLogger.info('Making deep research API call', { 
       endpoint: '/api/deep-research',
-      topicPreview: researchTopic.substring(0, 100) + '...' 
+      topicPreview: `${researchTopic.substring(0, 100)  }...` 
     })
 
     const response = await fetch('/api/deep-research', {

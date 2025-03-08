@@ -4,8 +4,7 @@
  * Handles retrieving and sending chat messages.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/clients'
 import { v4 as uuidv4 } from 'uuid'
 import { withZodValidation, validateWithZod } from '@/lib/api/middleware/zod-validation'
 import { CreateMessageSchema } from '@/lib/schemas/chat'

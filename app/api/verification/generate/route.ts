@@ -1,7 +1,7 @@
 /**
  * API route for generating verification for a document
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'
 import { withZodValidation } from '@/lib/api/middleware/zod-validation'
 import { z } from 'zod'
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
         summaryId: result.data.summaryId,
         summary: result.data.summary,
         structuredData: result.data.structuredData,
-        documentId: documentId,
-        patientId: patientId,
+        documentId,
+        patientId,
       })
     } catch (error) {
       const errInfo = handleVerificationRouteError(error, correlationId, 'Failed to generate verification')

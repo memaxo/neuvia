@@ -3,9 +3,9 @@
  * 
  * Handles uploading chat attachments.
  */
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/clients'
 import { v4 as uuidv4 } from 'uuid'
 
 /**
@@ -17,7 +17,7 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createServerClient()
     
     // Verify authentication
     const { data: { session } } = await supabase.auth.getSession()
@@ -70,7 +70,7 @@ export async function POST(
     // Generate a unique path for the file in storage
     const attachmentId = uuidv4()
     const fileExtension = file.name.split('.').pop() || ''
-    const storagePath = `${chatId}/${attachmentId}${fileExtension ? '.' + fileExtension : ''}`
+    const storagePath = `${chatId}/${attachmentId}${fileExtension ? `.${  fileExtension}` : ''}`
     
     // Upload the file to Supabase Storage
     const { data: storageData, error: storageError } = await supabase

@@ -6,13 +6,14 @@
  * with Zod-based runtime checks for API endpoints.
  */
 import { z } from 'zod'
-import {
-  VerificationStatus,
+import type {
   VerificationItem,
   VerificationMetadata,
   VerificationResult,
   VerificationOptions,
-  CorrectionSubmission,
+  CorrectionSubmission} from '@/lib/types/verification';
+import {
+  VerificationStatus
 } from '@/lib/types/verification'
 
 /**

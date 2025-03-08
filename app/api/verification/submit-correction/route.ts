@@ -1,8 +1,8 @@
 /**
  * API route for submitting a correction to verified content
  */
-import { NextRequest } from 'next/server'
-import { apiError, apiSuccess } from '@/lib/api/response-helpers'
+import type { NextRequest } from 'next/server'
+import { apiError, apiSuccess } from '@/lib/api/route-helpers'
 import { withZodValidation } from '@/lib/api/middleware/zod-validation'
 import { CorrectionSubmissionSchema } from '@/lib/schemas/verification'
 import { ApplicationError, ValidationError } from '@/lib/errors'

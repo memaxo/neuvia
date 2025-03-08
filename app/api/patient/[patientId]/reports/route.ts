@@ -3,7 +3,7 @@
  * 
  * This route handles listing all reports for a patient with optional filtering
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'

@@ -1,6 +1,7 @@
 'use client'
 
-import React, { Component, ErrorInfo, ReactNode } from 'react'
+import type { ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react'
@@ -169,34 +170,34 @@ export class WorkflowErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     const { title, description, variant } = this.getErrorDetails()
     
     return (
-      <div className="p-4 max-w-3xl mx-auto">
-        <Alert variant={variant} className="mb-4">
+      <div className="mx-auto max-w-3xl p-4">
+        <Alert className="mb-4" variant={variant}>
           <AlertCircle className="size-4" />
           <AlertTitle>{title}</AlertTitle>
           <AlertDescription className="mt-2">
             <p>{description}</p>
             {workflowStep && (
-              <p className="text-xs mt-1 text-muted-foreground">
+              <p className="text-muted-foreground mt-1 text-xs">
                 Current workflow step: {workflowStep}
               </p>
             )}
             
             <div className="mt-4 flex gap-2">
               <Button 
+                className="gap-1" 
                 onClick={this.handleRetry} 
-                variant="outline" 
                 size="sm" 
-                className="gap-1"
+                variant="outline"
               >
                 <RefreshCw className="size-3" /> 
                 Retry
               </Button>
               
               <Button 
+                className="gap-1" 
                 onClick={this.handleBack} 
-                variant="outline" 
                 size="sm" 
-                className="gap-1"
+                variant="outline"
               >
                 <ArrowLeft className="size-3" /> 
                 Go Back

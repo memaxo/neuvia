@@ -4,7 +4,7 @@
  * These schemas define the structure of report objects used in the API,
  * closely aligning with the existing TypeScript types
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 export const reportSchemas: Record<string, OpenAPIV3.SchemaObject> = {
   /**

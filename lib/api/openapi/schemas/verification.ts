@@ -6,7 +6,7 @@
  * "completed", or "failed" exactly, along with the updated VerificationItem.
  */
 
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 /**
  * Updated verification schemas following the new canonical definitions.

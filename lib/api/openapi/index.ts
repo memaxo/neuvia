@@ -4,7 +4,7 @@
  * This file serves as the entry point for our OpenAPI specifications.
  * It exports the complete OpenAPI schema and related utilities.
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 import { standardResponses } from './responses'
 import { documentSchemas } from './schemas/documents'
 import { verificationSchemas } from './schemas/verification'

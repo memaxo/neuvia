@@ -505,10 +505,10 @@ export function UnifiedDocumentUploader({
         
         {uploadStatus.status === 'uploading' || uploadStatus.status === 'processing' ? (
           <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={cancelUpload}
-            className="text-destructive hover:bg-destructive/10"
+            className="text-destructive hover:bg-destructive/10" 
+            onClick={cancelUpload} 
+            size="icon"
+            variant="ghost"
           >
             <X className="size-4" />
             <span className="sr-only">Cancel</span>
@@ -604,6 +604,7 @@ export function UnifiedDocumentUploader({
             ? 'hidden'
             : undefined
         }
+        compact={compact}
         disabled={uploading}
         maxFileCount={multiple ? undefined : 1}
         maxSize={maxSize}
@@ -611,7 +612,6 @@ export function UnifiedDocumentUploader({
         onUpload={handleFileUpload}
         onValueChange={setCurrentFiles}
         value={currentFiles}
-        compact={compact}
       />
       
       {uploadStatus.status === 'success' && (

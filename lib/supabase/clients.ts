@@ -223,9 +223,9 @@ export function subscribeToRow<T = any>(
     channel.on(
       'postgres_changes',
       {
-        event: event,
+        event,
         schema: 'public',
-        table: table,
+        table,
         filter: `id=eq.${id}`
       },
       handler

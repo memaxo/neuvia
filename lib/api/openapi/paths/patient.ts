@@ -1,7 +1,7 @@
 /**
  * OpenAPI path definition for patient-related endpoints
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 /**
  * OpenAPI path definition for patient APIs

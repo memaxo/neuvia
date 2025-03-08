@@ -3,7 +3,7 @@
  * 
  * Example endpoint demonstrating Zod Schema validation with typed responses
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { withZodValidation } from '@/lib/api/middleware/zod-validation'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'

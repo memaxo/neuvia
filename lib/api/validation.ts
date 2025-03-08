@@ -3,8 +3,8 @@
  * 
  * Provides middleware and helpers for validating API requests against OpenAPI schemas
  */
-import { NextRequest } from 'next/server'
-import { OpenAPIV3 } from 'openapi-types'
+import type { NextRequest } from 'next/server'
+import type { OpenAPIV3 } from 'openapi-types'
 import { ajv } from './ajv'
 import { ValidationError } from '@/lib/errors'
 import { openAPISpec } from './openapi'

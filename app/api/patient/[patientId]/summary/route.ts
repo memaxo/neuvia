@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/clients'
 
 import { patientSummaryService } from '@/lib/services/patient/patient-summary-service'
 import { rateLimit } from '@/lib/rate-limit'

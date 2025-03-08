@@ -4,7 +4,7 @@
  * These responses match our application error handling patterns
  * and provide consistent documentation for all API endpoints.
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 /**
  * Standard response schemas for the API

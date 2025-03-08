@@ -17,7 +17,7 @@ import logger from '@/lib/logger'
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase'
 import { Document } from '@langchain/core/documents'
 import { mistral } from '@ai-sdk/mistral'
-import { Embeddings } from '@langchain/core/embeddings'
+import type { Embeddings } from '@langchain/core/embeddings'
 import { type SupabaseClient, createClient } from '@supabase/supabase-js'
 
 // Match documents function parameter type from the database

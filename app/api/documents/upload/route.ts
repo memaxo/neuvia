@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/clients'
 import { v4 as uuidv4 } from 'uuid'
 
 import { documentService } from '@/lib/services/document/document-service'
@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
 
   try {
     // Get user from session
-    const supabase = createRouteHandlerClient({ cookies })
-    const { data: session } = await supabase.auth.getSession()
-    const userId = session?.session?.user.id
+    const supabase = await createServerClient()
+    const { data } = await supabase.auth.getSession()
+    const userId = data?.session?.user.id
 
     if (!userId) {
       return NextResponse.json(

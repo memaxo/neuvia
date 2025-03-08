@@ -70,7 +70,7 @@ export function WorkflowSyncIndicator({
   const getStatusInfo = () => {
     if (error) {
       return {
-        icon: <AlertTriangle className="h-3 w-3 text-destructive" />,
+        icon: <AlertTriangle className="text-destructive size-3" />,
         label: 'Error',
         variant: 'destructive',
         tooltip: error
@@ -79,7 +79,7 @@ export function WorkflowSyncIndicator({
     
     if (!isConnected) {
       return {
-        icon: <CloudOff className="h-3 w-3" />,
+        icon: <CloudOff className="size-3" />,
         label: 'Offline',
         variant: 'outline',
         tooltip: 'Not connected to real-time updates'
@@ -88,7 +88,7 @@ export function WorkflowSyncIndicator({
     
     if (pendingTransactions.length > 0) {
       return {
-        icon: <Clock className="h-3 w-3 animate-pulse" />,
+        icon: <Clock className="size-3 animate-pulse" />,
         label: `Syncing (${pendingTransactions.length})`,
         variant: 'secondary',
         tooltip: `${pendingTransactions.length} updates pending`
@@ -96,7 +96,7 @@ export function WorkflowSyncIndicator({
     }
     
     return {
-      icon: <CheckCircle2 className="h-3 w-3 text-green-500" />,
+      icon: <CheckCircle2 className="size-3 text-green-500" />,
       label: 'Synced',
       variant: 'outline',
       tooltip: lastSyncTimeText ? `Last synced ${lastSyncTimeText}` : 'Connected'
@@ -113,7 +113,7 @@ export function WorkflowSyncIndicator({
           <TooltipTrigger asChild>
             <div
               className={cn(
-                "flex items-center rounded-full p-1", 
+                "flex items-center rounded-full p-1 cursor-pointer", 
                 {
                   "text-destructive": status.variant === 'destructive',
                   "text-secondary-foreground": status.variant === 'secondary',
@@ -122,6 +122,14 @@ export function WorkflowSyncIndicator({
                 className
               )}
               onClick={() => forceSync()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  forceSync();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label="Force workflow sync"
             >
               {status.icon}
             </div>
@@ -129,7 +137,7 @@ export function WorkflowSyncIndicator({
           <TooltipContent side="bottom">
             <p>{status.tooltip}</p>
             {pendingTransactions.length > 0 && (
-              <p className="text-xs text-muted-foreground">Click to force sync</p>
+              <p className="text-muted-foreground text-xs">Click to force sync</p>
             )}
           </TooltipContent>
         </Tooltip>
@@ -143,13 +151,13 @@ export function WorkflowSyncIndicator({
       <Tooltip>
         <TooltipTrigger asChild>
           <Badge
-            variant={status.variant as any}
             className={cn(
               "cursor-pointer transition-all",
               { "px-2 py-1": size === 'lg' },
               className
             )}
             onClick={() => forceSync()}
+            variant={status.variant as any}
           >
             <span className="flex items-center gap-1.5">
               {status.icon}
@@ -175,7 +183,7 @@ export function WorkflowSyncIndicator({
                     <li key={txId}>{`Update #${index + 1}`}</li>
                   ))}
                 </ul>
-                <p className="mt-1 text-muted-foreground">Click to force sync</p>
+                <p className="text-muted-foreground mt-1">Click to force sync</p>
               </div>
             )}
           </div>

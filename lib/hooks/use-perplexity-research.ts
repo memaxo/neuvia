@@ -1,5 +1,6 @@
 // Re-export unified research hook for backward compatibility
-import { useResearch, UseResearchOptions } from './use-research'
+import type { UseResearchOptions } from './use-research';
+import { useResearch } from './use-research'
 
 // Export type aliases for backward compatibility
 export type UsePerplexityResearchOptions = UseResearchOptions

@@ -1,6 +1,7 @@
 'use client'
 
-import React, { Component, ErrorInfo, ReactNode } from 'react'
+import type { ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react'
 import { AlertTriangle, RefreshCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -87,18 +88,18 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       
       // Otherwise, use the default error UI
       return (
-        <Card className="p-6 shadow-md w-full max-w-xl mx-auto my-8">
-          <div className="flex flex-col items-center text-center space-y-4">
-            <AlertTriangle size={40} className="text-destructive" />
+        <Card className="mx-auto my-8 w-full max-w-xl p-6 shadow-md">
+          <div className="flex flex-col items-center space-y-4 text-center">
+            <AlertTriangle className="text-destructive" size={40} />
             <h2 className="text-xl font-bold">Something went wrong</h2>
             
-            <div className="text-sm text-muted-foreground">
-              <p>We're sorry, but an error occurred while rendering this component.</p>
+            <div className="text-muted-foreground text-sm">
+              <p>We&apos;re sorry, but an error occurred while rendering this component.</p>
               {process.env.NODE_ENV !== 'production' && this.state.error && (
-                <div className="mt-4 p-4 bg-muted rounded text-left overflow-auto max-h-40">
+                <div className="bg-muted mt-4 max-h-40 overflow-auto rounded p-4 text-left">
                   <p className="font-medium">{this.state.error.toString()}</p>
                   {this.state.errorInfo && (
-                    <pre className="text-xs mt-2 whitespace-pre-wrap">
+                    <pre className="mt-2 whitespace-pre-wrap text-xs">
                       {this.state.errorInfo.componentStack}
                     </pre>
                   )}
@@ -107,11 +108,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             </div>
             
             <Button 
+              className="mt-4"
               onClick={this.reset}
               variant="outline"
-              className="mt-4"
             >
-              <RefreshCcw className="mr-2 h-4 w-4" />
+              <RefreshCcw className="mr-2 size-4" />
               Try Again
             </Button>
           </div>

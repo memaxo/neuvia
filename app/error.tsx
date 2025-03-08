@@ -29,26 +29,26 @@ export default function GlobalError({
   }, [error])
 
   return (
-    <html>
+    <html lang="en">
       <body>
         <div className="flex min-h-screen flex-col items-center justify-center p-4">
-          <Card className="p-6 shadow-md w-full max-w-xl">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <AlertTriangle size={40} className="text-destructive" />
+          <Card className="w-full max-w-xl p-6 shadow-md">
+            <div className="flex flex-col items-center space-y-4 text-center">
+              <AlertTriangle className="text-destructive" size={40} />
               <h1 className="text-2xl font-bold">Something went wrong!</h1>
               
-              <div className="text-sm text-muted-foreground">
-                <p>We're sorry, but an unexpected error occurred.</p>
+              <div className="text-muted-foreground text-sm">
+                <p>We&apos;re sorry, but an unexpected error occurred.</p>
                 {error.digest && (
                   <p className="mt-2">
-                    Error ID: <code className="text-xs bg-muted p-1 rounded">{error.digest}</code>
+                    Error ID: <code className="bg-muted rounded p-1 text-xs">{error.digest}</code>
                   </p>
                 )}
                 {process.env.NODE_ENV !== 'production' && (
-                  <div className="mt-4 p-4 bg-muted rounded text-left overflow-auto max-h-40">
+                  <div className="bg-muted mt-4 max-h-40 overflow-auto rounded p-4 text-left">
                     <p className="font-medium">{error.message}</p>
                     {error.stack && (
-                      <pre className="text-xs mt-2 whitespace-pre-wrap">
+                      <pre className="mt-2 whitespace-pre-wrap text-xs">
                         {error.stack}
                       </pre>
                     )}
@@ -56,20 +56,20 @@ export default function GlobalError({
                 )}
               </div>
               
-              <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <Button onClick={reset} variant="default">
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCw className="mr-2 size-4" />
                   Try Again
                 </Button>
-                <Button variant="outline" asChild>
+                <Button asChild variant="outline">
                   <Link href="/">
-                    <Home className="mr-2 h-4 w-4" />
+                    <Home className="mr-2 size-4" />
                     Go to Home
                   </Link>
                 </Button>
               </div>
               
-              <p className="text-xs text-muted-foreground mt-6">
+              <p className="text-muted-foreground mt-6 text-xs">
                 If the problem persists, please contact our support team.
               </p>
             </div>

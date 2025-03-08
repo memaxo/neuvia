@@ -5,7 +5,8 @@
  * to different formats and for serving it via an API endpoint.
  */
 import { openAPISpec, getOpenAPISpecAsJSON } from './openapi'
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
 

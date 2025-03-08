@@ -10,7 +10,7 @@ import logger from '@/lib/logger'
  *
  * Endpoint for verifying patient summaries
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 /**
  * POST handler for verifying a patient summary

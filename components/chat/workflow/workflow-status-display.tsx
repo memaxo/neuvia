@@ -131,7 +131,7 @@ export function WorkflowStatusDisplay({
         description: 'Document processing is complete. The extracted information will be used to update patient summaries.',
         icon: <CheckCircle className="size-5 text-green-500" />,
         actions: (
-          <Button onClick={handleContinue} className="gap-1">
+          <Button className="gap-1" onClick={handleContinue}>
             Continue <ArrowRight className="size-4" />
           </Button>
         )
@@ -151,7 +151,7 @@ export function WorkflowStatusDisplay({
         description: 'The information has been verified and is ready for report generation.',
         icon: <CheckCircle className="size-5 text-green-500" />,
         actions: (
-          <Button onClick={handleContinue} className="gap-1">
+          <Button className="gap-1" onClick={handleContinue}>
             Continue to Report <ArrowRight className="size-4" />
           </Button>
         )
@@ -227,7 +227,7 @@ export function WorkflowStatusDisplay({
   // If there's an error, show an alert instead
   if (processingStatus.status === 'error' || workflowStep === 'error') {
     return (
-      <Alert variant="destructive" className="mb-4">
+      <Alert className="mb-4" variant="destructive">
         <AlertCircle className="size-4" />
         <AlertDescription>
           {error || 'An error occurred during processing. Please try again.'}

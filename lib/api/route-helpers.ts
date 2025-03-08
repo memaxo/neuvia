@@ -3,13 +3,14 @@
  * 
  * Utilities for creating standardized API routes with OpenAPI validation
  */
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
 import { withErrorHandling, getRequestId } from '@/lib/api-response'
 import { validateRequest } from './validation'
 import logger from '@/lib/logger'
 
 // Import HttpMethod type from validation module
-import { HttpMethod } from './validation'
+import type { HttpMethod } from './validation'
 
 /**
  * Configuration options for creating a standardized API route handler

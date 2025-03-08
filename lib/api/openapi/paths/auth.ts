@@ -1,7 +1,7 @@
 /**
  * OpenAPI path definition for authentication-related endpoints
  */
-import { OpenAPIV3 } from 'openapi-types'
+import type { OpenAPIV3 } from 'openapi-types'
 
 /**
  * OpenAPI path definition for authentication API

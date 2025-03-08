@@ -128,11 +128,11 @@ function DefaultFallback({
   }
   
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center p-6">
+    <div className="flex size-full flex-col items-center justify-center p-6">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="bg-destructive/10">
           <div className="flex items-center gap-2">
-            <AlertOctagon className="h-5 w-5 text-destructive" />
+            <AlertOctagon className="text-destructive size-5" />
             <CardTitle>Workflow Error</CardTitle>
           </div>
           <CardDescription>
@@ -142,16 +142,16 @@ function DefaultFallback({
         
         <CardContent className="pt-6">
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-muted-foreground">Error Details</h3>
+            <h3 className="text-muted-foreground text-sm font-medium">Error Details</h3>
             <p className="mt-1 text-sm">{error.message}</p>
           </div>
           
           <div className="space-y-4">
             <div className="space-y-2">
-              <h3 className="text-sm font-medium text-muted-foreground">Recovery Options</h3>
+              <h3 className="text-muted-foreground text-sm font-medium">Recovery Options</h3>
               <Select
-                value={selectedRecoveryPath}
                 onValueChange={(value) => setSelectedRecoveryPath(value as WorkflowStep)}
+                value={selectedRecoveryPath}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select recovery option" />
@@ -168,32 +168,32 @@ function DefaultFallback({
           </div>
         </CardContent>
         
-        <CardFooter className="flex justify-between border-t bg-muted/20 px-6 py-4">
+        <CardFooter className="bg-muted/20 flex justify-between border-t px-6 py-4">
           <Button
-            variant="outline"
-            onClick={handleDashboard}
             className="gap-1"
+            onClick={handleDashboard}
+            variant="outline"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             Dashboard
           </Button>
           
           <div className="flex gap-2">
             <Button
-              variant="outline"
-              onClick={resetErrorBoundary}
               className="gap-1"
+              onClick={resetErrorBoundary}
+              variant="outline"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="size-4" />
               Reset
             </Button>
             
             <Button
-              onClick={handleRecovery}
               className="gap-1"
               disabled={!selectedRecoveryPath}
+              onClick={handleRecovery}
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="size-4" />
               Recover
             </Button>
           </div>
@@ -253,8 +253,8 @@ export function WorkflowErrorBoundary({
         ) : (
           <DefaultFallback 
             {...props} 
-            workflowStep={workflowStep}
             patientId={patientId}
+            workflowStep={workflowStep}
           />
         )
       }
@@ -279,8 +279,8 @@ export function ChatErrorBoundary({
 }) {
   return (
     <WorkflowErrorBoundary
-      workflowStep={workflowStep}
       patientId={patientId}
+      workflowStep={workflowStep}
     >
       {children}
     </WorkflowErrorBoundary>

@@ -173,13 +173,13 @@ export function WorkflowProgressTracker({
             <StepIcon className={cn("size-4", processingStatus.status === 'processing' && "animate-spin")} />
             <span className="text-sm font-medium">{phaseDescription}</span>
           </div>
-          <Badge variant="outline" className="px-2">
+          <Badge className="px-2" variant="outline">
             {Math.round(workflowProgress)}%
           </Badge>
         </div>
       )}
       
-      <Progress value={displayProgress} className={cn(heightClass, "transition-all duration-300")} />
+      <Progress className={cn(heightClass, "transition-all duration-300")} value={displayProgress} />
       
       {showPhase && processingStatus.phase && (
         <p className="text-muted-foreground text-xs">

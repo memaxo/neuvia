@@ -5,7 +5,7 @@
  */
 import { useMutation } from '@tanstack/react-query'
 import { ApiClient } from "../api-client"
-import { PerformResearchRequest } from '../models'
+import type { PerformResearchRequest } from '../models'
 
 // Initialize API client
 const apiClient = new ApiClient()

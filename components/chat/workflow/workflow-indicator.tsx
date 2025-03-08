@@ -32,6 +32,19 @@ export function WorkflowIndicator({
   // Get workflow state from Zustand store
   const workflowStep = useChatStore(state => state.workflow.currentStep)
   const processingStatus = useChatStore(state => state.workflow.processingStatus)
+
+  // Always declare hooks at the top level
+  const [displayProgress, setDisplayProgress] = useState(processingStatus.progress)
+  
+  // Update display progress with animation when actual progress changes
+  useEffect(() => {
+    if (processingStatus.progress !== displayProgress) {
+      const timeout = setTimeout(() => {
+        setDisplayProgress(processingStatus.progress)
+      }, 100)
+      return () => clearTimeout(timeout)
+    }
+  }, [processingStatus.progress, displayProgress])
   
   // No need to show anything for idle state
   if (workflowStep === 'idle') {
@@ -97,39 +110,26 @@ export function WorkflowIndicator({
     return labels[workflowStep] || 'Processing'
   }
   
-  // Local state for animating progress changes
-  const [displayProgress, setDisplayProgress] = useState(processingStatus.progress)
-  
-  // Update display progress with animation when actual progress changes
-  useEffect(() => {
-    if (processingStatus.progress !== displayProgress) {
-      const timeout = setTimeout(() => {
-        setDisplayProgress(processingStatus.progress)
-      }, 100)
-      return () => clearTimeout(timeout)
-    }
-  }, [processingStatus.progress, displayProgress])
-  
   // Get progress height based on size
   const progressHeight = size === 'sm' ? 'h-1' : size === 'lg' ? 'h-2' : 'h-1.5'
   
   return (
     <div className={cn("inline-flex flex-col", className)}>
-      <Badge variant="outline" className={cn(
-        "flex items-center gap-1.5 px-2 py-0.5 text-xs rounded",
+      <Badge className={cn(
+        "flex items-center gap-1.5 rounded px-2 py-0.5 text-xs",
         getStepColorClass()
-      )}>
+      )} variant="outline">
         {getStepIcon()}
         <span>{getStepLabel()}</span>
       </Badge>
       
       {showProgress && processingStatus.status === 'processing' && (
         <Progress 
-          value={displayProgress} 
           className={cn(
             progressHeight, 
-            "w-full mt-1 transition-all duration-300"
+            "mt-1 w-full transition-all duration-300"
           )} 
+          value={displayProgress} 
         />
       )}
     </div>

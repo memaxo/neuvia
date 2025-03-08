@@ -1,12 +1,12 @@
 /**
  * API route for formatting an existing report
  */
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'
 import { z } from 'zod'
 import { validateRequest } from '@/lib/api/validation'
 import { ApplicationError } from '@/lib/errors'
-import { ReportFormat } from '@/lib/chat/types'
+import type { ReportFormat } from '@/lib/chat/types'
 import { reportService } from '@/lib/services/report/report-service'
 
 // Request validation schema

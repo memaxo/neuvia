@@ -3,9 +3,9 @@
  * 
  * Handles creation of new chat sessions.
  */
-import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@/lib/supabase/clients'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -22,7 +22,7 @@ const CreateChatSchema = z.object({
  */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createServerClient()
     
     // Verify authentication
     const { data: { session } } = await supabase.auth.getSession()
