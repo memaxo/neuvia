@@ -10,6 +10,8 @@ import type { VerifiedDocument } from '@/lib/types/verification'
 import type { UUID } from '@/lib/types/base'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
+import { getFormatterForType } from './formatters/report-formatter'
+import { SectionParser } from './parsers/section-parser'
 
 // Create module-specific logger
 const moduleLogger = logger.withMetadata({ module: 'ReportService' })
@@ -303,34 +305,21 @@ export class ReportService {
         )
       }
 
-      // Generate the report content based on the type
-      let reportContent = ''
+      // Generate the report content based on the type using the formatter strategy
       updateStatus(ProcessingPhase.ANALYSIS, 30, 'Generating report content')
 
-      if (params.type === 'medical-diagnosis') {
-        reportContent = await this.formatMedicalDiagnosisReport(
-          params.researchData.text,
-          params.contextData,
-          params.researchData.sources
-        )
-      } else if (params.type === 'research') {
-        reportContent = this.formatResearchReport(
-          params.researchData.text,
-          params.contextData,
-          params.researchData.sources
-        )
-      } else {
-        reportContent = this.formatStandardReport(
-          params.researchData.text,
-          params.contextData,
-          params.researchData.sources
-        )
-      }
+      // Use the formatter strategy pattern
+      const formatter = getFormatterForType(params.type)
+      const reportContent = formatter.format(
+        params.researchData.text,
+        params.contextData,
+        params.researchData.sources
+      )
 
       updateStatus(ProcessingPhase.COMPLETION, 80, 'Finalizing report')
 
-      // Create the report data structure
-      const sections = this.extractSections(reportContent)
+      // Create the report data structure using the section parser
+      const sections = SectionParser.extractSections(reportContent)
 
       const finalReportId = crypto.randomUUID()
       const nowIso = new Date().toISOString()
@@ -531,8 +520,9 @@ export class ReportService {
 
       updateStatus(ProcessingPhase.ANALYSIS, 30, 'Generating fallback report content')
 
-      // For fallback, just create a standard style
-      const reportContent = this.formatStandardReport(
+      // For fallback, just create a standard style using formatter strategy
+      const formatter = getFormatterForType('standard')
+      const reportContent = formatter.format(
         researchData.text,
         options?.contextData,
         researchData.sources
@@ -540,7 +530,9 @@ export class ReportService {
 
       updateStatus(ProcessingPhase.COMPLETION, 80, 'Finalizing fallback report')
 
-      const sections = this.extractSections(reportContent)
+      // Use the section parser to extract sections
+      const sections = SectionParser.extractSections(reportContent)
+      
       const fallbackReportId = crypto.randomUUID()
       const nowIso = new Date().toISOString()
 
@@ -584,21 +576,23 @@ export class ReportService {
         } catch (err: unknown) {
           moduleLogger.error('Failed to save fallback report to database', {
             err,
+            reportType: 'fallback',
           })
         }
       }
-
+      
+      // Call success callback if provided
       if (options?.onSuccess) {
         options.onSuccess(fallbackData)
       }
 
-      moduleLogger.info('Report generation with runnables completed', {
+      moduleLogger.info('Fallback report generation completed', {
         generationTime: Date.now() - startTime,
       })
 
       return fallbackData
     } catch (error: unknown) {
-      moduleLogger.error('Report generation with runnables failed', {
+      moduleLogger.error('Fallback report generation failed', {
         error,
       })
 
@@ -607,113 +601,10 @@ export class ReportService {
       }
 
       throw new ApplicationError({
-        message: 'Failed to generate report with runnables',
+        message: 'Failed to generate fallback report',
         cause: error,
       })
     }
-  }
-
-  /**
-   * Format a medical diagnosis report
-   */
-  private async formatMedicalDiagnosisReport(
-    content: string,
-    contextData?: Record<string, unknown>,
-    sources: ResearchSource[] = []
-  ): Promise<string> {
-    let report = '# Medical Diagnosis Report\n\n'
-    if (contextData && typeof contextData.patient === 'object' && contextData.patient !== null) {
-      const patientObj = contextData.patient as Record<string, unknown>
-      const fName = typeof patientObj.firstName === 'string' ? patientObj.firstName : ''
-      const lName = typeof patientObj.lastName === 'string' ? patientObj.lastName : ''
-      const dob = typeof patientObj.dateOfBirth === 'string' ? patientObj.dateOfBirth : 'Unknown'
-      const mrn = typeof patientObj.mrn === 'string' ? patientObj.mrn : 'Unknown'
-      report += '## Patient Information\n\n'
-      report += `**Name**: ${fName} ${lName}\n`
-      report += `**DOB**: ${dob}\n`
-      report += `**MRN**: ${mrn}\n\n`
-    }
-
-    report += '## Diagnosis\n\n'
-    report += `${content}\n\n`
-
-    if (contextData && contextData.recommendations !== undefined) {
-      report += '## Recommendations\n\n'
-      // If it's an object, JSON.stringify it
-      if (typeof contextData.recommendations === 'object' && contextData.recommendations !== null) {
-        report += `${JSON.stringify(contextData.recommendations, null, 2)}\n\n`
-      } else {
-        report += `${String(contextData.recommendations)}\n\n`
-      }
-    }
-
-    if (sources.length > 0) {
-      report += '## Sources\n\n'
-      sources.forEach((source, idx) => {
-        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
-      })
-    }
-    return report
-  }
-
-  /**
-   * Format a research report
-   */
-  private formatResearchReport(
-    content: string,
-    contextData?: Record<string, unknown>,
-    sources: ResearchSource[] = []
-  ): string {
-    let report = '# Research Report\n\n'
-    if (contextData && contextData.query !== undefined) {
-      report += '## Research Query\n\n'
-      // If it's an object, JSON.stringify
-      if (typeof contextData.query === 'object' && contextData.query !== null) {
-        report += `${JSON.stringify(contextData.query, null, 2)}\n\n`
-      } else {
-        report += `${String(contextData.query)}\n\n`
-      }
-    }
-
-    report += '## Findings\n\n'
-    report += `${content}\n\n`
-
-    if (contextData && contextData.keyPoints !== undefined && Array.isArray(contextData.keyPoints)) {
-      report += '## Key Points\n\n';
-      (contextData.keyPoints as Array<unknown>).forEach((point: unknown, i: number) => {
-        report += `${i + 1}. ${String(point)}\n`;
-      });
-      report += '\n';
-    }
-
-    if (sources.length > 0) {
-      report += '## Sources\n\n'
-      sources.forEach((source, idx) => {
-        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
-      })
-    }
-    return report
-  }
-
-  /**
-   * Format a standard report
-   */
-  private formatStandardReport(
-    content: string,
-    _contextData?: Record<string, unknown>, // Prefix with underscore to indicate it's unused
-    sources: ResearchSource[] = []
-  ): string {
-    let report = '# Report\n\n'
-    report += '## Content\n\n'
-    report += `${content}\n\n`
-
-    if (sources.length > 0) {
-      report += '## Sources\n\n'
-      sources.forEach((source, idx) => {
-        report += `${idx + 1}. ${source.title ?? 'Unknown Source'}: ${source.url}\n`
-      })
-    }
-    return report
   }
 
   /**

@@ -1,4 +1,3 @@
-import type { Database } from '@/lib/supabase'
 import type { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import {
   AIMessage,
@@ -23,7 +22,7 @@ import logger from '@/lib/logger'
  * This module serves as the central point for managing LangChain components
  * in the Neuvia application.
  */
-import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai'
+import { ChatOpenAI } from '@langchain/openai'
 import {
   type EnhancedSupabaseVectorStore,
   supabaseVectorStore,
@@ -40,8 +39,6 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { BaseRetriever } from '@langchain/core/retrievers'
 // Import memory components
 import { BufferMemory } from 'langchain/memory'
-// Import zod for schema validation
-import type { z } from 'zod'
 // Import the PerplexityChat model
 import { PerplexityChat, type PerplexityChatOptions } from '@/lib/langchain/perplexity-chat-model'
 
@@ -54,6 +51,37 @@ export class LangChainCore {
   private initialized = false
 
   private constructor(private readonly config = getDefaultConfig()) {}
+  
+  /**
+   * Enhance error with additional context information
+   *
+   * @param error Original error
+   * @param context Additional context information
+   * @returns Enhanced application error
+   */
+  private enhanceError(error: unknown, context: Record<string, any>): ApplicationError {
+    if (error instanceof ApplicationError) {
+      // Add additional context to existing application error
+      return new ApplicationError({
+        message: error.message,
+        code: error.code,
+        statusCode: error.statusCode,
+        data: {
+          ...error.data,
+          ...context
+        },
+        cause: error
+      });
+    }
+    
+    // Create new SystemError with context
+    return new SystemError({
+      message: error instanceof Error ? error.message : String(error),
+      code: 'LANGCHAIN_ERROR',
+      data: context,
+      cause: error
+    });
+  }
 
   /**
    * Get the singleton instance
@@ -160,47 +188,52 @@ export class LangChainCore {
   }
 
   /**
-   * Create an OpenAI chat model (O3 Mini)
+   * Create a ChatOpenAI model instance
    *
-   * @param options Optional configuration for the chat model
+   * @param options Optional configuration for the model
+   * @returns ChatOpenAI instance
    */
   public createChatOpenAI(options?: {
-    modelName?: string
+    model?: string
     temperature?: number
-    streaming?: boolean
+    maxTokens?: number
+    timeout?: number
     callbacks?: BaseCallbackHandler[]
   }) {
     const moduleLogger = logger.withMetadata({
       module: 'LangChainCore',
       method: 'createChatOpenAI',
-      modelName: options?.modelName || this.config.openai.chatModel,
-      streaming: options?.streaming ?? false,
+      model: options?.model || this.config.openai.chatModel,
     })
 
     try {
       this.ensureInitialized()
 
-      moduleLogger.info('Creating OpenAI chat model')
+      moduleLogger.info('Creating ChatOpenAI model')
+
+      // Set a reasonable timeout to prevent hanging requests
+      const timeout = options?.timeout ?? 60000; // Default 60 second timeout
 
       return new ChatOpenAI({
+        modelName: options?.model || this.config.openai.chatModel,
+        temperature: options?.temperature ?? this.config.openai.temperature,
+        maxTokens: options?.maxTokens,
         openAIApiKey: this.config.openai.apiKey,
-        modelName: options?.modelName || this.config.openai.chatModel, // Defaults to 'o3-mini'
-        temperature: options?.temperature ?? 0.7,
-        streaming: options?.streaming ?? false,
-        callbacks: options?.callbacks,
+        timeout,
+        callbacks: options?.callbacks
       })
     } catch (error) {
-      moduleLogger.error('Failed to create OpenAI chat model', {}, error)
-
       if (error instanceof ApplicationError) {
         // Rethrow application errors
         throw error
       }
 
+      moduleLogger.error('Failed to create ChatOpenAI model', {}, error)
+
       throw new ExternalServiceError({
-        message: 'Failed to create OpenAI chat model',
+        message: 'Failed to create ChatOpenAI model',
         service: 'OpenAI',
-        code: 'OPENAI_MODEL_CREATION_FAILED',
+        code: 'CHAT_OPENAI_CREATION_FAILED',
         cause: error,
       })
     }
@@ -717,6 +750,56 @@ export class LangChainCore {
         code: 'PERPLEXITY_MODEL_CREATION_FAILED',
         cause: error,
       })
+    }
+  }
+
+  /**
+   * Standard retry handling for LangChain operations
+   *
+   * @param operation Operation to retry
+   * @param options Retry options
+   * @returns Operation result
+   */
+  public async withRetry<T>(
+    operation: () => Promise<T>,
+    options: {
+      retries?: number;
+      delay?: number;
+      context?: Record<string, any>;
+    } = {}
+  ): Promise<T> {
+    const { retries = 3, delay = 1000, context = {} } = options;
+    const moduleLogger = logger.withMetadata({
+      module: 'LangChainCore',
+      method: 'withRetry',
+      ...context
+    });
+    
+    try {
+      return await operation();
+    } catch (error) {
+      if (retries <= 0) {
+        moduleLogger.error('Retry attempts exhausted', {}, error);
+        throw this.enhanceError(error, { ...context, retryExhausted: true });
+      }
+      
+      // Determine if we should retry based on error type
+      if (error instanceof ApplicationError) {
+        // Don't retry validation errors
+        throw error;
+      }
+      
+      moduleLogger.warn(`Operation failed, retrying... (${retries} attempts left)`, {}, error);
+      
+      // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Recursive retry with updated options
+      return this.withRetry(operation, {
+        retries: retries - 1,
+        delay: delay * 2,
+        context
+      });
     }
   }
 

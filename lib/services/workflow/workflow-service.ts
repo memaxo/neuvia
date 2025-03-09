@@ -1,16 +1,30 @@
 import { createBrowserClient } from '@/lib/supabase/clients'
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
-import { WorkflowErrorHandler } from '@/lib/workflow/workflow-error-handler'
 import {
   ALLOWED_TRANSITIONS,
   type WorkflowTransition,
   type WorkflowStep,
   DomainOnlyWorkflowStep
 } from '@/lib/types/workflow'
-import { WorkflowStateError } from '@/lib/errors/verification-errors'
+import { ApplicationError, normalizeError } from '@/lib/errors'
 import { workflowStateFromDb, type DbWorkflowState } from '@/lib/types/db-adapters'
-import { normalizeError } from '@/lib/errors'
+import { WorkflowStepMapper } from './step-mapping'
+import { WorkflowErrorContextBuilder } from './error-context'
+
+/**
+ * Minimal error handler to avoid circular dependencies
+ */
+class LocalWorkflowErrorHandler {
+  async handleError(
+    error: Error | unknown,
+    step: WorkflowStep,
+    options?: { details?: Record<string, unknown>; showToast?: boolean }
+  ): Promise<void> {
+    console.error('Workflow error:', { error, step, ...options?.details });
+    // Simplified error handling that doesn't depend on other modules
+  }
+}
 
 /**
  * Transaction status type for workflow state updates
@@ -74,6 +88,19 @@ export enum WorkflowStepEnum {
   ERROR = 'error',
   RESEARCH = 'research',
   REPORT_PRESENTATION = 'report_presentation'
+}
+
+/**
+ * Custom workflow state error class
+ */
+class WorkflowStateError extends ApplicationError {
+  constructor(options: { message: string; data?: Record<string, unknown> }) {
+    super({
+      message: options.message,
+      code: 'WORKFLOW_STATE_ERROR',
+      data: options.data
+    });
+  }
 }
 
 /**
@@ -145,102 +172,11 @@ export function validateWorkflowTransition(
 
 /**
  * Convert workflow step from our canonical enum to the DB enum
- *
- * Database workflow_step enum:
- *   'idle',
- *   'uploading',
- *   'extracting',
- *   'verification',
- *   'report_generation',
- *   'complete',
- *   'chat_started',
- *   'chat_in_progress',
- *   'chat_completed',
- *   'chat_error',
- *   'verification_pending',
- *   'verification_in_progress',
- *   'verification_completed',
- *   'verification_failed'
  */
 function mapWorkflowStepToDbStep(
   step: WorkflowStep
 ): Database['public']['Enums']['workflow_step'] {
-  // If the step is already one of the DB enum values, use it directly
-  if (typeof step === 'string') {
-    // Check if it's a valid DB enum value
-    const validDbSteps: Database['public']['Enums']['workflow_step'][] = [
-      'idle', 'uploading', 'extracting', 'verification', 'verification_pending',
-      'verification_in_progress', 'verification_completed', 'verification_failed',
-      'report_generation', 'complete', 'chat_started', 'chat_in_progress',
-      'chat_completed', 'chat_error'
-    ];
-    
-    if (validDbSteps.includes(step as Database['public']['Enums']['workflow_step'])) {
-      return step as Database['public']['Enums']['workflow_step'];
-    }
-    
-    // Handle domain-only steps that aren't in the DB enum
-    switch (step) {
-      case 'error':
-        return 'chat_error';
-      case 'research':
-        return 'chat_in_progress';
-      case 'report_presentation':
-        return 'report_generation';
-      default:
-        return 'idle';
-    }
-  }
-  
-  // Handle legacy enum values if needed
-  switch (step) {
-    case WorkflowStepEnum.IDLE:
-      return 'idle'
-    case WorkflowStepEnum.UPLOADING:
-      return 'uploading'
-    case WorkflowStepEnum.EXTRACTING:
-      return 'extracting'
-
-    // Verification states
-    case WorkflowStepEnum.VERIFICATION:
-      return 'verification'
-    case WorkflowStepEnum.VERIFICATION_PENDING:
-      return 'verification_pending'
-    case WorkflowStepEnum.VERIFICATION_IN_PROGRESS:
-      return 'verification_in_progress'
-    case WorkflowStepEnum.VERIFICATION_COMPLETED:
-      return 'verification_completed'
-    case WorkflowStepEnum.VERIFICATION_FAILED:
-      return 'verification_failed'
-
-    // Report generation flow
-    case WorkflowStepEnum.REPORT_GENERATION:
-      return 'report_generation'
-    // We'll map "report_presentation" to "report_generation"
-    case WorkflowStepEnum.REPORT_PRESENTATION:
-      return 'report_generation'
-
-    // Chat states
-    case WorkflowStepEnum.CHAT_STARTED:
-      return 'chat_started'
-    case WorkflowStepEnum.CHAT_IN_PROGRESS:
-      return 'chat_in_progress'
-    case WorkflowStepEnum.CHAT_COMPLETED:
-      return 'chat_completed'
-
-    // "research" maps to chat_in_progress
-    case WorkflowStepEnum.RESEARCH:
-      return 'chat_in_progress'
-
-    case WorkflowStepEnum.ERROR:
-      return 'chat_error'
-
-    case WorkflowStepEnum.COMPLETE:
-      return 'complete'
-
-    default:
-      return 'idle'
-  }
+  return WorkflowStepMapper.toDatabaseStep(step);
 }
 
 /**
@@ -251,12 +187,12 @@ function mapWorkflowStepToDbStep(
 export class WorkflowService {
   private readonly supabase: SupabaseClient<Database>
   private readonly clientId: string
-  private readonly errorHandler: WorkflowErrorHandler
+  private readonly errorHandler: LocalWorkflowErrorHandler
 
   constructor() {
     this.supabase = createBrowserClient()
     this.clientId = this.generateClientId()
-    this.errorHandler = new WorkflowErrorHandler()
+    this.errorHandler = new LocalWorkflowErrorHandler()
   }
 
   /**
@@ -325,7 +261,7 @@ export class WorkflowService {
   private generateClientId(): string {
     if (typeof localStorage !== 'undefined') {
       const storedId = localStorage.getItem('neuvia_client_id')
-      if (storedId) return storedId
+      if (storedId !== null && storedId !== '') return storedId
       const newId = crypto.randomUUID()
       localStorage.setItem('neuvia_client_id', newId)
       return newId
@@ -364,7 +300,7 @@ export class WorkflowService {
       )
       .subscribe((status) => {
         if (onStatusChange !== undefined && onStatusChange !== null) {
-          void onStatusChange(status)
+          onStatusChange(status)
         }
       })
     return channel
@@ -384,7 +320,7 @@ export class WorkflowService {
 
     // Build filter
     let filter = `user_id=eq.${userId}`
-    if (chatId) {
+    if (chatId !== null && chatId !== '') {
       filter += ` AND chat_id=eq.${chatId}`
     } else {
       filter += ' AND chat_id IS NULL'
@@ -403,7 +339,7 @@ export class WorkflowService {
       )
       .subscribe((status) => {
         if (onStatusChange !== undefined && onStatusChange !== null) {
-          void onStatusChange(status)
+          onStatusChange(status)
         }
       })
 
@@ -411,7 +347,7 @@ export class WorkflowService {
   }
 
   unsubscribeFromChannel(channel: RealtimeChannel): void {
-    void this.supabase.removeChannel(channel)
+    this.supabase.removeChannel(channel)
   }
 
   /**
@@ -445,7 +381,7 @@ export class WorkflowService {
       if (error) {
         throw new Error(error.message)
       }
-      if (!data) {
+      if (data === null) {
         throw new Error('Failed to create workflow state')
       }
       return data.id
@@ -490,7 +426,7 @@ export class WorkflowService {
         }
         throw error
       }
-      if (!data) return null
+      if (data === null) return null
 
       // We do a safe parse of metadata
       const meta = data.metadata as WorkflowMetadata | null
@@ -520,9 +456,9 @@ export class WorkflowService {
       }
     } catch (err) {
       const e = normalizeError(err)
-      await this.errorHandler.handleError(e, 'idle', {
+      await this.errorHandler.handleError(e, 'idle' as WorkflowStep, {
         details: { workflowId },
-        showToast: true,
+        showToast: false,
       })
       return null
     }
@@ -541,13 +477,16 @@ export class WorkflowService {
     }
   ): Promise<string> {
     const txId = this.generateTransactionId()
+    let oldState: { currentStep: WorkflowStep } | null = null
+    
     try {
-      if (workflowId === undefined || workflowId === null || workflowId === '') throw new Error('workflowId is required')
+      if (workflowId === undefined || workflowId === null || workflowId === '') {
+        throw new Error('workflowId is required')
+      }
 
       const { skipValidation = false, forceUpdate = false } = options ?? {}
 
       // Optionally fetch current state for validation
-      let oldState: { currentStep: WorkflowStep } | null = null
       if (!skipValidation && !forceUpdate) {
         oldState = await this.getWorkflowState(workflowId, { bypassCache: false })
       }
@@ -566,7 +505,8 @@ export class WorkflowService {
         }
       }
 
-      const dbStep = mapWorkflowStepToDbStep(step)
+      // Use the mapper for DB step conversion
+      const dbStep = WorkflowStepMapper.toDatabaseStep(step)
       const now = new Date().toISOString()
       const enrichedMetadata = {
         ...metadata,
@@ -590,18 +530,28 @@ export class WorkflowService {
       if (error) {
         throw error
       }
-      if (!data) {
+      
+      if (data === null) {
         throw new Error('No data returned from update')
       }
 
       return txId
     } catch (err) {
-      const e = normalizeError(err)
-      await this.errorHandler.handleError(e, step, {
-        details: { workflowId, step, metadata, txId },
+      // Enhanced error handling with context
+      const errorContext = WorkflowErrorContextBuilder.buildUpdateErrorContext(
+        err,
+        workflowId,
+        oldState?.currentStep,
+        step,
+        metadata
+      )
+      
+      await this.errorHandler.handleError(err, step, {
+        details: errorContext,
         showToast: true,
       })
-      return txId
+      
+      throw new Error(`Failed to update workflow state: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
@@ -629,6 +579,7 @@ export class WorkflowService {
         details: { workflowId, errorMessage, errorDetails, txId },
         showToast: true,
       })
+      throw e; // Re-throw to allow caller to handle
     }
   }
 
@@ -651,6 +602,7 @@ export class WorkflowService {
         details: { workflowId, completionMetadata },
         showToast: true,
       })
+      throw e; // Re-throw to allow caller to handle
     }
   }
 

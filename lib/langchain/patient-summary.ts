@@ -142,7 +142,104 @@ interface ModelOptions {
 }
 
 /**
+ * Extraction sequence strategy pattern for patient summary generation
+ */
+class ExtractionSequenceStrategy {
+  /**
+   * Create a runnable extraction sequence for patient summary generation
+   *
+   * @param workflowId Optional workflow ID for tracking
+   * @param options Model options
+   * @param onProgress Optional progress callback
+   * @returns Runnable sequence for extraction
+   */
+  createSequence(
+    workflowId: string | null = null,
+    options: ModelOptions = {},
+    onProgress?: ProgressCallback
+  ) {
+    // Create the model with appropriate settings and callbacks
+    const callbackHandlers: BaseCallbackHandler[] = []
+
+    if (workflowId || onProgress) {
+      callbackHandlers.push(
+        ...createWorkflowCallbacks(workflowId, 'extraction' as WorkflowStep, {
+          onProgress: (progress: number) => {
+            onProgress?.(progress, 'Analyzing medical document')
+          },
+        })
+      )
+    }
+
+    // Create the appropriate model based on selection
+    let llm: BaseChatModel;
+    
+    try {
+      // Just use OpenAI models - can be extended later for other providers
+      llm = langChainCore.createChatOpenAI({
+        // Always use o3-mini as specified
+        modelName: 'o3-mini',
+        temperature: options.temperature ?? 0.1,
+        streaming: false,
+        callbacks: callbackHandlers,
+      });
+    } catch (error) {
+      // If creation fails for any reason, log the error
+      logger.warn('Failed to create model', {
+        error: error instanceof Error ? error.message : String(error),
+        model: 'o3-mini'
+      });
+      
+      llm = langChainCore.createChatOpenAI({
+        modelName: 'o3-mini',
+        temperature: options.temperature ?? 0.1,
+        streaming: false,
+        callbacks: callbackHandlers,
+      });
+    }
+
+    // Create comprehensive prompt for medical document extraction
+    const extractionPrompt = ChatPromptTemplate.fromMessages([
+      SystemMessagePromptTemplate.fromTemplate(
+        `You are a clinical documentation specialist with expertise in extracting patient information from medical documents.
+        Extract a comprehensive patient summary from the medical document provided.
+        Format your response as clean, well-structured markdown that a healthcare professional would find easy to read.
+        
+        Include the following sections:
+        1. Demographics (name, DOB, gender, MRN if available)
+        2. Medical History
+        3. Allergies
+        4. Current Medications (with dosage and frequency if available)
+        5. Vital Signs
+        6. Assessment
+        7. Plan
+        
+        For each section:
+        - Use clear headings (## for main sections, ### for subsections)
+        - Format medications and allergies as bullet lists
+        - Present vital signs in a structured format
+        - Highlight critical information
+        - Be comprehensive but concise
+        - Maintain medical accuracy
+        - If information for a section is not available, state "No information available"`
+      ),
+      HumanMessagePromptTemplate.fromTemplate(
+        `Extract a patient summary from this medical document:\n\n{documentText}`
+      ),
+    ])
+
+    // Create and return the runnable sequence
+    return RunnableSequence.from([
+      extractionPrompt,
+      llm,
+      new StringOutputParser(),
+    ])
+  }
+}
+
+/**
  * Create a runnable extraction sequence for patient summary generation
+ * using the extraction strategy
  *
  * @param workflowId Optional workflow ID for tracking
  * @param options Model options
@@ -154,89 +251,106 @@ function createExtractionSequence(
   options: ModelOptions = {},
   onProgress?: ProgressCallback
 ) {
-  // Use Mistral OCR for extraction (better at unstructured medical text)
-  const useLargeModel = options.useLargeModel ?? true
+  const strategy = new ExtractionSequenceStrategy();
+  return strategy.createSequence(workflowId, options, onProgress);
+}
 
-  // Create the model with appropriate settings and callbacks
-  const callbackHandlers: BaseCallbackHandler[] = []
+/**
+ * Correction sequence strategy class for updating patient summaries
+ */
+class CorrectionSequenceStrategy {
+  /**
+   * Create a runnable correction sequence
+   *
+   * @param workflowId Optional workflow ID for tracking
+   * @param options Model options
+   * @param onProgress Optional progress callback
+   * @returns Runnable sequence for correction processing
+   */
+  createSequence(
+    workflowId: string | null = null,
+    options: ModelOptions = {},
+    onProgress?: ProgressCallback
+  ) {
+    // Create callback handlers if needed
+    const callbackHandlers: BaseCallbackHandler[] = []
 
-  if (workflowId || onProgress) {
-    callbackHandlers.push(
-      ...createWorkflowCallbacks(workflowId, 'extraction' as WorkflowStep, {
-        onProgress: (progress: number) => {
-          onProgress?.(progress, 'Analyzing medical document')
-        },
-      })
-    )
-  }
+    if (workflowId || onProgress) {
+      callbackHandlers.push(
+        ...createWorkflowCallbacks(workflowId, 'verification' as WorkflowStep, {
+          onProgress: (progress: number) => {
+            onProgress?.(progress, 'Processing correction')
+          },
+        })
+      )
+    }
 
-  // Create the appropriate model based on selection
-  let llm: BaseChatModel;
-  
-  try {
-    // Just use OpenAI models - can be extended later for other providers
-    llm = langChainCore.createChatOpenAI({
-      // Always use o3-mini as specified
-      modelName: 'o3-mini',
-      temperature: options.temperature ?? 0.1,
-      streaming: false,
-      callbacks: callbackHandlers,
-    });
-  } catch (error) {
-    // If creation fails for any reason, log the error
-    logger.warn('Failed to create model', { 
-      error: error instanceof Error ? error.message : String(error),
-      model: 'o3-mini'
-    });
+    // Create the appropriate model based on selection
+    let llm: BaseChatModel;
     
-    llm = langChainCore.createChatOpenAI({
-      modelName: 'o3-mini',
-      temperature: options.temperature ?? 0.1,
-      streaming: false,
-      callbacks: callbackHandlers,
-    });
+    try {
+      // Always use o3-mini as specified in requirements
+      llm = langChainCore.createChatOpenAI({
+        modelName: 'o3-mini',
+        temperature: options.temperature ?? 0.1,
+        streaming: false,
+        callbacks: callbackHandlers,
+      });
+    } catch (error) {
+      // If creation fails for any reason, log the error
+      logger.warn('Failed to create model for correction processing', {
+        error: error instanceof Error ? error.message : String(error),
+        model: 'o3-mini'
+      });
+      
+      llm = langChainCore.createChatOpenAI({
+        modelName: 'o3-mini',
+        temperature: options.temperature ?? 0.1,
+        streaming: false,
+        callbacks: callbackHandlers,
+      });
+    }
+
+    // Create prompt for correction processing
+    const correctionPrompt = ChatPromptTemplate.fromMessages([
+      SystemMessagePromptTemplate.fromTemplate(
+        `You are a clinical documentation specialist updating a patient summary based on user feedback.
+        Apply the user's correction to the existing patient summary.
+        
+        Return the complete updated summary in clean, well-structured markdown, incorporating all the changes.
+        
+        Guidelines:
+        - Maintain the same markdown structure as the original summary
+        - Only make changes that align with the user's correction
+        - Highlight the changes you've made by adding **[Updated]** at the end of modified lines
+        - Keep all unrelated information intact
+        - Ensure all medical information is presented accurately`
+      ),
+      HumanMessagePromptTemplate.fromTemplate(
+        `Current Patient Summary:
+        
+{currentSummary}
+
+User Correction:
+
+{userCorrection}
+
+Please update the summary to incorporate this correction.`
+      ),
+    ])
+
+    // Create and return the runnable sequence
+    return RunnableSequence.from([
+      correctionPrompt,
+      llm,
+      new StringOutputParser(),
+    ])
   }
-
-  // Create comprehensive prompt for medical document extraction
-  const extractionPrompt = ChatPromptTemplate.fromMessages([
-    SystemMessagePromptTemplate.fromTemplate(
-      `You are a clinical documentation specialist with expertise in extracting patient information from medical documents.
-      Extract a comprehensive patient summary from the medical document provided.
-      Format your response as clean, well-structured markdown that a healthcare professional would find easy to read.
-      
-      Include the following sections:
-      1. Demographics (name, DOB, gender, MRN if available)
-      2. Medical History
-      3. Allergies
-      4. Current Medications (with dosage and frequency if available)
-      5. Vital Signs
-      6. Assessment
-      7. Plan
-      
-      For each section:
-      - Use clear headings (## for main sections, ### for subsections)
-      - Format medications and allergies as bullet lists
-      - Present vital signs in a structured format
-      - Highlight critical information
-      - Be comprehensive but concise
-      - Maintain medical accuracy
-      - If information for a section is not available, state "No information available"`
-    ),
-    HumanMessagePromptTemplate.fromTemplate(
-      `Extract a patient summary from this medical document:\n\n{documentText}`
-    ),
-  ])
-
-  // Create and return the runnable sequence
-  return RunnableSequence.from([
-    extractionPrompt,
-    llm,
-    new StringOutputParser(),
-  ])
 }
 
 /**
  * Create a runnable correction sequence for updating patient summaries
+ * using the correction strategy
  *
  * @param workflowId Optional workflow ID for tracking
  * @param options Model options
@@ -248,87 +362,69 @@ function createCorrectionSequence(
   options: ModelOptions = {},
   onProgress?: ProgressCallback
 ) {
-  // Use standard model for corrections (better at following instructions precisely)
-  // but allow override through options
-  const useLargeModel = options.useLargeModel ?? false
+  const strategy = new CorrectionSequenceStrategy();
+  return strategy.createSequence(workflowId, options, onProgress);
+}
 
-  // Create callback handlers if needed
-  const callbackHandlers: BaseCallbackHandler[] = []
+/**
+ * Verification completion sequence strategy for checking if summary is ready
+ */
+class VerificationCompletionSequenceStrategy {
+  /**
+   * Create a verification completion sequence
+   *
+   * @param workflowId Optional workflow ID for tracking
+   * @param options Model options
+   * @returns Runnable sequence for verification completion check
+   */
+  createSequence(
+    workflowId: string | null = null,
+    options: ModelOptions = {}
+  ) {
+    // Create callback handlers if needed
+    const callbackHandlers: BaseCallbackHandler[] = []
 
-  if (workflowId || onProgress) {
-    callbackHandlers.push(
-      ...createWorkflowCallbacks(workflowId, 'verification' as WorkflowStep, {
-        onProgress: (progress: number) => {
-          onProgress?.(progress, 'Processing correction')
-        },
-      })
-    )
-  }
+    if (workflowId) {
+      callbackHandlers.push(
+        ...createWorkflowCallbacks(workflowId, 'verification' as WorkflowStep)
+      )
+    }
 
-  // Create the appropriate model based on selection
-  let llm: BaseChatModel;
-  
-  try {
-    // Always use o3-mini as specified in requirements
-    llm = langChainCore.createChatOpenAI({
+    // Use O3-mini for verification completion (better at classification tasks)
+    const llm = langChainCore.createChatOpenAI({
       modelName: 'o3-mini',
-      temperature: options.temperature ?? 0.1,
+      temperature: 0,
       streaming: false,
       callbacks: callbackHandlers,
-    });
-  } catch (error) {
-    // If creation fails for any reason, log the error
-    logger.warn('Failed to create model for correction processing', { 
-      error: error instanceof Error ? error.message : String(error),
-      model: 'o3-mini'
-    });
-    
-    llm = langChainCore.createChatOpenAI({
-      modelName: 'o3-mini',
-      temperature: options.temperature ?? 0.1,
-      streaming: false,
-      callbacks: callbackHandlers,
-    });
+    })
+
+    // Create prompt for verification completion check
+    const completionPrompt = ChatPromptTemplate.fromMessages([
+      SystemMessagePromptTemplate.fromTemplate(
+        `You are a medical verification assistant that determines if a patient summary is ready for report generation.
+        Analyze the user's latest message to determine if they are confirming the summary is correct.
+        
+        If the user is confirming (with words like "confirm", "looks good", "correct", "approve", etc.), respond with "VERIFIED".
+        If the user is providing corrections or asking questions, respond with "NEEDS_CORRECTION".
+        If you're unsure about the user's intent, respond with "UNCLEAR".
+        
+        Only output one of these three values: "VERIFIED", "NEEDS_CORRECTION", or "UNCLEAR".`
+      ),
+      HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
+    ])
+
+    // Create and return the runnable sequence
+    return RunnableSequence.from([
+      completionPrompt,
+      llm,
+      new StringOutputParser(),
+    ])
   }
-
-  // Create prompt for correction processing
-  const correctionPrompt = ChatPromptTemplate.fromMessages([
-    SystemMessagePromptTemplate.fromTemplate(
-      `You are a clinical documentation specialist updating a patient summary based on user feedback.
-      Apply the user's correction to the existing patient summary.
-      
-      Return the complete updated summary in clean, well-structured markdown, incorporating all the changes.
-      
-      Guidelines:
-      - Maintain the same markdown structure as the original summary
-      - Only make changes that align with the user's correction
-      - Highlight the changes you've made by adding **[Updated]** at the end of modified lines
-      - Keep all unrelated information intact
-      - Ensure all medical information is presented accurately`
-    ),
-    HumanMessagePromptTemplate.fromTemplate(
-      `Current Patient Summary:
-      
-{currentSummary}
-
-User Correction:
-
-{userCorrection}
-
-Please update the summary to incorporate this correction.`
-    ),
-  ])
-
-  // Create and return the runnable sequence
-  return RunnableSequence.from([
-    correctionPrompt,
-    llm,
-    new StringOutputParser(),
-  ])
 }
 
 /**
  * Create a verification completion sequence to check if summary is ready
+ * using the verification strategy
  *
  * @param workflowId Optional workflow ID for tracking
  * @param options Model options
@@ -338,44 +434,8 @@ function createVerificationCompletionSequence(
   workflowId: string | null = null,
   options: ModelOptions = {}
 ) {
-  // Create callback handlers if needed
-  const callbackHandlers: BaseCallbackHandler[] = []
-
-  if (workflowId) {
-    callbackHandlers.push(
-      ...createWorkflowCallbacks(workflowId, 'verification' as WorkflowStep)
-    )
-  }
-
-  // Use O3-mini for verification completion (better at classification tasks)
-  const llm = langChainCore.createChatOpenAI({
-    modelName: 'o3-mini',
-    temperature: 0,
-    streaming: false,
-    callbacks: callbackHandlers,
-  })
-
-  // Create prompt for verification completion check
-  const completionPrompt = ChatPromptTemplate.fromMessages([
-    SystemMessagePromptTemplate.fromTemplate(
-      `You are a medical verification assistant that determines if a patient summary is ready for report generation.
-      Analyze the user's latest message to determine if they are confirming the summary is correct.
-      
-      If the user is confirming (with words like "confirm", "looks good", "correct", "approve", etc.), respond with "VERIFIED".
-      If the user is providing corrections or asking questions, respond with "NEEDS_CORRECTION".
-      If you're unsure about the user's intent, respond with "UNCLEAR".
-      
-      Only output one of these three values: "VERIFIED", "NEEDS_CORRECTION", or "UNCLEAR".`
-    ),
-    HumanMessagePromptTemplate.fromTemplate('{userMessage}'),
-  ])
-
-  // Create and return the runnable sequence
-  return RunnableSequence.from([
-    completionPrompt,
-    llm,
-    new StringOutputParser(),
-  ])
+  const strategy = new VerificationCompletionSequenceStrategy();
+  return strategy.createSequence(workflowId, options);
 }
 
 /**
@@ -1013,6 +1073,7 @@ export async function retryWithBackoff<T>(
     method: 'retryWithBackoff',
     maxRetries: retries,
     initialDelay: delay,
+    remainingRetries: retries,
     ...loggerMetadata,
   })
 
@@ -1028,9 +1089,7 @@ export async function retryWithBackoff<T>(
       })
     }
 
-    moduleLogger.debug('Executing function with retry capability', {
-      remainingRetries: retries,
-    })
+    moduleLogger.debug('Executing function with retry capability')
 
     return await fn()
   } catch (error) {
@@ -1050,12 +1109,14 @@ export async function retryWithBackoff<T>(
       // Create a new error with the retry metadata instead of modifying the read-only data property
       throw new SystemError({
         message: normalizedError.message,
-        code: normalizedError.code,
+        code: normalizedError.code || 'RETRY_EXHAUSTED',
         statusCode: normalizedError.statusCode,
         data: {
           ...normalizedError.data,
           retryExhausted: true,
           maxRetries: retries,
+          operation: fn.name || 'anonymous',
+          ...loggerMetadata
         },
         cause: normalizedError,
       })
@@ -1069,6 +1130,7 @@ export async function retryWithBackoff<T>(
       moduleLogger.info('Error not retriable, failing immediately', {
         errorCode: normalizedError.code,
         errorType: normalizedError.name,
+        errorMessage: normalizedError.message
       })
       throw normalizedError
     }
@@ -1080,6 +1142,7 @@ export async function retryWithBackoff<T>(
       nextDelay: delay * 2,
       errorMessage: normalizedError.message,
       errorCode: normalizedError.code,
+      errorStack: normalizedError instanceof Error ? normalizedError.stack : undefined
     })
 
     // Wait with exponential backoff
@@ -1129,149 +1192,19 @@ function determineRetryability(error: ApplicationError): boolean {
 }
 
 /**
+ * Import PatientSummaryParser from formatting utilities
+ */
+import { PatientSummaryParser } from '@/lib/services/patient/formatting/markdown-parser';
+
+/**
  * Extract structured data from a markdown patient summary
+ * using the dedicated PatientSummaryParser
  * 
  * @param markdownText The patient summary in markdown format
  * @returns Structured patient data object
  */
 function extractStructuredDataFromMarkdown(markdownText: string): PatientSummaryData {
-  const structuredData: PatientSummaryData = {
-    demographics: {},
-    medicalHistory: [],
-    allergies: [],
-    medications: [],
-    vitalSigns: [],
-    assessment: '',
-    plan: ''
-  };
-
-  try {
-    // Extract demographics
-    const demographicsMatch = markdownText.match(/## Patient Demographics\s+([\s\S]*?)(?=\n## |$)/i);
-    if (demographicsMatch && demographicsMatch[1]) {
-      const demographicsText = demographicsMatch[1];
-      
-      // Extract name
-      const nameMatch = demographicsText.match(/\*\*Name:\*\*\s*(.*?)(?:\n|$)/i);
-      if (nameMatch && nameMatch[1]) {
-        structuredData.demographics!.name = nameMatch[1].trim();
-      }
-      
-      // Extract date of birth
-      const dobMatch = demographicsText.match(/\*\*DOB:\*\*\s*(.*?)(?:\n|$)/i);
-      if (dobMatch && dobMatch[1]) {
-        structuredData.demographics!.dateOfBirth = dobMatch[1].trim();
-      }
-      
-      // Extract gender
-      const genderMatch = demographicsText.match(/\*\*Gender:\*\*\s*(.*?)(?:\n|$)/i);
-      if (genderMatch && genderMatch[1]) {
-        structuredData.demographics!.gender = genderMatch[1].trim();
-      }
-      
-      // Extract MRN
-      const mrnMatch = demographicsText.match(/\*\*MRN:\*\*\s*(.*?)(?:\n|$)/i);
-      if (mrnMatch && mrnMatch[1]) {
-        structuredData.demographics!.mrn = mrnMatch[1].trim();
-      }
-    }
-    
-    // Extract medical history
-    const medicalHistoryMatch = markdownText.match(/## Medical History\s+([\s\S]*?)(?=\n## |$)/i);
-    if (medicalHistoryMatch && medicalHistoryMatch[1]) {
-      const historyItems = medicalHistoryMatch[1].match(/- (.*?)(?:\n|$)/g);
-      if (historyItems) {
-        structuredData.medicalHistory = historyItems.map(item => 
-          item.replace(/^- /, '').trim()
-        );
-      }
-    }
-    
-    // Extract allergies
-    const allergiesMatch = markdownText.match(/## Allergies\s+([\s\S]*?)(?=\n## |$)/i);
-    if (allergiesMatch && allergiesMatch[1]) {
-      const allergyItems = allergiesMatch[1].match(/- (.*?)(?:\n|$)/g);
-      if (allergyItems) {
-        structuredData.allergies = allergyItems.map(item => 
-          item.replace(/^- /, '').trim()
-        );
-      }
-    }
-    
-    // Extract medications
-    const medicationsMatch = markdownText.match(/## Current Medications\s+([\s\S]*?)(?=\n## |$)/i);
-    if (medicationsMatch && medicationsMatch[1]) {
-      const medItems = medicationsMatch[1].match(/- (.*?)(?:\n|$)/g);
-      if (medItems) {
-        structuredData.medications = medItems.map(item => {
-          const medText = item.replace(/^- /, '').trim();
-          const parts = medText.split(/\s+/);
-          
-          // Try to extract name, dosage, and frequency
-          // Format like "Lisinopril 20mg daily"
-          if (parts.length >= 3) {
-            return {
-              name: parts[0],
-              dosage: parts[1],
-              frequency: parts.slice(2).join(' ')
-            };
-          } else if (parts.length === 2) {
-            return {
-              name: parts[0],
-              dosage: parts[1]
-            };
-          } else {
-            return { name: medText };
-          }
-        });
-      }
-    }
-    
-    // Extract vital signs
-    const vitalsMatch = markdownText.match(/## Vital Signs\s+([\s\S]*?)(?=\n## |$)/i);
-    if (vitalsMatch && vitalsMatch[1]) {
-      const vitalItems = vitalsMatch[1].match(/- \*\*(.*?):\*\*\s*(.*?)(?:\n|$)/g);
-      if (vitalItems) {
-        structuredData.vitalSigns = vitalItems.map(item => {
-          const cleaned = item.replace(/^- \*\*/, '').replace(/:\*\*\s*/, '|').trim();
-          const [name, value] = cleaned.split('|');
-          
-          // Try to extract unit from value
-          const unitMatch = value.match(/(.*?)\s+(\w+\/\w+|\w+)$/);
-          if (unitMatch) {
-            return {
-              name: name.trim(),
-              value: unitMatch[1].trim(),
-              unit: unitMatch[2].trim()
-            };
-          } else {
-            return {
-              name: name.trim(),
-              value: value.trim()
-            };
-          }
-        });
-      }
-    }
-    
-    // Extract assessment
-    const assessmentMatch = markdownText.match(/## Assessment\s+([\s\S]*?)(?=\n## |$)/i);
-    if (assessmentMatch && assessmentMatch[1]) {
-      structuredData.assessment = assessmentMatch[1].trim();
-    }
-    
-    // Extract plan
-    const planMatch = markdownText.match(/## Plan\s+([\s\S]*?)(?=\n## |$)/i);
-    if (planMatch && planMatch[1]) {
-      structuredData.plan = planMatch[1].trim();
-    }
-    
-  } catch (error) {
-    // Log the error but don't block returning partial data
-    console.error('Error extracting structured data:', error);
-  }
-  
-  return structuredData;
+  return PatientSummaryParser.extractStructuredData(markdownText);
 }
 
 /**

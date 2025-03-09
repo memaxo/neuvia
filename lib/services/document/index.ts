@@ -12,7 +12,23 @@ import { DocumentExtractionService } from './extraction-service'
 import { DocumentStorageService } from './storage-service'
 import { DocumentAnalysisService } from './analysis-service'
 
-// We've now implemented all three specialized services
+// Import component modules
+import { SectionDetector } from './utils/section-detection'
+import {
+  ChunkingStrategy,
+  ChunkingOptions,
+  ChunkingStrategyFactory,
+  SemanticChunkingStrategy,
+  PageBasedChunkingStrategy,
+  SectionBasedChunkingStrategy
+} from './chunking/chunking-strategies'
+import {
+  DocumentExtractor,
+  ExtractorFactory,
+  EnhancedExtractionOptions,
+  OcrDocumentExtractor,
+  PlainTextExtractor
+} from './extractors/extractor-factory'
 
 // Export the service implementations
 export {
@@ -22,7 +38,25 @@ export {
   // New specialized services
   DocumentExtractionService,
   DocumentStorageService,
-  DocumentAnalysisService
+  DocumentAnalysisService,
+  
+  // Utilities
+  SectionDetector,
+  
+  // Chunking strategies
+  ChunkingStrategy,
+  ChunkingOptions,
+  ChunkingStrategyFactory,
+  SemanticChunkingStrategy,
+  PageBasedChunkingStrategy,
+  SectionBasedChunkingStrategy,
+  
+  // Extractors
+  DocumentExtractor,
+  ExtractorFactory,
+  EnhancedExtractionOptions,
+  OcrDocumentExtractor,
+  PlainTextExtractor
 }
 
 // Create singleton instances

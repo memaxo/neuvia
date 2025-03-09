@@ -22,17 +22,11 @@ const EnvSchema = z.object({
   MISTRAL_API_KEY: z.string().min(1),
   MISTRAL_EMBEDDING_MODEL: z.string().default('mistral-embed'),
 
-
   // Perplexity configuration
-  PERPLEXITY_API_KEY: z.string().optional().refine(
-    (val) => process.env.FORCE_PERPLEXITY !== 'true' || (val && val.length > 0),
-    {
-      message: "Perplexity API key is required when FORCE_PERPLEXITY is set to 'true'",
-    }
-  ),
+  PERPLEXITY_API_KEY: z.string().optional(),
   PERPLEXITY_MODEL: z.string().default('sonar-medium-online'),
   FORCE_PERPLEXITY: z
-    .enum(['true', 'false'])
+    .string()
     .optional()
     .transform((val) => val === 'true'),
 })
@@ -96,6 +90,28 @@ function loadEnvConfig(): Partial<z.infer<typeof EnvSchema>> {
     return {}
   }
 
+  // Log all missing environment variables
+  const envVars = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY',
+                   'OPENAI_MODEL', 'MISTRAL_API_KEY', 'MISTRAL_EMBEDDING_MODEL',
+                   'PERPLEXITY_API_KEY', 'PERPLEXITY_MODEL', 'FORCE_PERPLEXITY'];
+  
+  const missingVars = envVars.filter(v => !process.env[v])
+                              .map(v => ({ name: v, required: ['NEXT_PUBLIC_SUPABASE_URL',
+                                          'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY',
+                                          'MISTRAL_API_KEY'].includes(v) }));
+  
+  if (missingVars.length > 0) {
+    const requiredMissing = missingVars.filter(v => v.required);
+    if (requiredMissing.length > 0) {
+      console.warn(`Missing required environment variables: ${requiredMissing.map(v => v.name).join(', ')}`);
+    }
+    
+    const optionalMissing = missingVars.filter(v => !v.required);
+    if (optionalMissing.length > 0) {
+      console.info(`Missing optional environment variables: ${optionalMissing.map(v => v.name).join(', ')}`);
+    }
+  }
+
   return {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -116,7 +132,17 @@ export function getEnvConfig(): z.infer<typeof EnvSchema> {
   const env = loadEnvConfig()
 
   try {
-    return EnvSchema.parse(env)
+    const result = EnvSchema.parse(env);
+    
+    // Validate model compatibility
+    validateModelCompatibility(result);
+    
+    // Additional validation for Perplexity API key when forced
+    if (result.FORCE_PERPLEXITY && !result.PERPLEXITY_API_KEY) {
+      throw new Error("Perplexity API key is required when FORCE_PERPLEXITY is set to 'true'");
+    }
+    
+    return result;
   } catch (error) {
     if (error instanceof z.ZodError) {
       const missingVars = error.errors
@@ -129,6 +155,30 @@ export function getEnvConfig(): z.infer<typeof EnvSchema> {
     }
 
     throw error
+  }
+}
+
+/**
+ * Validate compatibility of configured models
+ *
+ * @param env Validated environment variables
+ */
+function validateModelCompatibility(env: z.infer<typeof EnvSchema>): void {
+  // Validate that selected models are actually available/supported
+  const supportedOpenAIModels = ['o3-mini'];
+  if (env.OPENAI_MODEL && !supportedOpenAIModels.includes(env.OPENAI_MODEL)) {
+    console.warn(`Warning: OpenAI model '${env.OPENAI_MODEL}' may not be supported. Supported models: ${supportedOpenAIModels.join(', ')}`);
+  }
+  
+  // Check Mistral embedding model
+  const supportedMistralEmbeddings = ['mistral-embed'];
+  if (env.MISTRAL_EMBEDDING_MODEL && !supportedMistralEmbeddings.includes(env.MISTRAL_EMBEDDING_MODEL)) {
+    console.warn(`Warning: Mistral embedding model '${env.MISTRAL_EMBEDDING_MODEL}' may not be supported. Supported models: ${supportedMistralEmbeddings.join(', ')}`);
+  }
+  
+  // Check Perplexity model if forced
+  if (env.FORCE_PERPLEXITY === 'true' && !env.PERPLEXITY_API_KEY) {
+    console.error('ERROR: Perplexity is forced but API key is missing. This will cause runtime errors.');
   }
 }
 

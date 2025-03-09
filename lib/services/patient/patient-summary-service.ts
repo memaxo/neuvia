@@ -16,6 +16,11 @@ import logger from '@/lib/logger'
  */
 import { generateText } from 'ai'
 
+// Import validation and formatting utilities
+import { PatientSummaryValidator } from './validation/input-validator'
+import { TypeValidator } from './validation/type-validator'
+import { PatientSummaryParser } from './formatting/markdown-parser'
+
 // Import types and values
 import { DocumentCategory, VerificationStatus as VerificationStatusEnum } from '@/lib/types'
 import type { 
@@ -178,38 +183,10 @@ export class PatientSummaryService {
     documentType: DocumentType,
     documentDate: string
   ): Promise<DocumentExtraction> {
-    // Validate inputs using type predicates
-    if (!documentId || typeof documentId !== 'string') {
-      throw new ValidationError({
-        message: 'Valid document ID is required',
-        code: 'INVALID_DOCUMENT_ID',
-        data: { documentId }
-      });
-    }
-    
-    if (!documentContent || typeof documentContent !== 'string') {
-      throw new ValidationError({
-        message: 'Document content is required',
-        code: 'MISSING_DOCUMENT_CONTENT',
-        data: { documentId, contentLength: documentContent?.length || 0 }
-      });
-    }
-    
-    if (!this.isValidDocumentType(documentType)) {
-      throw new ValidationError({
-        message: 'Valid document type is required',
-        code: 'INVALID_DOCUMENT_TYPE',
-        data: { documentId, documentType }
-      });
-    }
-    
-    if (!documentDate || typeof documentDate !== 'string') {
-      throw new ValidationError({
-        message: 'Valid document date is required',
-        code: 'INVALID_DOCUMENT_DATE',
-        data: { documentId, documentDate }
-      });
-    }
+    // Validate inputs using the validator utility
+    PatientSummaryValidator.validateExtractionInputs(
+      documentId, documentContent, documentType, documentDate
+    );
     
     // Create logger with metadata for this operation
     const moduleLogger = logger.withMetadata({
@@ -225,6 +202,54 @@ export class PatientSummaryService {
         documentLength: documentContent.length
       });
       
+      // Delegate to specialized extraction method
+      return this.performMistralExtraction(documentId, documentContent, documentType, documentDate);
+    } catch (error) {
+      if (error instanceof ApplicationError) {
+        // Already formatted appropriately, just re-throw
+        throw error;
+      }
+      
+      moduleLogger.error(
+        'Failed to extract essentials from document with Mistral',
+        { documentId, documentType: documentType.type },
+        error
+      );
+      
+      throw new ExternalServiceError({
+        message: 'Failed to extract document information',
+        service: 'Mistral',
+        code: 'EXTRACTION_FAILED',
+        data: { documentId, documentType: documentType.type },
+        cause: error
+      });
+    }
+  }
+
+  /**
+   * Perform extraction using Mistral AI
+   *
+   * @param documentId Document ID
+   * @param documentContent Document text content
+   * @param documentType Document type information
+   * @param documentDate Document date
+   * @returns Structured extraction of essential information
+   * @throws {ExternalServiceError} If extraction or parsing fails
+   */
+  private async performMistralExtraction(
+    documentId: UUID,
+    documentContent: string,
+    documentType: DocumentType,
+    documentDate: string
+  ): Promise<DocumentExtraction> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'performMistralExtraction',
+      documentId,
+      documentType: documentType.type
+    });
+
+    try {
       // Use Mistral model from the AI SDK
       // Type assertion to fix compatibility issue
       const model = mistral('mistral-small-latest') as any;
@@ -296,15 +321,15 @@ export class PatientSummaryService {
         },
       };
 
-      // Validate the extraction result
-      if (!this.isValidDocumentExtraction(result)) {
+      // Validate the extraction result using type validator utility
+      if (!TypeValidator.isValidDocumentExtraction(result)) {
         throw new ExternalServiceError({
           message: 'Invalid extraction result format',
           service: 'Mistral',
           code: 'INVALID_EXTRACTION_FORMAT',
           data: { 
             documentId,
-            validationErrors: this.getExtractionValidationErrors(result)
+            validationErrors: TypeValidator.getExtractionValidationErrors(result)
           }
         });
       }
@@ -316,141 +341,12 @@ export class PatientSummaryService {
 
       return result;
     } catch (error) {
-      if (error instanceof ApplicationError) {
-        // Already formatted appropriately, just re-throw
-        throw error;
-      }
-      
-      moduleLogger.error(
-        'Failed to extract essentials from document with Mistral',
-        { documentId, documentType: documentType.type },
-        error
-      );
-      
-      throw new ExternalServiceError({
-        message: 'Failed to extract document information',
-        service: 'Mistral',
-        code: 'EXTRACTION_FAILED',
-        data: { documentId, documentType: documentType.type },
-        cause: error
-      });
+      // Let the calling method handle errors
+      throw error;
     }
   }
   
-  /**
-   * Type guard to validate a document type
-   * @param value The value to check
-   * @returns True if value is a valid DocumentType
-   */
-  private isValidDocumentType(value: unknown): value is DocumentType {
-    if (!value || typeof value !== 'object') return false;
-    
-    const obj = value as Record<string, unknown>;
-    
-    // Check if category is a string and is a valid DocumentCategory
-    const isValidCategory = typeof obj.category === 'string' && 
-      Object.values(DocumentCategory).includes(obj.category as DocumentCategory);
-    
-    return (
-      isValidCategory && 
-      typeof obj.type === 'string'
-    );
-  }
-  
-  /**
-   * Type guard to validate document extraction
-   * @param value The value to check
-   * @returns True if value is a valid DocumentExtraction
-   */
-  private isValidDocumentExtraction(value: unknown): value is DocumentExtraction {
-    if (!value || typeof value !== 'object') return false;
-    
-    const obj = value as Record<string, unknown>;
-    
-    // Check required fields
-    const hasValidDocumentId = typeof obj.documentId === 'string';
-    const hasValidDocumentType = this.isValidDocumentType(obj.documentType);
-    const hasValidDocumentDate = typeof obj.documentDate === 'string';
-    
-    // Check sections
-    const hasValidSections = typeof obj.sections === 'object' && obj.sections !== null;
-    
-    // Check metadata
-    const hasValidMetadata = typeof obj.metadata === 'object' && obj.metadata !== null;
-    
-    if (hasValidMetadata) {
-      const metadata = obj.metadata as Record<string, unknown>;
-      
-      // Check metadata fields
-      const hasValidConfidence = typeof metadata.extractionConfidence === 'number' && 
-        metadata.extractionConfidence >= 0 && 
-        metadata.extractionConfidence <= 1;
-        
-      const hasValidDate = typeof metadata.extractionDate === 'string';
-      
-      if (!hasValidConfidence || !hasValidDate) {
-        return false;
-      }
-    }
-    
-    return (
-      hasValidDocumentId &&
-      hasValidDocumentType &&
-      hasValidDocumentDate &&
-      hasValidSections &&
-      hasValidMetadata
-    );
-  }
-  
-  /**
-   * Get validation errors for document extraction
-   * @param value The value to check
-   * @returns Object with validation errors
-   */
-  private getExtractionValidationErrors(value: unknown): Record<string, string> {
-    const errors: Record<string, string> = {};
-    
-    if (!value || typeof value !== 'object') {
-      return { value: 'Extraction must be an object' };
-    }
-    
-    const obj = value as Record<string, unknown>;
-    
-    // Check required fields
-    if (typeof obj.documentId !== 'string') {
-      errors.documentId = 'Document ID must be a string';
-    }
-    
-    if (!this.isValidDocumentType(obj.documentType)) {
-      errors.documentType = 'Document type must be a valid object with category and type';
-    }
-    
-    if (typeof obj.documentDate !== 'string') {
-      errors.documentDate = 'Document date must be a string';
-    }
-    
-    if (typeof obj.sections !== 'object' || obj.sections === null) {
-      errors.sections = 'Sections must be an object';
-    }
-    
-    if (typeof obj.metadata !== 'object' || obj.metadata === null) {
-      errors.metadata = 'Metadata must be an object';
-    } else {
-      const metadata = obj.metadata as Record<string, unknown>;
-      
-      if (typeof metadata.extractionConfidence !== 'number' || 
-          metadata.extractionConfidence < 0 || 
-          metadata.extractionConfidence > 1) {
-        errors['metadata.extractionConfidence'] = 'Extraction confidence must be a number between 0 and 1';
-      }
-      
-      if (typeof metadata.extractionDate !== 'string') {
-        errors['metadata.extractionDate'] = 'Extraction date must be a string';
-      }
-    }
-    
-    return errors;
-  }
+  // Type validation methods moved to TypeValidator class
 
   /**
    * Compile a patient summary from multiple document extractions using OpenAI
@@ -464,6 +360,10 @@ export class PatientSummaryService {
     patientId: string,
     extractions: DocumentExtraction[]
   ): Promise<PatientSummary> {
+    // Validate inputs
+    PatientSummaryValidator.validatePatientId(patientId);
+    PatientSummaryValidator.validateExtractions(extractions);
+
     const moduleLogger = logger.withMetadata({
       module: 'PatientSummaryService',
       method: 'compilePatientSummary',
@@ -646,6 +546,10 @@ export class PatientSummaryService {
     patientId: string,
     documents: PatientDocument[]
   ): Promise<PatientSummary> {
+    // Validate inputs
+    PatientSummaryValidator.validatePatientId(patientId);
+    PatientSummaryValidator.validateDocuments(documents);
+
     const moduleLogger = logger.withMetadata({
       module: 'PatientSummaryService',
       method: 'generatePatientSummary',
@@ -655,15 +559,6 @@ export class PatientSummaryService {
 
     try {
       moduleLogger.info('Starting patient summary generation')
-
-      if (documents.length === 0) {
-        moduleLogger.warn('No documents provided for summary generation')
-        throw new ValidationError({
-          message: 'Cannot generate summary: no documents provided',
-          code: 'NO_DOCUMENTS',
-          data: { patientId }
-        })
-      }
 
       // First check if we already have a summary for this patient
       const existingSummary = await this.getPatientSummary(patientId)
@@ -1114,43 +1009,99 @@ export class PatientSummaryService {
    * @returns Markdown formatted summary
    */
   generateMarkdown(summary: PatientSummary): string {
-    const sections = [
-      {
-        title: '🧑‍⚕️ Patient Information',
-        content: summary.patientInfo.content,
-      },
-      { title: '📋 Medical History', content: summary.medicalHistory.content },
-      {
-        title: '🏥 Current Conditions',
-        content: summary.currentConditions.content,
-      },
-      { title: '💊 Medications', content: summary.medications.content },
-      { title: '🔍 Recent Findings', content: summary.recentFindings.content },
-      { title: '📝 Treatment Plans', content: summary.treatmentPlans.content },
-      { title: '🧪 Laboratory Results', content: summary.labResults.content },
-      { title: '🔬 Imaging Results', content: summary.imagingResults.content },
-      { title: '📋 Recommendations', content: summary.recommendations.content },
-    ]
-
-    const metadata = `
----
-Generated: ${new Date(summary.metadata.generatedAt).toLocaleString()}
-Documents Analyzed: ${summary.metadata.documentCount}
----
-`
-
-    const sourcesList = summary.metadata.documents
-      .map(
-        (doc: any) =>
-          `- ${doc.type.category} - ${doc.type.type} (${new Date(doc.date).toLocaleDateString()})`
-      )
-      .join('\n')
-
-    const markdownContent = sections
-      .map((section) => `## ${section.title}\n\n${section.content}\n`)
-      .join('\n')
-
-    return `# Patient Summary\n\n${metadata}\n## Sources\n\n${sourcesList}\n\n${markdownContent}`
+    // Extract structured data from the summary to build a consistent format
+    const structuredData = this.extractStructuredDataFromSummary(summary);
+    
+    // Use the PatientSummaryParser utility to generate markdown
+    return PatientSummaryParser.generateMarkdown(structuredData);
+  }
+  
+  /**
+   * Extract structured data from patient summary
+   *
+   * @param summary Patient summary object
+   * @returns Structured data for formatting
+   */
+  private extractStructuredDataFromSummary(summary: PatientSummary) {
+    // Initialize the structured data
+    const structuredData: any = {
+      demographics: {},
+      medicalHistory: [],
+      conditions: [],
+      medications: [],
+      allergies: [],
+      labResults: [],
+      imagingResults: [],
+      recommendations: []
+    };
+    
+    // Extract demographic information by parsing patient info section
+    const demographicsText = summary.patientInfo.content;
+    const nameMatch = demographicsText.match(/Name:?\s*(.*?)(?:\n|$)/i);
+    if (nameMatch && nameMatch[1]) {
+      structuredData.demographics.name = nameMatch[1].trim();
+    }
+    
+    // Extract medical history
+    const historyLines = summary.medicalHistory.content.split('\n');
+    structuredData.medicalHistory = historyLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(item => item.length > 0);
+    
+    // Extract current conditions
+    const conditionsLines = summary.currentConditions.content.split('\n');
+    structuredData.conditions = conditionsLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(item => item.length > 0);
+    
+    // Extract medications
+    const medicationsLines = summary.medications.content.split('\n');
+    structuredData.medications = medicationsLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => {
+        const medicationText = line.replace(/^[-*]\s*/, '').trim();
+        return { name: medicationText };
+      })
+      .filter(item => item.name.length > 0);
+    
+    // Extract lab results
+    const labLines = summary.labResults.content.split('\n');
+    structuredData.labResults = labLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => {
+        const labText = line.replace(/^[-*]\s*/, '').trim();
+        // Try to parse structured lab result if possible
+        const testMatch = labText.match(/^(.*?):\s*(.*?)(?:\s*\(.*?\))?$/);
+        if (testMatch) {
+          return {
+            test: testMatch[1].trim(),
+            result: testMatch[2].trim()
+          };
+        }
+        return { test: 'Unknown', result: labText };
+      })
+      .filter(item => item.result.length > 0);
+    
+    // Extract imaging results
+    const imagingLines = summary.imagingResults.content.split('\n');
+    structuredData.imagingResults = imagingLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(item => item.length > 0);
+    
+    // Extract recommendations
+    const recommendationsLines = summary.recommendations.content.split('\n');
+    structuredData.recommendations = recommendationsLines
+      .filter(line => line.trim().startsWith('-') || line.trim().startsWith('*'))
+      .map(line => line.replace(/^[-*]\s*/, '').trim())
+      .filter(item => item.length > 0);
+      
+    // Add assessment and plan
+    structuredData.assessment = summary.treatmentPlans.content;
+    
+    return structuredData;
   }
 
   /**
