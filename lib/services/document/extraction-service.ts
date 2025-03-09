@@ -4,39 +4,22 @@
  * Responsible for extracting text and content from various document formats
  * using specialized strategies for each format type.
  */
-import crypto from 'crypto'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { Document } from 'langchain/document'
-import { TextLoader } from 'langchain/document_loaders/fs/text'
 import logger from '@/lib/logger'
-import { mistral } from '@ai-sdk/mistral'
-import { normalizeError, SystemError, ApplicationError, ExternalServiceError } from '@/lib/errors'
-import { ValidationError } from '@/lib/errors/verification-errors'
+import { normalizeError, ApplicationError, ExternalServiceError } from '@/lib/errors'
+import { SectionDetector } from './utils/section-detection'
+import { GeminiOCRClient, OCRDocument, OCRPage as GeminiOCRPage } from './gemini-ocr-client'
+import { getDefaultConfig } from '@/lib/langchain/config'
 
 import type { 
-  DocumentType, 
+  DocumentType,
   ExtractedData, 
-  ProcessingStatus,
   DocumentMetadata
 } from '@/lib/types/document'
 
-// Define interfaces for Mistral SDK extensions
-interface MistralFiles {
-  upload: (params: { file: { fileName: string, content: Uint8Array }, purpose: string }) => Promise<{ id: string }>
-  getSignedUrl: (params: { file_id: string }) => Promise<{ url: string }>
-}
-
-interface MistralOCR {
-  process: (params: { model: string, document: { type: string, document_url: string } }) => Promise<MistralOCRResult>
-}
-
-interface MistralSDK {
-  files: MistralFiles
-  ocr: MistralOCR
-}
-
-// Define interfaces for data structures
-interface OcrPage {
+// Define OCR data structures for internal use
+export interface OcrPage {
   content: string
   bounds?: any
   coordinates?: any
@@ -46,7 +29,7 @@ interface OcrPage {
   tables?: OcrTable[]
 }
 
-interface OcrParagraph {
+export interface OcrParagraph {
   content: string
   bounds?: any
   confidence?: number
@@ -55,7 +38,7 @@ interface OcrParagraph {
   index?: number
 }
 
-interface OcrTable {
+export interface OcrTable {
   content?: string
   text?: string
   cells?: any[]
@@ -66,18 +49,14 @@ interface OcrTable {
   confidence?: number
 }
 
-interface MistralOCRResult {
+export interface OCRResult {
   text: string
   pages?: OcrPage[]
-  sections?: any[]
-  structure?: { sections?: any[], documentStructure?: string }
+  detectedSections?: string[]
   confidence?: number
   tables?: OcrTable[]
-  processing_time?: number
   metadata?: Record<string, any>
-  paragraphCount?: number
   processingTime?: number
-  detectedSections?: string[]
 }
 
 // Use a type that doesn't conflict with the DocumentMetadata interface
@@ -162,13 +141,13 @@ export class DocumentExtractionService {
   private readonly logger: typeof logger
 
   /**
-   * Mistral AI client
+   * OCR client
    */
-  private readonly mistralClient: typeof mistral
+  private readonly geminiClient: GeminiOCRClient
 
-  constructor(loggerInstance?: typeof logger, mistralClient?: typeof mistral) {
+  constructor(loggerInstance?: typeof logger) {
     this.logger = loggerInstance || logger
-    this.mistralClient = mistralClient || mistral
+    this.geminiClient = new GeminiOCRClient()
   }
 
   /**
@@ -264,9 +243,6 @@ export class DocumentExtractionService {
     }
   }
 
-  // The extractPdfWithEnhancement method has been replaced by extractViaMistralOCR
-  // This provides a more reliable and consistent extraction approach for PDFs
-
   /**
    * Detect tables in PDF page by analyzing text positioning
    */
@@ -336,6 +312,7 @@ export class DocumentExtractionService {
 
     return { text, chunks, detectedSections }
   }
+  
   /**
    * Detect section type from paragraph text
    * 
@@ -343,191 +320,54 @@ export class DocumentExtractionService {
    * @returns Identified section type or null
    */
   private detectSectionType(text: string): string | null {
-    // Use SectionDetector from our utility
-    const { SectionDetector } = require('./utils/section-detection');
     return SectionDetector.detectSectionType(text);
   }
   
-  async extractViaMistralOCR(
+  /**
+   * Extract document content using OCR with Gemini
+   * 
+   * @param blob Document blob to process
+   * @param fileType MIME type of the document
+   * @param options Extraction options
+   * @returns OCR result with structured data
+   */
+  async extractViaOCR(
     blob: Blob,
     fileType: string,
     options: EnhancedExtractionOptions
-  ): Promise<MistralOCRResult> {
+  ): Promise<OCRResult> {
     const moduleLogger = logger.withMetadata({
       module: 'DocumentExtractionService',
-      method: 'extractViaMistralOCR',
+      method: 'extractViaOCR',
       fileType
     });
 
-    moduleLogger.info('Extracting document content using Mistral OCR', {
+    moduleLogger.info('Extracting document content using Gemini OCR', {
       fileType,
       ocrOptions: options
     });
 
     try {
-      // Convert blob to array buffer
-      const arrayBuffer = await blob.arrayBuffer();
-      const fileBytes = new Uint8Array(arrayBuffer);
-      
-      // Determine file extension based on MIME type
-      let fileExtension = 'pdf'; // Default
-      if (fileType === 'image/jpeg') fileExtension = 'jpg';
-      else if (fileType === 'image/png') fileExtension = 'png';
-      else if (fileType === 'application/msword') fileExtension = 'doc';
-      else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') fileExtension = 'docx';
-      
-      // Upload to Mistral - use type assertion for Mistral SDK
-      const mistralExt = this.mistralClient as unknown as MistralSDK;
-      const uploaded = await mistralExt.files.upload({
-        file: {
-          fileName: `document.${fileExtension}`,
-          content: fileBytes
-        },
-        purpose: 'ocr'
+      // Process document with Gemini
+      const result = await this.geminiClient.processDocument(blob, {
+        splitPages: options.splitPages,
+        extractTables: options.extractTables,
+        detectSections: options.detectSections,
+        preserveLayout: options.preserveLayout
       });
-
-      // Get signed URL
-      const signed = await mistralExt.files.getSignedUrl({
-        file_id: uploaded.id
-      });
-
-      // Determine document type for Mistral OCR
-      let documentType = 'document_url';
-      if (fileType.startsWith('image/')) {
-        documentType = 'image_url';
-      }
-
-      // Process with OCR
-      const ocrResult = await mistralExt.ocr.process({
-        model: 'mistral-ocr-latest',
-        document: {
-          type: documentType,
-          document_url: signed.url
-        }
-      });
-
-      // Extract sections if not already provided by Mistral
-      let detectedSections: string[] = [];
       
-      // First check if Mistral provided section information
-      if (ocrResult.sections && ocrResult.sections.length > 0) {
-        // Use Mistral's sections directly if available
-        detectedSections = ocrResult.sections.map((section: any) => section.type || section.name || section.title);
-      } else if (ocrResult.structure?.sections) {
-        // Alternative structure format
-        detectedSections = ocrResult.structure.sections.map((section: any) => section.type || section.name || section.title);
-      } else {
-        // Fall back to our own section detection
-        detectedSections = this.detectSectionsInText(ocrResult.text);
-      }
-
-      // Extract metadata
-      const extractedMetadata: Record<string, any> = {
-        ocrConfidence: ocrResult.confidence || 0.9,
-        pageCount: ocrResult.pages?.length || 1,
-        processingTime: ocrResult.processing_time,
-        fileFormat: fileType,
-        extractionMethod: 'mistral-ocr'
-      };
-
-      // Detect potential tables based on layout or explicit table markers in the text
-      const hasTables = this.detectTableMarkers(ocrResult.text);
-      if (hasTables) {
-        extractedMetadata.hasTables = true;
-      }
-
-      moduleLogger.info('Mistral OCR extraction completed successfully', {
-        textLength: ocrResult.text.length,
-        sectionsDetected: detectedSections.length,
-        pageCount: ocrResult.pages?.length || 1,
-        hasTables
-      });
-
-      // Process and enhance the pages data to include structured paragraph information
-      let enhancedPages = ocrResult.pages || [];
-      
-      // If pages exist but don't have paragraph structure, try to create it
-      if (enhancedPages.length > 0) {
-        enhancedPages = enhancedPages.map((page: OcrPage, index: number) => {
-          // If page already has paragraphs, keep them
-          if (page.paragraphs && page.paragraphs.length > 0) {
-            return page;
-          }
-          
-          // Try to break content into paragraphs based on double newlines
-          if (page.content && typeof page.content === 'string') {
-            const paragraphs = page.content
-              .split(/\n\s*\n/)
-              .filter((p: string) => p.trim().length > 0)
-              .map((text: string, paragraphIndex: number) => {
-                // Detect if paragraph contains table-like content
-                const isTable = this.detectTableMarkers(text);
-                
-                return {
-                  content: text,
-                  index: paragraphIndex,
-                  isTable,
-                  confidence: page.confidence || ocrResult.confidence || 0.9,
-                  sectionType: this.detectSectionType(text)
-                };
-              });
-            
-            return {
-              ...page,
-              paragraphs,
-              pageNumber: index + 1
-            };
-          }
-          
-          return page;
-        });
-      }
-      
-      // Look for tables in the structure if not already identified
-      const tables = ocrResult.tables || [];
-      if (tables.length === 0) {
-        // Try to find tables in the pages/paragraphs
-        enhancedPages.forEach((page: OcrPage) => {
-          if (page.paragraphs) {
-            const tableParagraphs = page.paragraphs.filter((p: OcrParagraph) => p.isTable);
-            if (tableParagraphs.length > 0) {
-              tableParagraphs.forEach((tableParagraph: OcrParagraph) => {
-                tables.push({
-                  content: tableParagraph.content,
-                  pageNumber: page.pageNumber,
-                  confidence: tableParagraph.confidence
-                });
-              });
-            }
-          }
-        });
-      }
-      
-      return {
-        text: ocrResult.text,
-        pages: enhancedPages,
-        detectedSections,
-        confidence: ocrResult.confidence || 0.9,
-        tables,
-        metadata: {
-          ...extractedMetadata,
-          documentStructure: 'enhanced',
-          paragraphCount: enhancedPages.reduce((count: number, page: OcrPage) => 
-            count + (page.paragraphs?.length || 0), 0),
-          tableCount: tables.length
-        },
-        processingTime: ocrResult.processing_time
-      };
+      // Transform to our standard OCR result format
+      return this.transformGeminiResult(result);
     } catch (error) {
-      moduleLogger.error('Mistral OCR extraction failed', {
+      moduleLogger.error('Gemini OCR extraction failed', {
         fileType,
         error: error instanceof Error ? error.message : String(error)
       }, error);
       
       throw new ExternalServiceError({
-        message: 'Failed to extract text using Mistral OCR',
-        service: 'Mistral OCR',
-        code: 'MISTRAL_OCR_FAILED',
+        message: 'Failed to extract text using Gemini OCR',
+        service: 'Gemini OCR',
+        code: 'GEMINI_OCR_FAILED',
         data: { fileType },
         cause: error
       });
@@ -541,12 +381,9 @@ export class DocumentExtractionService {
    * @returns Boolean indicating if tables are likely present
    */
   private detectTableMarkers(text: string): boolean {
-    // Use SectionDetector from our utility
-    const { SectionDetector } = require('./utils/section-detection');
     return SectionDetector.detectTableMarkers(text);
   }
 
-  /**
   /**
    * Detect sections in a document
    *
@@ -554,8 +391,6 @@ export class DocumentExtractionService {
    * @returns Array of section names found in the text
    */
   detectSectionsInText(text: string): string[] {
-    // Use SectionDetector from our utility
-    const { SectionDetector } = require('./utils/section-detection');
     return SectionDetector.detectSections(text);
   }
 
@@ -568,8 +403,6 @@ export class DocumentExtractionService {
   splitTextBySections(
     text: string
   ): Array<{ section: string; content: string }> {
-    // Use SectionDetector from our utility
-    const { SectionDetector } = require('./utils/section-detection');
     return SectionDetector.splitTextBySections(text);
   }
 
@@ -602,14 +435,13 @@ export class DocumentExtractionService {
    * Create semantic chunks from text using LangChain
    * 
    * This method implements a smart chunking strategy that:
-   * 1. First respects Mistral's structure if available
+   * 1. First respects OCR's structure if available
    * 2. Uses section-based chunking if sections are detected
    * 3. Falls back to standard RecursiveCharacterTextSplitter
    * 
    * @param text Raw text to chunk
    * @param options Chunking options
-   * @param structuredData Optional Mistral structured data (pages, paragraphs)
-   * @param detectedSections Optional section information
+   * @param structuredData Optional structured data (pages, paragraphs)
    * @returns Array of LangChain Document objects
    */
   private async createSemanticChunks(
@@ -623,7 +455,7 @@ export class DocumentExtractionService {
   ): Promise<Document[]> {
     const documents: Document[] = [];
     
-    // STRATEGY 1: Use Mistral's page and paragraph structure if available
+    // STRATEGY 1: Use OCR's page and paragraph structure if available
     if (structuredData?.pages && structuredData.pages.length > 0) {
       // For each page in the structured data
       structuredData.pages.forEach((page: OcrPage, pageIndex: number) => {
@@ -638,7 +470,7 @@ export class DocumentExtractionService {
                 metadata: {
                   pageNumber,
                   paragraphIndex,
-                  source: 'mistral-ocr',
+                  source: 'ocr',
                   confidence: paragraph.confidence || page.confidence || 0.9,
                   isTable: paragraph.isTable || false,
                   sectionType: paragraph.sectionType || this.detectSectionType(paragraph.content),
@@ -655,7 +487,7 @@ export class DocumentExtractionService {
             pageContent: page.content,
             metadata: {
               pageNumber,
-              source: 'mistral-ocr',
+              source: 'ocr',
               confidence: page.confidence || 0.9,
               bounds: page.bounds || null,
               chunkType: 'page'
@@ -757,5 +589,81 @@ export class DocumentExtractionService {
       // Rethrow normalized error
       throw normalizeError(error)
     }
+  }
+  
+  /**
+   * Transform Gemini OCR result to our standard OCR result format
+   * 
+   * @param geminiResult The raw result from Gemini OCR
+   * @returns Standardized OCR result
+   */
+  private transformGeminiResult(geminiResult: OCRDocument): OCRResult {
+    // Combine all page text
+    const allText = geminiResult.pages.map(page => page.text).join('\n\n');
+    
+    // Extract tables
+    const tables = geminiResult.pages.flatMap(page =>
+      (page.tables || []).map(table => ({
+        content: table.join('\n'),
+        pageNumber: page.page_number,
+        confidence: 0.9
+      }))
+    );
+    
+    // Convert pages to our standard format
+    const enhancedPages = geminiResult.pages.map(page => this.transformGeminiPage(page));
+    
+    // Extract section types
+    const detectedSections = geminiResult.pages.flatMap(page =>
+      page.metadata?.section_types || []
+    ).filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+    
+    return {
+      text: allText,
+      pages: enhancedPages,
+      detectedSections,
+      confidence: geminiResult.metadata?.confidence || 0.9,
+      tables,
+      metadata: {
+        documentStructure: geminiResult.metadata?.document_structure || 'enhanced',
+        paragraphCount: enhancedPages.reduce((count, page) =>
+          count + (page.paragraphs?.length || 0), 0),
+        tableCount: tables.length,
+        extractionMethod: 'gemini-ocr'
+      },
+      processingTime: geminiResult.metadata?.processing_time
+    };
+  }
+
+  /**
+   * Transform a Gemini page to our standard page format
+   * 
+   * @param page The Gemini OCR page
+   * @returns Standardized OCR page
+   */
+  private transformGeminiPage(page: GeminiOCRPage): OcrPage {
+    // Split text into paragraphs
+    const paragraphs = page.text
+      .split(/\n\s*\n/)
+      .filter(p => p.trim().length > 0)
+      .map((text, paragraphIndex) => {
+        // Detect if paragraph contains table-like content
+        const isTable = this.detectTableMarkers(text);
+        
+        return {
+          content: text,
+          index: paragraphIndex,
+          isTable,
+          confidence: 0.9,
+          sectionType: this.detectSectionType(text)
+        };
+      });
+    
+    return {
+      content: page.text,
+      paragraphs,
+      pageNumber: page.page_number,
+      confidence: 0.9
+    };
   }
 }

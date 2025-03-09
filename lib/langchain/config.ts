@@ -18,8 +18,12 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().default('o3-mini'),
   
-  // Mistral configuration
-  MISTRAL_API_KEY: z.string().min(1),
+  // Gemini configuration
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash-lite'),
+  
+  // Mistral configuration (now optional)
+  MISTRAL_API_KEY: z.string().min(1).optional(),
   MISTRAL_EMBEDDING_MODEL: z.string().default('mistral-embed'),
 
   // Perplexity configuration
@@ -63,9 +67,20 @@ export interface LangChainConfig {
   }
   
   /**
-   * Mistral configuration
+   * Gemini configuration
    */
-  mistral: {
+  gemini: {
+    apiKey: string
+    model: string
+    temperature: number
+    maxOutputTokens: number
+  }
+  
+  /**
+   * @deprecated Use Gemini instead
+   * Mistral configuration (now optional)
+   */
+  mistral?: {
     apiKey: string
     embeddingModel: string
   }
@@ -98,7 +113,7 @@ function loadEnvConfig(): Partial<z.infer<typeof EnvSchema>> {
   const missingVars = envVars.filter(v => !process.env[v])
                               .map(v => ({ name: v, required: ['NEXT_PUBLIC_SUPABASE_URL',
                                           'SUPABASE_SERVICE_ROLE_KEY', 'OPENAI_API_KEY',
-                                          'MISTRAL_API_KEY'].includes(v) }));
+                                          'GEMINI_API_KEY'].includes(v) }));
   
   if (missingVars.length > 0) {
     const requiredMissing = missingVars.filter(v => v.required);
@@ -204,10 +219,20 @@ export function getDefaultConfig(): LangChainConfig {
       chatModel: env.OPENAI_MODEL,
       temperature: 0.7,
     },
-    mistral: {
+    gemini: {
+      apiKey: env.GEMINI_API_KEY || '',
+      model: env.GEMINI_MODEL,
+      temperature: 0.0, // Use 0 for deterministic output in OCR tasks
+      maxOutputTokens: 10240, // Allow generous token limit for document extraction
+    },
+  }
+
+  // Add Mistral config if API key is available
+  if (env.MISTRAL_API_KEY) {
+    config.mistral = {
       apiKey: env.MISTRAL_API_KEY,
       embeddingModel: env.MISTRAL_EMBEDDING_MODEL,
-    },
+    }
   }
 
 

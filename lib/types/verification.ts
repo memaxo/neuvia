@@ -11,6 +11,9 @@
 import type { UUID, Timestamp, BaseEntity } from './base'
 import type { Database } from '@/lib/types/database'
 
+// Note: For type-safe mapping between domain and database representations,
+// see the verificationStatusMapper in verification-mapper.ts
+
 // -----------------------------------------------------------------------------
 // Verification status and core domain
 // -----------------------------------------------------------------------------
@@ -32,6 +35,7 @@ export enum VerificationStatus {
 
 /**
  * Maps a DB workflow_step to a domain VerificationStatus.
+ * @deprecated Use verificationStatusMapper.toDomain() instead
  */
 export function dbToVerificationStatus(dbStatus: Database['public']['Enums']['workflow_step']): VerificationStatus {
   switch (dbStatus) {
@@ -51,6 +55,7 @@ export function dbToVerificationStatus(dbStatus: Database['public']['Enums']['wo
 
 /**
  * Maps a domain VerificationStatus to the corresponding DB workflow_step enum value.
+ * @deprecated Use verificationStatusMapper.toDatabase() instead
  */
 export function verificationStatusToDb(status: VerificationStatus): Database['public']['Enums']['workflow_step'] {
   switch (status) {

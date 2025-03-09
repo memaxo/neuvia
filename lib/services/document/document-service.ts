@@ -11,7 +11,8 @@ import { DOCUMENT_ERROR_CODES, STORAGE_ERROR_CODES } from '@/lib/errors/error-co
 import { DocumentAnalysisService } from './analysis-service'
 import { DocumentExtractionService } from './extraction-service'
 import { DocumentStorageService } from './storage-service'
-import { documentFromDb } from '@/lib/types/db-adapters'
+import { documentMapper } from '@/lib/types/document-mapper'
+import type { DbDocument } from '@/lib/types/db-adapters'
 
 // For random UUID generation
 import { randomUUID } from 'crypto'
@@ -46,6 +47,10 @@ class DocumentServiceError extends ApplicationError {
   }
 }
 
+// Add at the top with other types
+type ExtractionLevel = 'basic' | 'enhanced' | 'comprehensive';
+type ChunkingStrategy = 'simple' | 'semantic' | 'section-based';
+
 /**
  * This is the union type for detectDocumentType() results:
  */
@@ -65,14 +70,14 @@ type DetectionResultUnion =
 interface DocumentProcessingOptions {
   documentType?: DocumentType
   onStatusUpdate?: (status: ProcessingStatus) => void
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   isPatientDocument?: boolean
   patientId?: string
   departmentId?: string
-  extractionLevel?: 'basic' | 'enhanced' | 'comprehensive'
+  extractionLevel?: ExtractionLevel
   preserveSections?: boolean
   extractMetadata?: boolean
-  chunkingStrategy?: 'simple' | 'semantic' | 'section-based'
+  chunkingStrategy?: ChunkingStrategy
   prioritizeFields?: string[]
 }
 
@@ -117,7 +122,7 @@ export class DocumentService {
     file: File,
     options?: DocumentProcessingOptions
   ): Promise<ExtractedDocument> {
-    if (!file) {
+    if (file === null || file === undefined) {
       throw new ValidationError({
         message: 'File is required',
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
@@ -139,7 +144,7 @@ export class DocumentService {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
-      patientId: options?.patientId || 'none'
+      patientId: options?.patientId ?? 'none'
     })
 
     try {
@@ -242,7 +247,7 @@ export class DocumentService {
         )
       }
 
-      if ('detectedSections' in detectionResult && detectionResult.detectedSections?.length) {
+      if ('detectedSections' in detectionResult && detectionResult.detectedSections && detectionResult.detectedSections.length > 0) {
         extractedData.metadata.detectedSections = detectionResult.detectedSections
       }
       extractedData.metadata.documentTypeConfidence = detectionResult.confidence
@@ -267,7 +272,7 @@ export class DocumentService {
         lifecycleStage: DocumentLifecycleStage.EXTRACTED
       }
 
-      if (options?.patientId) {
+      if (options?.patientId !== undefined && options.patientId !== null && options.patientId.trim() !== '') {
         try {
           const dbId = await this.saveDocument(extractedDocument, options.departmentId)
           if (dbId !== documentId) {
@@ -364,9 +369,9 @@ export class DocumentService {
             if (error instanceof ApplicationError) {
               // Check if error code indicates a transient issue
               const retryableCodes = [
-                DOCUMENT_ERROR_CODES.CONNECTION_ERROR,
-                DOCUMENT_ERROR_CODES.TIMEOUT,
-                STORAGE_ERROR_CODES.SERVICE_UNAVAILABLE
+                DOCUMENT_ERROR_CODES.PROCESSING_ERROR,
+                DOCUMENT_ERROR_CODES.STORAGE_ERROR,
+                STORAGE_ERROR_CODES.DOWNLOAD_FAILED
               ];
               
               const shouldRetry = retryableCodes.includes(error.code ?? '');
@@ -421,7 +426,7 @@ export class DocumentService {
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
-    if (!patientId) {
+    if (patientId === null || patientId === undefined || patientId.trim() === '') {
       throw new ValidationError({
         message: 'Valid patient ID is required',
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
@@ -512,20 +517,20 @@ export class DocumentService {
       onStatusUpdate?: (status: ProcessingStatus) => void
     }
   ): Promise<{ documentId: string; fileName: string; extractionStatus: string }> {
-    if (!patientId) {
+    if (patientId === null || patientId === undefined || patientId.trim() === '') {
       throw new ValidationError({
         message: 'Valid patient ID is required',
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
-    if (!file) {
+    if (file === null || file === undefined) {
       throw new ValidationError({
         message: 'Valid file is required',
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
       })
     }
 
-    if (!options?.documentType) {
+    if (options?.documentType === null || options?.documentType === undefined) {
       throw new ValidationError({
         message: 'Valid document type is required',
         code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
@@ -592,7 +597,7 @@ export class DocumentService {
         .eq('id', documentId)
         .single()
 
-      if (docError || !dbDocument) {
+      if (docError !== null || dbDocument === null || dbDocument === undefined) {
         throw new DocumentServiceError({
           message: `Document not found: ${docError?.message ?? 'Unknown error'}`,
           code: DOCUMENT_ERROR_CODES.NOT_FOUND,
@@ -609,7 +614,7 @@ export class DocumentService {
       }
 
       // Convert DB doc to typed domain doc
-      const domainDoc = documentFromDb(dbDocument as unknown as any)
+      const domainDoc = documentMapper.toDomain(dbDocument as unknown as DbDocument)
 
       const { data: urlData, error: urlError } = await this.supabase.storage
         .from('documents')

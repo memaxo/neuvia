@@ -1,17 +1,18 @@
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
 import type { Json } from '@/lib/supabase'
 import { createServerClient } from '@/lib/supabase/clients'
-import { mistral } from '@ai-sdk/mistral'
 import { openai } from '@ai-sdk/openai'
+import type { LanguageModelV1 } from 'ai'
+import { GoogleGenerativeAI } from "@google/generative-ai"
 import { ApplicationError, ExternalServiceError, SystemError } from '@/lib/errors'
-import { ValidationError } from '@/lib/errors/verification-errors'
 import logger from '@/lib/logger'
+import { getDefaultConfig } from '@/lib/langchain/config'
 /**
  * Patient Summary Service
  *
  * Service for generating comprehensive patient summaries from multiple documents.
  * Uses a two-stage approach:
- * 1. Extract essential information from each document using Mistral
+ * 1. Extract essential information from each document using Gemini
  * 2. Compile and prioritize information into a summary using OpenAI's o3-mini model
  */
 import { generateText } from 'ai'
@@ -19,13 +20,13 @@ import { generateText } from 'ai'
 // Import validation and formatting utilities
 import { PatientSummaryValidator } from './validation/input-validator'
 import { TypeValidator } from './validation/type-validator'
+import type { PatientSummaryData } from './formatting/markdown-parser';
 import { PatientSummaryParser } from './formatting/markdown-parser'
 
 // Import types and values
 import { DocumentCategory, VerificationStatus as VerificationStatusEnum } from '@/lib/types'
 import type { 
   DocumentType, 
-  ExtractedData, 
   ResearchOptions, 
   ResearchResult,
   VerificationItem 
@@ -149,13 +150,11 @@ Each section should be clear, concise, and clinically relevant.
  * Handles the generation of comprehensive patient summaries
  */
 export class PatientSummaryService {
-  private supabase: ReturnType<typeof createServerClient>
-  
   // Add singleton instance
   private static instance: PatientSummaryService | null = null;
 
   private constructor() {
-    this.supabase = createServerClient()
+    // Remove supabase initialization
   }
 
   // Static method to get the singleton instance
@@ -167,7 +166,7 @@ export class PatientSummaryService {
   }
 
   /**
-   * Extract essential information from a single document using Mistral
+   * Extract essential information from a single document using LLMs
    *
    * @param documentId Document ID
    * @param documentContent Document text content
@@ -197,13 +196,13 @@ export class PatientSummaryService {
     });
 
     try {
-      moduleLogger.info('Extracting essential information from document using Mistral', {
+      moduleLogger.info('Extracting essential information from document using Gemini', {
         documentCategory: documentType.category,
         documentLength: documentContent.length
       });
       
       // Delegate to specialized extraction method
-      return this.performMistralExtraction(documentId, documentContent, documentType, documentDate);
+      return this.performGeminiExtraction(documentId, documentContent, documentType, documentDate);
     } catch (error) {
       if (error instanceof ApplicationError) {
         // Already formatted appropriately, just re-throw
@@ -211,14 +210,14 @@ export class PatientSummaryService {
       }
       
       moduleLogger.error(
-        'Failed to extract essentials from document with Mistral',
+        'Failed to extract essentials from document with Gemini',
         { documentId, documentType: documentType.type },
         error
       );
       
       throw new ExternalServiceError({
         message: 'Failed to extract document information',
-        service: 'Mistral',
+        service: 'Gemini',
         code: 'EXTRACTION_FAILED',
         data: { documentId, documentType: documentType.type },
         cause: error
@@ -227,7 +226,7 @@ export class PatientSummaryService {
   }
 
   /**
-   * Perform extraction using Mistral AI
+   * Perform extraction using Google's Gemini AI
    *
    * @param documentId Document ID
    * @param documentContent Document text content
@@ -236,7 +235,7 @@ export class PatientSummaryService {
    * @returns Structured extraction of essential information
    * @throws {ExternalServiceError} If extraction or parsing fails
    */
-  private async performMistralExtraction(
+  private async performGeminiExtraction(
     documentId: UUID,
     documentContent: string,
     documentType: DocumentType,
@@ -244,104 +243,110 @@ export class PatientSummaryService {
   ): Promise<DocumentExtraction> {
     const moduleLogger = logger.withMetadata({
       module: 'PatientSummaryService',
-      method: 'performMistralExtraction',
+      method: 'performGeminiExtraction',
       documentId,
       documentType: documentType.type
     });
 
+    // Get LangChain configuration
+    const config = getDefaultConfig();
+    
+    // Initialize Gemini client
+    const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.0-flash-lite",
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+      }
+    });
+
+    // Format the extraction prompt
+    const prompt = DOCUMENT_EXTRACTION_PROMPT
+      .replace('{documentType}', documentType.type)
+      .replace('{documentCategory}', documentType.category)
+      .replace('{documentDate}', documentDate)
+      .replace('{documentContent}', documentContent);
+
     try {
-      // Use Mistral model from the AI SDK
-      // Type assertion to fix compatibility issue
-      const model = mistral('mistral-small-latest') as any;
-
-      // Format the extraction prompt
-      const prompt = DOCUMENT_EXTRACTION_PROMPT
-        .replace('{documentType}', documentType.type)
-        .replace('{documentCategory}', documentType.category)
-        .replace('{documentDate}', documentDate)
-        .replace('{documentContent}', documentContent);
-
-      // Call the Mistral model with explicit typing
-      const response = await generateText({
-        model,
-        prompt,
-        maxTokens: 2048,
-        temperature: 0.3,
+      // Call the Gemini model
+      const result = await model.generateContent({
+        contents: [{ 
+          role: "user",
+          parts: [{ text: prompt }] 
+        }],
       });
+      
+      const response = result.response;
+      const responseText = response.text();
 
-      // Parse the response JSON with stronger type checking
-      let extraction: Record<string, any>;
+      // First verify we got a response
+      if (!responseText) {
+        throw new Error('Empty response from Gemini');
+      }
+      
+      // Parse as JSON
+      let extraction: Record<string, unknown>;
       try {
-        // First verify we got a response
-        if (!response || !response.text) {
-          throw new Error('Empty response from Mistral');
-        }
-        
-        // Parse as JSON
-        const parsed = JSON.parse(response.text);
+        const parsed = JSON.parse(responseText);
         
         // Verify it's an object
-        if (!parsed || typeof parsed !== 'object') {
+        if (parsed === null || typeof parsed !== 'object') {
           throw new Error('Response is not a valid JSON object');
         }
         
         extraction = parsed;
       } catch (parseError) {
-        moduleLogger.error('Failed to parse Mistral extraction response',
-          { responseLength: response.text.length }, 
+        moduleLogger.error('Failed to parse Gemini extraction response',
+          { responseLength: responseText.length }, 
           parseError
         );
         
         throw new ExternalServiceError({
           message: 'Failed to parse document extraction response',
-          service: 'Mistral',
+          service: 'Gemini',
           code: 'PARSE_ERROR',
           data: { 
             documentId, 
-            responseLength: response.text.length,
-            responsePreview: `${response.text.substring(0, 100)  }...`
+            responseLength: responseText.length,
+            responsePreview: `${responseText.substring(0, 100)  }...`
           },
           cause: parseError
         });
       }
 
       // Format the extraction with proper typing and validation
-      const result: DocumentExtraction = {
+      const extractionResult: DocumentExtraction = {
         documentId,
         documentType,
         documentDate,
         sections: typeof extraction.sections === 'object' && extraction.sections !== null 
-          ? extraction.sections 
-          : {},
+          ? extraction.sections as Record<string, ExtractedSection>
+          : {} as Record<string, ExtractedSection>,
         metadata: {
-          extractionConfidence: typeof extraction.metadata?.extractionConfidence === 'number'
-            ? extraction.metadata.extractionConfidence
-            : 0.8, // Higher default confidence for Mistral
+          extractionConfidence: typeof extraction.metadata === 'object' && extraction.metadata !== null && 
+            typeof (extraction.metadata as Record<string, unknown>).extractionConfidence === 'number'
+              ? (extraction.metadata as Record<string, unknown>).extractionConfidence as number
+              : 0.9, // Higher default confidence for Gemini
           extractionDate: new Date().toISOString(),
         },
       };
 
-      // Validate the extraction result using type validator utility
-      if (!TypeValidator.isValidDocumentExtraction(result)) {
-        throw new ExternalServiceError({
-          message: 'Invalid extraction result format',
-          service: 'Mistral',
-          code: 'INVALID_EXTRACTION_FORMAT',
-          data: { 
-            documentId,
-            validationErrors: TypeValidator.getExtractionValidationErrors(result)
-          }
-        });
+      // Validate the extraction result
+      if (!TypeValidator.isValidDocumentExtraction(extractionResult)) {
+        moduleLogger.error('Invalid extraction result structure', { documentId });
+        throw new Error(`Invalid extraction structure for document ${documentId}`);
       }
-
-      moduleLogger.info('Document extraction successful with Mistral', {
-        sectionCount: Object.keys(result.sections).length,
-        confidence: result.metadata.extractionConfidence
+      
+      moduleLogger.info('Document extraction completed', { 
+        documentId,
+        sectionCount: Object.keys(extractionResult.sections).length
       });
 
-      return result;
+      return extractionResult;
     } catch (error) {
-      // Let the calling method handle errors
+      moduleLogger.error('Gemini extraction failed', { documentId }, error);
       throw error;
     }
   }
@@ -377,8 +382,7 @@ export class PatientSummaryService {
       })
 
       // Use OpenAI o3-mini model consistently throughout the app
-      // Type assertion to fix type compatibility issue
-      const model = openai('o3-mini') as any
+      const model = openai('o3-mini') as LanguageModelV1;
 
       // Format the compilation prompt
       const prompt = SUMMARY_COMPILATION_PROMPT.replace(
@@ -408,25 +412,25 @@ export class PatientSummaryService {
       // Create the patient summary
       const summary: PatientSummary = {
         patientInfo:
-          sections.patientInfo ||
+          sections.patientInfo ??
           this.createEmptySection('Patient Information'),
         medicalHistory:
-          sections.medicalHistory || this.createEmptySection('Medical History'),
+          sections.medicalHistory ?? this.createEmptySection('Medical History'),
         currentConditions:
-          sections.currentConditions ||
+          sections.currentConditions ??
           this.createEmptySection('Current Conditions'),
         medications:
-          sections.medications || this.createEmptySection('Medications'),
+          sections.medications ?? this.createEmptySection('Medications'),
         recentFindings:
-          sections.recentFindings || this.createEmptySection('Recent Findings'),
+          sections.recentFindings ?? this.createEmptySection('Recent Findings'),
         treatmentPlans:
-          sections.treatmentPlans || this.createEmptySection('Treatment Plans'),
+          sections.treatmentPlans ?? this.createEmptySection('Treatment Plans'),
         labResults:
-          sections.labResults || this.createEmptySection('Laboratory Results'),
+          sections.labResults ?? this.createEmptySection('Laboratory Results'),
         imagingResults:
-          sections.imagingResults || this.createEmptySection('Imaging Results'),
+          sections.imagingResults ?? this.createEmptySection('Imaging Results'),
         recommendations:
-          sections.recommendations ||
+          sections.recommendations ??
           this.createEmptySection('Recommendations'),
         metadata: {
           generatedAt: new Date().toISOString(),
@@ -494,14 +498,15 @@ export class PatientSummaryService {
     )
 
     if (!sectionMatches) {
-      console.warn('No valid sections found in summary response')
+      logger.warn('No valid sections found in summary response')
       return sections
     }
 
     // Process each section
     sectionMatches.forEach((sectionText) => {
-      const titleMatch = sectionText.match(/## (.+?)\n/)
-      if (!titleMatch) return
+      const titleRegex = /## (.+?)\n/;
+      const titleMatch = titleRegex.exec(sectionText);
+      if (!titleMatch?.[1]) return
 
       const title = titleMatch[1].trim()
       const content = sectionText.replace(titleMatch[0], '').trim()
@@ -569,7 +574,9 @@ export class PatientSummaryService {
         })
         
         // Check if the summary is up to date
-        const existingDocIds = new Set(existingSummary.metadata.documents.map((doc: any) => doc.id))
+        const existingDocIds = new Set(existingSummary.metadata.documents.map(
+          (doc: { id: string }) => doc.id
+        ))
         const newDocIds = new Set(documents.map(doc => doc.id))
         
         // Check if all current documents are already in the summary
@@ -594,11 +601,11 @@ export class PatientSummaryService {
         documents.map(async (document) => {
           return this.extractDocumentEssentials(
             document.id,
-            document.content_text || '',
+            document.content_text ?? '',
             typeof document.document_type === 'object'
               ? (document.document_type as DocumentType)
               : { category: DocumentCategory.ADMINISTRATIVE, type: 'unknown' },
-            document.document_date || new Date().toISOString()
+            document.document_date ?? new Date().toISOString()
           )
         })
       )
@@ -657,7 +664,7 @@ export class PatientSummaryService {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      const userId = user?.id || 'system'
+      const userId = user?.id ?? 'system'
 
       // Check if a verified summary already exists for this patient
       const { data: existingSummary, error: fetchError } = await supabase
@@ -685,7 +692,7 @@ export class PatientSummaryService {
         // Careful not to overwrite verification data
         verifiedAt = existingSummary.verified_at
         verifiedBy = existingSummary.verified_by
-        moduleLogger.info('Preserving existing verification data', { verifiedBy, hasVerifiedAt: !!verifiedAt })
+        moduleLogger.info('Preserving existing verification data', { verifiedBy, hasVerifiedAt: verifiedAt !== null && verifiedAt !== undefined })
       }
 
       const { error: upsertError } = await supabase.from('patient_summaries').upsert(
@@ -697,8 +704,8 @@ export class PatientSummaryService {
           created_by: userId,
           last_modified_by: userId,
           // Preserve verification status if it exists
-          ...(verifiedAt ? { verified_at: verifiedAt } : {}),
-          ...(verifiedBy ? { verified_by: verifiedBy } : {}),
+          ...(verifiedAt !== undefined && verifiedAt !== null ? { verified_at: verifiedAt } : {}),
+          ...(verifiedBy !== undefined && verifiedBy !== null ? { verified_by: verifiedBy } : {}),
         },
         {
           onConflict: 'patient_id', // Use patient_id as conflict resolution strategy
@@ -757,8 +764,8 @@ export class PatientSummaryService {
         .eq('patient_id', patientId)
         .single()
 
-      if (error || !existingSummary) {
-        console.warn(`No existing summary found for patient ${patientId}`)
+      if (error || existingSummary === undefined || existingSummary === null) {
+        logger.warn(`No existing summary found for patient ${patientId}`)
         return null
       }
 
@@ -798,9 +805,10 @@ export class PatientSummaryService {
 
       return verifiedSummary
     } catch (error) {
-      console.error(
-        `Error merging verification data for patient ${patientId}:`,
-        error
+      logger.error(
+        `Error merging verification data for patient ${patientId}`,
+        { patientId },
+        error instanceof Error ? error : new Error(String(error))
       )
       return null
     }
@@ -812,14 +820,14 @@ export class PatientSummaryService {
    * @param patientId Patient ID
    * @param verifiedBy User ID of the person verifying the summary
    * @param status Status to set (verified/rejected/etc)
-   * @param comments Optional comments about the verification
+   * @param _comments Optional comments about the verification
    * @returns Updated patient summary
    */
   async verifySummary(
     patientId: string,
     verifiedBy: string,
     status: 'verified' | 'rejected' = 'verified',
-    comments?: string
+    _comments?: string
   ): Promise<PatientSummary | null> {
     try {
       // Get the Supabase client
@@ -828,14 +836,7 @@ export class PatientSummaryService {
       // Get the current date/time
       const verifiedAt = new Date().toISOString()
 
-      // Create verification status based on VerificationStatus interface requirements
-      const verificationStatus = {
-        isVerified: status === 'verified',
-        verifiedAt,
-        verifiedBy,
-        corrections: comments ? { comments } : undefined,
-      }
-
+      // Create verification status - removing the unused variable and using directly in database call
       // Fetch the existing summary
       const { data: existingSummary, error } = await supabase
         .from('patient_summaries')
@@ -843,8 +844,8 @@ export class PatientSummaryService {
         .eq('patient_id', patientId)
         .single()
 
-      if (error || !existingSummary) {
-        console.warn(`No existing summary found for patient ${patientId}`)
+      if (error || existingSummary === undefined || existingSummary === null) {
+        logger.warn(`No existing summary found for patient ${patientId}`)
         return null
       }
 
@@ -881,7 +882,11 @@ export class PatientSummaryService {
 
       return updatedSummary
     } catch (error) {
-      console.error(`Error verifying patient summary for ${patientId}:`, error)
+      logger.error(
+        `Error verifying patient summary for ${patientId}`,
+        { patientId },
+        error instanceof Error ? error : new Error(String(error))
+      )
       return null
     }
   }
@@ -908,7 +913,7 @@ export class PatientSummaryService {
         .eq('patient_id', patientId)
         .single()
 
-      if (error || !data || !data.verified_at) {
+      if (error || data === undefined || data === null || data.verified_at === undefined || data.verified_at === null) {
         return null
       }
 
@@ -918,17 +923,18 @@ export class PatientSummaryService {
       }
 
       // Default to 'verified' if no specific status is saved
-      const status = summary?.metadata?.verificationInfo?.status || 'verified'
+      const status = summary?.metadata?.verificationInfo?.status ?? 'verified'
 
       return {
         verifiedAt: data.verified_at,
-        verifiedBy: data.verified_by || 'unknown',
+        verifiedBy: data.verified_by ?? 'unknown',
         status,
       }
     } catch (error) {
-      console.error(
-        `Error getting verification status for patient ${patientId}:`,
-        error
+      logger.error(
+        `Error getting verification status for patient ${patientId}`,
+        { patientId },
+        error instanceof Error ? error : new Error(String(error))
       )
       return null
     }
@@ -976,7 +982,7 @@ export class PatientSummaryService {
         })
       }
 
-      if (!data || !data.summary) {
+      if (data?.summary === undefined) {
         moduleLogger.info('Patient summary not found or empty')
         return null
       }
@@ -1017,28 +1023,35 @@ export class PatientSummaryService {
   }
   
   /**
-   * Extract structured data from patient summary
-   *
-   * @param summary Patient summary object
-   * @returns Structured data for formatting
+   * Extract structured data from a patient summary
+   * This allows for programmatic access to key patient information
+   * 
+   * @param summary The patient summary to extract data from
+   * @returns Structured representation of the patient summary
    */
   private extractStructuredDataFromSummary(summary: PatientSummary) {
     // Initialize the structured data
-    const structuredData: any = {
-      demographics: {},
+    const structuredData: PatientSummaryData = {
+      demographics: {}, // Initialize with empty object
       medicalHistory: [],
       conditions: [],
       medications: [],
       allergies: [],
       labResults: [],
       imagingResults: [],
-      recommendations: []
+      recommendations: [],
+      assessment: '',
     };
     
     // Extract demographic information by parsing patient info section
     const demographicsText = summary.patientInfo.content;
-    const nameMatch = demographicsText.match(/Name:?\s*(.*?)(?:\n|$)/i);
-    if (nameMatch && nameMatch[1]) {
+    const nameRegex = /Name:?\s*(.*?)(?:\n|$)/i;
+    const nameMatch = nameRegex.exec(demographicsText);
+    if (nameMatch !== null && nameMatch[1] !== undefined && nameMatch[1] !== null) {
+      // Ensure demographics exists before setting a property
+      if (structuredData.demographics === undefined || structuredData.demographics === null) {
+        structuredData.demographics = {};
+      }
       structuredData.demographics.name = nameMatch[1].trim();
     }
     
@@ -1073,8 +1086,10 @@ export class PatientSummaryService {
       .map(line => {
         const labText = line.replace(/^[-*]\s*/, '').trim();
         // Try to parse structured lab result if possible
-        const testMatch = labText.match(/^(.*?):\s*(.*?)(?:\s*\(.*?\))?$/);
-        if (testMatch) {
+        const testRegex = /^(.*?):\s*(.*?)(?:\s*\(.*?\))?$/;
+        const testMatch = testRegex.exec(labText);
+        if (testMatch !== null && testMatch[1] !== undefined && testMatch[1] !== null && 
+            testMatch[2] !== undefined && testMatch[2] !== null) {
           return {
             test: testMatch[1].trim(),
             result: testMatch[2].trim()
@@ -1121,8 +1136,11 @@ export class PatientSummaryService {
   ): Promise<ResearchResult | null> {
     const summary = await this.getVerifiedSummary(patientId)
 
-    if (!summary || !summary.metadata?.verificationInfo?.verifiedAt) {
-      console.warn(
+    if (summary === null || summary === undefined || 
+        summary.metadata === undefined || summary.metadata === null ||
+        summary.metadata.verificationInfo === undefined || summary.metadata.verificationInfo === null ||
+        summary.metadata.verificationInfo.verifiedAt === undefined || summary.metadata.verificationInfo.verifiedAt === null) {
+      logger.warn(
         `Cannot generate deep research report - patient summary ${patientId} is not verified`
       )
       return null
@@ -1138,7 +1156,7 @@ export class PatientSummaryService {
       2. Potential differential diagnoses with confidence levels
       3. Recommended treatments and follow-up actions
       4. Evidence-based support for your analysis
-      ${additionalInstructions ? `\nAdditional instructions: ${additionalInstructions}` : ''}
+      ${additionalInstructions !== undefined && additionalInstructions !== null && additionalInstructions !== '' ? `\nAdditional instructions: ${additionalInstructions}` : ''}
     `.trim()
 
     // Set research options
@@ -1189,11 +1207,11 @@ export class PatientSummaryService {
     // Add verification information from o3-mini model
     if (summary.metadata?.verificationInfo) {
       const verifiedBy =
-        summary.metadata.verificationInfo.verifiedBy || 'Unknown'
+        summary.metadata.verificationInfo.verifiedBy ?? 'Unknown'
       const verifiedAt =
-        summary.metadata.verificationInfo.verifiedAt || 'Unknown date'
+        summary.metadata.verificationInfo.verifiedAt ?? 'Unknown date'
       const status =
-        summary.metadata.verificationInfo.status || 'Unknown status'
+        summary.metadata.verificationInfo.status ?? 'Unknown status'
 
       sections.push(
         `## Verification Status\nThis summary was ${status} by ${verifiedBy} on ${verifiedAt} using o3-mini model`
@@ -1212,28 +1230,34 @@ export class PatientSummaryService {
    */
   private formatSectionForResearch(
     title: string,
-    section: PatientSummarySection | any
+    section: unknown
   ): string {
-    if (!section) return ''
+    if (section === null || section === undefined) return ''
 
     // Handle the PatientSummarySection format
-    if (section.title && section.content) {
+    if (typeof section === 'object' && 
+        !Array.isArray(section) && 
+        section !== null && 
+        'title' in section && 
+        'content' in section && 
+        typeof section.title === 'string' && 
+        typeof section.content === 'string') {
       return `## ${title}\n${section.content}`
     }
 
     // Handle array format
     if (Array.isArray(section)) {
-      const items = section.map((item) => `- ${item}`).join('\n')
+      const items = section.map((item) => `- ${String(item)}`).join('\n')
       return `## ${title}\n${items}`
     }
 
     // Handle object format
-    if (typeof section === 'object') {
+    if (typeof section === 'object' && section !== null) {
       return `## ${title}\n${JSON.stringify(section, null, 2)}`
     }
 
     // Handle string format
-    return `## ${title}\n${section}`
+    return `## ${title}\n${typeof section === 'string' ? section : JSON.stringify(section)}`
   }
 
   /**
@@ -1247,13 +1271,15 @@ export class PatientSummaryService {
     const summary = await this.getPatientSummary(patientId)
 
     if (!summary) {
-      console.warn(`No summary found for patient ${patientId}`)
+      logger.warn(`No summary found for patient ${patientId}`)
       return null
     }
 
     // Check if it's verified
-    if (!summary.metadata?.verificationInfo?.verifiedAt) {
-      console.warn(`Summary for patient ${patientId} is not verified`)
+    if (summary.metadata === undefined || summary.metadata === null ||
+        summary.metadata.verificationInfo === undefined || summary.metadata.verificationInfo === null ||
+        summary.metadata.verificationInfo.verifiedAt === undefined || summary.metadata.verificationInfo.verifiedAt === null) {
+      logger.warn(`Summary for patient ${patientId} is not verified`)
       return null
     }
 

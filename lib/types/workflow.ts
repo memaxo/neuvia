@@ -239,6 +239,7 @@ export function isVerificationFailed(
 /**
  * Convert a WorkflowStep into the closest matching VerificationStatus.
  * By default, we treat non-verification steps as 'pending'.
+ * @deprecated Consider using mappers for consistent bidirectional conversion
  */
 export function workflowStepToVerificationStatus(step: WorkflowStep): VerificationStatus {
   switch (step) {
@@ -260,6 +261,7 @@ export function workflowStepToVerificationStatus(step: WorkflowStep): Verificati
 
 /**
  * Convert a VerificationStatus to the corresponding WorkflowStep if applicable.
+ * @deprecated Consider using mappers for consistent bidirectional conversion
  */
 export function verificationStatusToWorkflowStep(status: VerificationStatus): WorkflowStep {
   switch (status) {

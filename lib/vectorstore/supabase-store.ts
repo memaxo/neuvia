@@ -19,6 +19,7 @@ import { Document } from '@langchain/core/documents'
 import { mistral } from '@ai-sdk/mistral'
 import type { Embeddings } from '@langchain/core/embeddings'
 import { type SupabaseClient, createClient } from '@supabase/supabase-js'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // Match documents function parameter type from the database
 type MatchDocumentsParams = {
@@ -328,7 +329,7 @@ export class EnhancedSupabaseVectorStore extends SupabaseVectorStore {
         moduleLogger.error('Error generating query embedding', {}, embeddingError)
         throw new ExternalServiceError({
           message: 'Failed to generate embeddings for query',
-          service: 'Mistral Embeddings',
+          service: 'Embeddings Service',
           code: 'EMBEDDING_FAILED',
           data: { queryLength: query.length },
           cause: embeddingError
@@ -421,24 +422,59 @@ export function createSupabaseVectorStore(): EnhancedSupabaseVectorStore {
   // Use the admin client instead of creating a new client
   const supabaseClient = createAdminClient()
 
-  // Create Mistral embeddings model
-  const mistralEmbeddingModel = mistral.embedding(config.mistral.embeddingModel)
+  // Create embeddings model based on available APIs
+  let embeddings: Embeddings;
   
-  // Create LangChain embeddings wrapper for Mistral
-  const embeddings: Embeddings = {
-    embedQuery: async (text: string): Promise<number[]> => {
-      const response = await mistralEmbeddingModel.embed({ text })
-      return response
-    },
-    embedDocuments: async (documents: string[]): Promise<number[][]> => {
-      const results = await Promise.all(
-        documents.map(async (doc) => {
-          const response = await mistralEmbeddingModel.embed({ text: doc })
-          return response
-        })
-      )
-      return results
+  // Prefer Gemini embeddings, fall back to Mistral if necessary
+  if (config.gemini?.apiKey) {
+    // Create Google embeddings model
+    const genAI = new GoogleGenerativeAI(config.gemini.apiKey);
+    const embeddingModel = genAI.getGenerativeModel({ model: "embedding-001" });
+    
+    // Create LangChain embeddings wrapper for Google
+    embeddings = {
+      embedQuery: async (text: string): Promise<number[]> => {
+        const result = await embeddingModel.embedContent({
+          content: { parts: [{ text }] },
+        });
+        const embedding = result.embedding.values;
+        return embedding;
+      },
+      embedDocuments: async (documents: string[]): Promise<number[][]> => {
+        const results = await Promise.all(
+          documents.map(async (doc) => {
+            const result = await embeddingModel.embedContent({
+              content: { parts: [{ text: doc }] },
+            });
+            return result.embedding.values;
+          })
+        );
+        return results;
+      }
+    };
+  } else if (config.mistral?.apiKey) {
+    // Create Mistral embeddings model (deprecated)
+    logger.warn('Using deprecated Mistral embeddings - please configure Gemini API key');
+    const mistralEmbeddingModel = mistral(config.mistral.embeddingModel)
+    
+    // Create LangChain embeddings wrapper for Mistral
+    embeddings = {
+      embedQuery: async (text: string): Promise<number[]> => {
+        const response = await mistralEmbeddingModel.embed({ text })
+        return response
+      },
+      embedDocuments: async (documents: string[]): Promise<number[][]> => {
+        const results = await Promise.all(
+          documents.map(async (doc) => {
+            const response = await mistralEmbeddingModel.embed({ text: doc })
+            return response
+          })
+        )
+        return results
+      }
     }
+  } else {
+    throw new Error("No embedding model available. Configure either Gemini or Mistral API key.");
   }
 
   // Create vector store

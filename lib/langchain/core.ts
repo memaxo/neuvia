@@ -241,7 +241,7 @@ export class LangChainCore {
 
 
     // Note: The createEmbeddings method has been removed as the application now uses
-  // Mistral embeddings exclusively via the Mistral AI SDK integration in supabase-store.ts
+  // embeddings via the supabase-store.ts integration with Gemini as the default
 
   /**
    * Create a prompt template

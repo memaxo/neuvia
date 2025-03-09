@@ -3,12 +3,11 @@ import { normalizeError, ValidationError } from '@/lib/errors'
 import { verificationAdapter } from '@/lib/api/adapters/verification-adapter'
 import {
   VerificationStatus,
-  verificationStatusToDb,
-  dbToVerificationStatus,
   type VerificationResult,
   type VerificationServiceResult,
   type CompleteVerificationOptions,
 } from '@/lib/types/verification'
+import { verificationStatusMapper } from '@/lib/types/verification-mapper'
 
 /**
  * VerificationResultService
@@ -33,7 +32,7 @@ export class VerificationResultService {
       const updateResult = await verificationAdapter.updatePatientSummaryVerification(
         options.workflowId,
         {
-          status: verificationStatusToDb(status),
+          status: verificationStatusMapper.toDatabase(status),
           items: options.items ?? [],
           comments: options.comments ?? '',
         }
@@ -136,7 +135,7 @@ export class VerificationResultService {
       return {
         success: true,
         data: {
-          verificationStatus: dbToVerificationStatus(mappedDbStatus),
+          verificationStatus: verificationStatusMapper.toDomain(mappedDbStatus),
           items: result.data.items,
           metadata: result.data.metadata,
           originalContent: result.data.originalContent,

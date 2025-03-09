@@ -95,30 +95,30 @@ export class OcrDocumentExtractor extends BaseDocumentExtractor {
       // Convert file to blob for processing
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
       
-      // Use extractViaMistralOCR from the extraction service
-      const result = await this.extractionService.extractViaMistralOCR(blob, file.type, options);
+      // Use extractViaOCR from the extraction service
+      const result = await this.extractionService.extractViaOCR(blob, file.type, options);
       
       const extractedMetadata: DocumentMetadata = {
         filename: file.name,
         fileFormat: file.type,
         fileSize: file.size,
         extractedAt: new Date(),
-        extractionMethod: 'mistral-ocr',
-        documentStructure: result.structure?.documentStructure || 'basic',
+        extractionMethod: 'gemini-ocr',
+        documentStructure: result.metadata?.documentStructure || 'basic',
         hasStructuredData: true,
-        detectedSections: result.detectedSections || result.sections,
+        detectedSections: result.detectedSections,
         ocrConfidence: result.confidence,
         pageCount: result.pages?.length || 1,
         hasTables: result.tables && result.tables.length > 0 || false,
         tableCount: result.tables?.length || 0,
-        paragraphCount: result.paragraphCount || result.metadata?.paragraphCount || 0,
-        processingTime: result.processingTime || result.processing_time
+        paragraphCount: result.metadata?.paragraphCount || 0,
+        processingTime: result.processingTime
       };
       
       // Create chunks using appropriate strategy based on document structure
       const chunks = [];
       
-      // If Mistral provided structured data, use it
+      // If OCR provided structured page data, use it
       if (result.pages && result.pages.length > 0) {
         const pageBasedChunks = await this.createChunks(
           result.text,
@@ -130,7 +130,7 @@ export class OcrDocumentExtractor extends BaseDocumentExtractor {
           },
           {
             pages: result.pages,
-            source: 'mistral-ocr'
+            source: 'ocr'
           }
         );
         
@@ -147,8 +147,8 @@ export class OcrDocumentExtractor extends BaseDocumentExtractor {
             strategy: 'section'
           },
           {
-            sections: result.detectedSections || result.sections,
-            source: 'mistral-ocr'
+            sections: result.detectedSections,
+            source: 'ocr'
           }
         );
         

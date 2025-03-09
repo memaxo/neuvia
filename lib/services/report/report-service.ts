@@ -5,6 +5,7 @@ import { DocumentCategory } from '@/lib/types/document'
 import logger from '@/lib/logger'
 import type { ReportData, ReportDocument, ReportSections} from '@/lib/types/report';
 import { ReportType, ReportStatus } from '@/lib/types/report'
+import { reportTypeMapper, reportStatusMapper } from '@/lib/types/report-mapper'
 import type { ResearchDocument, ResearchResult, ResearchSource } from '@/lib/types/research'
 import type { VerifiedDocument } from '@/lib/types/verification'
 import type { UUID } from '@/lib/types/base'
@@ -335,7 +336,7 @@ export class ReportService {
           title: `${params.type.charAt(0).toUpperCase() + params.type.slice(1)} Report`,
           patientId: params.patientId,
           // Use the actual ReportType from the string if possible, else fallback
-          reportType: this.mapReportType(params.type),
+          reportType: reportTypeMapper.toDomain(params.type),
           status: ReportStatus.COMPLETED,
           sections,
           sourceDocuments: params.researchData.sources.map(s => s.url),
@@ -731,21 +732,10 @@ export class ReportService {
 
   /**
    * Map string to actual ReportType
+   * @deprecated Use reportTypeMapper.toDomain() instead
    */
   private mapReportType(typeStr: string): ReportType {
-    switch (typeStr.toLowerCase()) {
-      case 'summary':
-        return ReportType.SUMMARY
-      case 'comprehensive':
-        return ReportType.COMPREHENSIVE
-      case 'timeline':
-        return ReportType.TIMELINE
-      case 'medical-diagnosis':
-      case 'research':
-        return ReportType.CUSTOM
-      default:
-        return ReportType.CUSTOM
-    }
+    return reportTypeMapper.toDomain(typeStr);
   }
 
   /**
