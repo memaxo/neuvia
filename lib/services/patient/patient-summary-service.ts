@@ -196,13 +196,29 @@ export class PatientSummaryService {
     });
 
     try {
+      // First check if we have this document extraction in cache
+      const cachedExtraction = await this.getDocumentExtractionFromCache(documentId);
+      if (cachedExtraction) {
+        moduleLogger.info('Using cached document extraction', {
+          documentId,
+          documentType: documentType.type,
+          cacheDate: cachedExtraction.metadata.extractionDate
+        });
+        return cachedExtraction;
+      }
+      
       moduleLogger.info('Extracting essential information from document using Gemini', {
         documentCategory: documentType.category,
         documentLength: documentContent.length
       });
       
       // Delegate to specialized extraction method
-      return this.performGeminiExtraction(documentId, documentContent, documentType, documentDate);
+      const extraction = await this.performGeminiExtraction(documentId, documentContent, documentType, documentDate);
+      
+      // Store the extraction in cache for future use
+      await this.storeDocumentExtractionInCache(documentId, extraction);
+      
+      return extraction;
     } catch (error) {
       if (error instanceof ApplicationError) {
         // Already formatted appropriately, just re-throw
@@ -222,6 +238,78 @@ export class PatientSummaryService {
         data: { documentId, documentType: documentType.type },
         cause: error
       });
+    }
+  }
+
+  /**
+   * Get document extraction from cache
+   * 
+   * @param documentId Document ID
+   * @returns Cached document extraction or null if not found
+   */
+  private async getDocumentExtractionFromCache(documentId: UUID): Promise<DocumentExtraction | null> {
+    try {
+      const supabase = await createServerClient();
+      
+      // Using the get_latest_document_extraction function to retrieve cached extraction
+      const { data: extractionData, error } = await supabase
+        .rpc('get_latest_document_extraction', { p_document_id: documentId });
+      
+      if (error || !extractionData) {
+        return null;
+      }
+      
+      // Validate the extraction structure
+      if (!TypeValidator.isValidDocumentExtraction(extractionData as unknown as DocumentExtraction)) {
+        logger.warn(`Invalid document extraction structure in cache for document ${documentId}`);
+        return null;
+      }
+      
+      return extractionData as unknown as DocumentExtraction;
+    } catch (error) {
+      logger.warn(
+        `Error retrieving document extraction from cache for ${documentId}`, 
+        { documentId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return null;
+    }
+  }
+  
+  /**
+   * Store document extraction in cache
+   * 
+   * @param documentId Document ID
+   * @param extraction Document extraction
+   */
+  private async storeDocumentExtractionInCache(documentId: UUID, extraction: DocumentExtraction): Promise<void> {
+    try {
+      const supabase = await createServerClient();
+      
+      // Get the current user ID or default to 'system'
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const userId = user?.id ?? 'system';
+      
+      // Using the update_document_extraction function to handle is_latest flag
+      await supabase.rpc('update_document_extraction', {
+        p_document_id: documentId,
+        p_extraction: extraction as unknown as Json,
+        p_extraction_model: 'gemini-2.0-flash-lite',
+        p_extraction_version: '1.0',
+        p_extraction_confidence: extraction.metadata.extractionConfidence,
+        p_user_id: userId
+      });
+      
+      logger.info(`Successfully cached document extraction for ${documentId}`);
+    } catch (error) {
+      logger.warn(
+        `Error storing document extraction in cache for ${documentId}`, 
+        { documentId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      // Don't throw - this is a non-critical operation
     }
   }
 
@@ -381,6 +469,32 @@ export class PatientSummaryService {
         documentIds: extractions.map(e => e.documentId)
       })
 
+      // Check if we have an existing summary to use as a baseline
+      const existingSummary = await this.getPatientSummary(patientId);
+      
+      // If we have an existing summary and new extractions, use delta compilation
+      if (existingSummary) {
+        // Get document IDs from existing summary
+        const existingDocIds = new Set(existingSummary.metadata.documents.map(
+          (doc: { id: string }) => doc.id
+        ));
+        
+        // Find extractions for documents not in the existing summary
+        const newExtractions = extractions.filter(
+          ext => !existingDocIds.has(ext.documentId)
+        );
+        
+        // If there are new extractions, use delta compilation
+        if (newExtractions.length > 0) {
+          moduleLogger.info('Using delta compilation for incremental summary update', {
+            existingDocCount: existingDocIds.size,
+            newDocCount: newExtractions.length
+          });
+          
+          return this.deltaCompilePatientSummary(patientId, existingSummary, newExtractions);
+        }
+      }
+
       // Use OpenAI o3-mini model consistently throughout the app
       const model = openai('o3-mini') as LanguageModelV1;
 
@@ -467,6 +581,133 @@ export class PatientSummaryService {
         data: { patientId, documentCount: extractions.length },
         cause: error
       });
+    }
+  }
+
+  /**
+   * Incrementally update a patient summary with new document extractions
+   * This optimizes the update process by focusing on integrating only new information
+   *
+   * @param patientId Patient ID
+   * @param existingSummary Existing patient summary
+   * @param newExtractions Array of new document extractions to integrate
+   * @returns Updated patient summary
+   */
+  private async deltaCompilePatientSummary(
+    patientId: string,
+    existingSummary: PatientSummary,
+    newExtractions: DocumentExtraction[]
+  ): Promise<PatientSummary> {
+    const moduleLogger = logger.withMetadata({
+      module: 'PatientSummaryService',
+      method: 'deltaCompilePatientSummary',
+      patientId,
+      newDocumentCount: newExtractions.length
+    });
+    
+    try {
+      moduleLogger.info('Performing delta compilation to update patient summary');
+      
+      // Use OpenAI model consistently
+      const model = openai('o3-mini') as LanguageModelV1;
+      
+      // Format the delta compilation prompt
+      const deltaPrompt = `
+# Patient Summary Delta Update
+
+## TASK
+Update the existing patient summary with new information from recently added documents.
+Focus on integrating new information without repeating existing content.
+
+## EXISTING SUMMARY
+${JSON.stringify(existingSummary, null, 2)}
+
+## NEW DOCUMENT EXTRACTIONS
+${JSON.stringify(newExtractions, null, 2)}
+
+## INTEGRATION GUIDELINES
+1. Maintain the existing structure of the patient summary
+2. Add new information where relevant in each section
+3. Resolve any contradictions by preferring more recent information
+4. Preserve all existing sections even if no new information is added
+5. Combine similar information to avoid duplication
+
+## OUTPUT FORMAT
+Return a complete updated summary with the same structure as the existing summary.
+`;
+
+      // Call the OpenAI model
+      const response = await generateText({
+        model,
+        prompt: deltaPrompt,
+        maxTokens: 4000,
+        temperature: 0.2,
+      });
+      
+      // Parse the response into sections
+      const updatedSections = this.parseSummaryResponse(response.text);
+      
+      // Create updated summary object
+      const updatedSummary: PatientSummary = {
+        // Use updated sections or fall back to existing sections
+        patientInfo: updatedSections.patientInfo ?? existingSummary.patientInfo,
+        medicalHistory: updatedSections.medicalHistory ?? existingSummary.medicalHistory,
+        currentConditions: updatedSections.currentConditions ?? existingSummary.currentConditions,
+        medications: updatedSections.medications ?? existingSummary.medications,
+        recentFindings: updatedSections.recentFindings ?? existingSummary.recentFindings,
+        treatmentPlans: updatedSections.treatmentPlans ?? existingSummary.treatmentPlans,
+        labResults: updatedSections.labResults ?? existingSummary.labResults,
+        imagingResults: updatedSections.imagingResults ?? existingSummary.imagingResults,
+        recommendations: updatedSections.recommendations ?? existingSummary.recommendations,
+        
+        // Update metadata to include all documents
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          documentCount: existingSummary.metadata.documentCount + newExtractions.length,
+          documents: [
+            ...existingSummary.metadata.documents,
+            ...newExtractions.map(extraction => ({
+              id: extraction.documentId,
+              type: extraction.documentType,
+              title: `Document ${extraction.documentId}`,
+              date: extraction.documentDate,
+            })),
+          ],
+          // Preserve any verification info if present
+          verificationInfo: existingSummary.metadata.verificationInfo
+        },
+      };
+      
+      moduleLogger.info('Successfully updated patient summary with new document information');
+      
+      // Store the updated summary
+      await this.storeSummary(patientId, updatedSummary);
+      
+      return updatedSummary;
+    } catch (error) {
+      moduleLogger.error('Failed to perform delta compilation of patient summary', {}, error);
+      
+      // If delta compilation fails, fall back to full compilation
+      moduleLogger.info('Falling back to full compilation method');
+      
+      // Get all document IDs from existing summary
+      const existingDocIds = existingSummary.metadata.documents.map(
+        (doc: { id: string }) => doc.id
+      );
+      
+      // Get cached extractions for all documents
+      const allExtractions = await Promise.all([
+        ...existingDocIds.map(docId => this.getDocumentExtractionFromCache(docId)),
+        ...newExtractions
+      ]);
+      
+      // Filter out null values
+      const validExtractions = allExtractions.filter(
+        (ext): ext is DocumentExtraction => ext !== null
+      );
+      
+      // Use full compilation
+      return this.compilePatientSummary(patientId, validExtractions);
     }
   }
 
@@ -567,33 +808,79 @@ export class PatientSummaryService {
 
       // First check if we already have a summary for this patient
       const existingSummary = await this.getPatientSummary(patientId)
+      
+      // Get all document IDs
+      const allDocIds = new Set(documents.map(doc => doc.id));
+      
       if (existingSummary) {
         moduleLogger.info('Using existing patient summary', {
           generatedAt: existingSummary.metadata.generatedAt,
           documentCount: existingSummary.metadata.documentCount
         })
         
-        // Check if the summary is up to date
+        // Check if the summary is up to date by comparing document IDs
         const existingDocIds = new Set(existingSummary.metadata.documents.map(
           (doc: { id: string }) => doc.id
         ))
-        const newDocIds = new Set(documents.map(doc => doc.id))
         
-        // Check if all current documents are already in the summary
-        const isUpToDate = documents.every(doc => existingDocIds.has(doc.id))
-        
-        // If the summary is up to date, return it
-        if (isUpToDate && existingDocIds.size === newDocIds.size) {
+        // If we have all the documents already, return the existing summary
+        const isUpToDate = documents.every(doc => existingDocIds.has(doc.id));
+        if (isUpToDate && existingDocIds.size === allDocIds.size) {
           moduleLogger.info('Existing summary is up to date')
           return existingSummary
         }
         
-        moduleLogger.info('Existing summary needs to be updated', {
+        // Identify which documents need extraction
+        const newDocuments = documents.filter(doc => !existingDocIds.has(doc.id));
+        moduleLogger.info('Existing summary needs incremental update', {
           existingDocCount: existingDocIds.size,
-          newDocCount: newDocIds.size
-        })
+          newDocCount: newDocuments.length,
+          totalDocCount: allDocIds.size
+        });
+        
+        // Process only new documents
+        const newExtractions = await Promise.all(
+          newDocuments.map(async (document) => {
+            return this.extractDocumentEssentials(
+              document.id,
+              document.content_text ?? '',
+              typeof document.document_type === 'object'
+                ? (document.document_type as DocumentType)
+                : { category: DocumentCategory.ADMINISTRATIVE, type: 'unknown' },
+              document.document_date ?? new Date().toISOString()
+            )
+          })
+        );
+        
+        // Get cached extractions for existing documents
+        const existingExtractions = await Promise.all(
+          Array.from(existingDocIds).map(async (docId) => {
+            const cached = await this.getDocumentExtractionFromCache(docId);
+            return cached;
+          })
+        );
+        
+        // Filter out null values
+        const validExistingExtractions = existingExtractions.filter(
+          (ext): ext is DocumentExtraction => ext !== null
+        );
+        
+        // Combine all extractions
+        const allExtractions = [...validExistingExtractions, ...newExtractions];
+        
+        moduleLogger.info('Compiling patient summary with all extractions', {
+          existingExtractionCount: validExistingExtractions.length,
+          newExtractionCount: newExtractions.length,
+          totalExtractionCount: allExtractions.length
+        });
+        
+        // Compile the summary with all extractions
+        return this.compilePatientSummary(patientId, allExtractions);
       }
 
+      // No existing summary, extract all documents
+      moduleLogger.info('No existing summary found, processing all documents')
+      
       // Stage 1: Extract essential information from each document in parallel
       moduleLogger.info('Extracting essential information from documents')
       
