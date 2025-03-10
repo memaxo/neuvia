@@ -7,7 +7,11 @@ import type {
 } from '@/lib/types/research'
 import type { VerifiedDocument } from '@/lib/types/verification'
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
+import { workflowMediator } from '@/lib/services/workflow/workflow-mediator'
+import { eventService } from '@/lib/services/event-service'
+import { EVENT_TYPES } from '@/lib/types/events'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import logger from '@/lib/logger'
 
 /**
  * Status of a research operation
@@ -128,11 +132,14 @@ export function useResearch(options?: UseResearchOptions) {
     }
   }, [])
 
+  // Module logger
+  const moduleLogger = logger.withMetadata({ module: 'useResearch' });
+
   // Perform research
   const performResearch = useCallback(
     async (
       queryText: string,
-      researchOptions?: ResearchOptions & { provider?: ResearchProvider }
+      researchOptions?: ResearchOptions & { provider?: ResearchProvider; workflowId?: string }
     ) => {
       if (!queryText.trim()) {
         const errorMsg = 'Research query cannot be empty';
@@ -161,6 +168,7 @@ export function useResearch(options?: UseResearchOptions) {
 
         // Use specified provider or current state
         const selectedProvider = researchOptions?.provider || provider
+        const workflowId = researchOptions?.workflowId;
 
         // Create progress tracking callback
         const progressCallback = (value: number) => {
@@ -191,11 +199,58 @@ export function useResearch(options?: UseResearchOptions) {
           }
         }
 
-        // Use the consolidated perplexityService
-        const researchResult = await perplexityService.performDeepResearch(
-          queryText,
-          options
-        )
+        let researchResult: ResearchResult;
+
+        // If we have a workflowId, use the workflow mediator
+        if (workflowId) {
+          moduleLogger.info('Using workflow mediator for research', {
+            workflowId,
+            queryLength: queryText.length
+          });
+
+          // Subscribe to research events for this workflow
+          const unsubscribe = eventService.subscribe(
+            EVENT_TYPES.RESEARCH_COMPLETED,
+            (payload: any) => {
+              if (payload.workflowId === workflowId && isMounted.current) {
+                moduleLogger.info('Research completed event received', {
+                  workflowId
+                });
+                
+                const result = payload.researchResult;
+                
+                // Update state with the result
+                setResult(result)
+                setStatus('success')
+                setProgress(100)
+                setProcessingStatus({
+                  status: 'success',
+                  progress: 100,
+                  phase: 'analysis',
+                  currentStep: 'Research completed',
+                })
+              }
+            }
+          );
+
+          // Clean up subscription after 5 minutes
+          setTimeout(() => unsubscribe(), 300000);
+          
+          // Use the workflow mediator to manage research
+          researchResult = await workflowMediator.generateResearch(
+            workflowId,
+            patientId || "unknown",
+            queryText,
+            options
+          ) as ResearchResult;
+        } else {
+          // Use the direct perplexity service for standalone research
+          moduleLogger.info('Using direct perplexity service for research');
+          researchResult = await perplexityService.performDeepResearch(
+            queryText,
+            options
+          );
+        }
 
         // Only update state if still mounted
         if (isMounted.current) {
@@ -254,10 +309,7 @@ export function useResearch(options?: UseResearchOptions) {
                     JSON.stringify(updated)
                   )
                 } catch (e) {
-                  console.warn(
-                    'Failed to save research history to local storage:',
-                    e
-                  )
+                  moduleLogger.warn('Failed to save research history to local storage', {}, e)
                 }
               }
 
@@ -285,7 +337,7 @@ export function useResearch(options?: UseResearchOptions) {
           })
         }
 
-        console.error('Error in useResearch:', err)
+        moduleLogger.error('Error in useResearch', {}, err)
         return null
       }
     },
