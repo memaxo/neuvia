@@ -16,6 +16,10 @@ import {
 } from 'lucide-react'
 import { useCallback } from 'react'
 import type { WorkflowStep } from '@/lib/workflow/types'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 interface ActiveDocument {
   id: string
@@ -34,7 +38,7 @@ interface WorkflowStatusDisplayProps {
 
 /**
  * Displays the current workflow status and provides relevant actions
- * Connects to the Zustand store for workflow state
+ * Now using the specialized workflow hooks instead of the Zustand store
  */
 export function WorkflowStatusDisplay({
   activeDocument,
@@ -43,43 +47,76 @@ export function WorkflowStatusDisplay({
   onSkipReportAction,
   hideWhenIdle = true
 }: WorkflowStatusDisplayProps) {
-  // Get all needed state in one go using multiple selectors 
-  // This pattern minimizes rerenders by only subscribing to the exact state needed
-  const {
-    workflowStep,
-    processingStatus,
-    error,
-    verification,
-    progress,
-    isProcessing,
-    docType,
-    // Actions
-    completeVerification,
-    generateReport,
-    formatReport,
-    beginReportGeneration
-  } = useChatStore(state => ({
-    // Workflow state
-    workflowStep: state.workflow.currentStep,
-    processingStatus: state.workflow.processingStatus,
-    error: state.error,
-    verification: state.verification,
-    progress: state.docProgress,
-    isProcessing: state.isDocProcessing,
-    docType: state.workflow.data.documentType,
-    // Actions
-    completeVerification: state.completeVerification,
-    generateReport: state.generateReport,
-    formatReport: state.formatReport,
-    beginReportGeneration: state.beginReportGeneration
-  }))
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
   
-  // Define actions based on current workflow step
+  // Initialize specialized workflow hooks
+  const {
+    state: documentState,
+    status: documentStatus
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: verificationState,
+    status: verificationStatus,
+    completeVerification
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: reportState,
+    status: reportStatus,
+    beginReportGeneration
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Get the current chat verification state from the Zustand store
+  // This is still needed for UI presentation as it contains the actual summary
+  const verification = useChatStore(state => state.verification)
+  
+  // Derive the current workflow step from all specialized hooks
+  const workflowStep = documentStatus.currentStep !== 'idle' ? documentStatus.currentStep : 
+                      verificationStatus.currentStep !== 'idle' ? verificationStatus.currentStep :
+                      reportStatus.currentStep !== 'idle' ? reportStatus.currentStep : 'idle'
+                      
+  // Derive other state information from the hooks
+  const error = documentState.error || verificationState.error || reportState.error
+  const processingStatus = {
+    status: error ? 'error' : 
+            documentStatus.isComplete || verificationStatus.isVerificationComplete || reportStatus.isComplete ? 'complete' : 
+            'processing',
+    progress: documentState.progress || verificationState.progress || reportState.progress || 0,
+    phase: documentState.phase || verificationState.phase || reportState.phase
+  }
+  const progress = processingStatus.progress
+  const isProcessing = documentStatus.isUploading || documentStatus.isExtracting || 
+                      verificationStatus.isVerifying || reportStatus.isGeneratingReport
+  const docType = activeDocument?.kind === 'text' ? 'text' : 'document'
+  
+  // Define actions based on current workflow step using specialized hooks
   const handleContinue = useCallback(() => {
     if (onContinueAction) {
       onContinueAction()
     } else if (workflowStep === 'verification' || workflowStep === 'verification_completed') {
-      beginReportGeneration()
+      // Use the specialized report workflow hook to begin report generation
+      // Get the patient ID from localStorage or another source
+      const patientId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_patient_id') || undefined : undefined
+      if (patientId) {
+        beginReportGeneration('comprehensive', { patientId })
+      } else {
+        beginReportGeneration('comprehensive')
+      }
     }
   }, [workflowStep, onContinueAction, beginReportGeneration])
   
@@ -87,17 +124,24 @@ export function WorkflowStatusDisplay({
     if (onGenerateReportAction) {
       onGenerateReportAction()
     } else {
-      generateReport()
+      // Use the specialized report workflow hook to begin report generation
+      const patientId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_patient_id') || undefined : undefined
+      if (patientId) {
+        beginReportGeneration('comprehensive', { patientId })
+      } else {
+        beginReportGeneration('comprehensive')
+      }
     }
-  }, [onGenerateReportAction, generateReport])
+  }, [onGenerateReportAction, beginReportGeneration])
   
   const handleSkipReport = useCallback(() => {
     if (onSkipReportAction) {
       onSkipReportAction()
     } else {
-      formatReport({ format: 'pdf' })
+      // Skip report generation using the specialized report workflow hook
+      beginReportGeneration('none')
     }
-  }, [onSkipReportAction, formatReport])
+  }, [onSkipReportAction, beginReportGeneration])
   
   // Skip rendering based on current state
   if (hideWhenIdle && workflowStep === 'idle') return null

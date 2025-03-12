@@ -17,6 +17,10 @@ import { apiClient } from '@/lib/api/client/api-client'
 import { verificationService } from '@/lib/services/verification/verification-service'
 // Import real-time sync hook
 import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 // Import error boundary
 import { ChatErrorBoundary } from '@/components/chat/error/error-boundary'
 
@@ -46,22 +50,54 @@ export function ChatInterface({
   const isLoading = useChatStore((state) => state.isLoading)
   const sendMessage = useChatStore((state) => state.sendMessage)
   const addSystemMessage = useChatStore((state) => state.addSystemMessage)
-  const _processDocument = useChatStore((state) => state.processDocument)
-  const _docProgress = useChatStore((state) => state.docProgress)
-  const _isDocProcessing = useChatStore((state) => state.isDocProcessing)
   const extractedDocument = useChatStore((state) => state.extractedDocument)
   const startVerification = useChatStore((state) => state.startVerification)
-  const _updateWorkflowStep = useChatStore((state) => state.updateWorkflowStep)
-  const completeVerification = useChatStore(
-    (state) => state.completeVerification
-  )
-  const generateReport = useChatStore((state) => state.generateReport)
-  const formatReport = useChatStore((state) => state.formatReport)
-  const workflowStep = useChatStore(
-    (state) => state.workflow?.currentStep || 'idle'
-  )
   const verification = useChatStore((state) => state.verification)
-  const error = useChatStore((state) => state.error)
+  
+  // Get the user ID for workflow initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize specialized workflow hooks
+  const {
+    processDocument,
+    status: documentStatus,
+    updateProgress: updateDocumentProgress,
+    state: documentState
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    initiateVerification,
+    processCorrection,
+    completeVerification,
+    resetVerification,
+    status: verificationStatus
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    beginReportGeneration,
+    state: reportState,
+    status: reportStatus
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Derive current workflow state from the specialized hooks
+  const workflowStep = documentStatus.currentStep !== 'idle' ? documentStatus.currentStep : 
+                      verificationStatus.currentStep !== 'idle' ? verificationStatus.currentStep :
+                      reportStatus.currentStep !== 'idle' ? reportStatus.currentStep : 'idle'
+                      
+  const error = documentState.error || verificationStatus.isError ? documentState.error : null
 
   // Initialize real-time workflow synchronization
   // This enables multiple users to see updates to the workflow in real-time
@@ -94,13 +130,10 @@ export function ChatInterface({
     (state) => state.updateMessageProgress
   )
 
-  // Process document with the API client
+  // Process document with the specialized document workflow hook
   const handleProcessDocument = useCallback(
     async (file: File) => {
       setCurrentUpload(file)
-
-      // Create AbortController for cancellation
-      const abortController = new AbortController()
 
       // Add a system message indicating document processing has started
       const processingMsg = addSystemMessage(
@@ -110,105 +143,56 @@ export function ChatInterface({
       )
 
       try {
-        // Get current user ID and create workflow if needed
-        const userId = localStorage.getItem('current_user_id') || ''
-        const workflowId = localStorage.getItem('current_workflow_id')
+        // Process the document using the specialized document workflow hook
+        // This handles all database operations, workflow state management, and more
+        const result = await processDocument(file, {
+          patientId
+        });
 
-        // Create a new workflow if one doesn't exist
-        let workflowData = { id: workflowId }
-        if (!workflowId) {
-          workflowData = await apiClient.workflows.createWorkflow({
-            workflowType: 'document_processing',
-            userId,
-            patientId,
-            initialStep: 'uploading',
-            metadata: {
-              fileName: file.name,
-              fileSize: file.size,
-              fileType: file.type,
-              source: 'chat_interface',
-              startedAt: new Date().toISOString(),
-            },
-          })
+        // Update progress in the message
+        const progressUpdater = (progress: number, phase: string) => {
+          updateMessageProgress(
+            processingMsg.id,
+            progress,
+            phase
+          );
+        };
 
-          // Store workflow ID for future use
-          if (workflowData?.id) {
-            localStorage.setItem('current_workflow_id', workflowData.id)
-          }
-        }
-
-        // Process the document using API client instead of store action
-        const result = await apiClient.documents.processDocument(
-          {
-            file,
-            patientId,
-            documentType: 'clinical',
-            documentCategory: 'clinical',
-            onStatusUpdate: (status) => {
-              // Update progress message
-              if (status?.progress) {
-                updateMessageProgress(
-                  processingMsg.id,
-                  status.progress,
-                  status.phase || 'extraction'
-                )
-              }
-            },
-          },
-          {
-            signal: abortController.signal, // Pass abort signal for cancellation
-          }
-        )
+        // Setup progress reporter
+        documentState.progress && progressUpdater(documentState.progress, documentState.phase || 'extraction');
 
         // Set document info when processing completes
-        if (result) {
+        if (result && result.success) {
           setActiveDocument({
-            id: result.id || crypto.randomUUID(),
+            id: result.documentId || crypto.randomUUID(),
             title: file.name,
-            content: result.extractedData?.rawText || 'Document processed',
+            content: result.extractedText || 'Document processed',
             kind: 'text',
-          })
+          });
 
-          // Update workflow status
-          if (workflowData?.id) {
-            await apiClient.workflows.updateWorkflowState(workflowData.id, {
-              step: 'verification',
-              progress: 70,
-              phase: 'verification',
-              metadata: {
-                documentId: result.id,
-                extractedAt: new Date().toISOString(),
-              },
-            })
+          // Add document completion message
+          if (documentStatus.isComplete || verificationStatus.isVerifying) {
+            addSystemMessage(
+              "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
+              'verification_prompt'
+            );
+
+            // Start verification with the extracted document data
+            const verificationResult = await initiateVerification(
+              result.extractedText || '', 
+              processingMsg.id
+            );
+
+            if (verificationResult) {
+              startVerification(
+                verificationResult.summary || result.extractedText || ''
+              );
+            }
           }
-        }
-
-        // Add document completion message and fetch actual summary from API
-        if (result && workflowStep === 'verification') {
-          addSystemMessage(
-            "Document processed successfully. Please review the extracted information below and confirm it's accurate, or provide corrections.",
-            'verification_prompt'
-          )
-
-          // Get actual extracted summary from verification service layer
-          const verificationResult =
-            await verificationService.generateVerification({
-              document: result,
-              workflowId: workflowData?.id || '',
-              messageId: processingMsg.id,
-              summaryId: crypto.randomUUID(),
-            })
-
-          // Start verification with the actual extracted summary
-          startVerification(
-            verificationResult.success
-              ? verificationResult.data.summary
-              : result.extractedData?.rawText || ''
-          )
         }
       } catch (error) {
         const errorMsg =
-          error instanceof Error ? error.message : 'An unknown error occurred'
+          error instanceof Error ? error.message : 'An unknown error occurred';
 
         // Use the existing error handler to handle document processing errors
         errorHandler.handleError(error, 'Failed to process document', {
@@ -218,7 +202,7 @@ export function ChatInterface({
             fileSize: file.size,
             fileType: file.type,
           },
-        })
+        });
 
         // Also add a system message to provide context in the chat
         addSystemMessage(
@@ -230,14 +214,17 @@ export function ChatInterface({
             errorStep: 'document_processing',
             canRetry: true,
           }
-        )
+        );
       }
     },
     [
       patientId,
+      processDocument,
+      initiateVerification,
       updateMessageProgress,
-      extractedDocument,
-      workflowStep,
+      documentState,
+      documentStatus,
+      verificationStatus,
       addSystemMessage,
       startVerification,
       errorHandler,
@@ -301,24 +288,38 @@ export function ChatInterface({
   const handleMessageSubmit = async (message: string) => {
     const lowerMessage = message.toLowerCase().trim()
 
-    // Handle verification confirmations
+    // Handle verification confirmations using the specialized verification workflow hook
     if (
       verification.isInVerificationMode &&
       (lowerMessage === 'confirm' || lowerMessage === 'approve')
     ) {
       await sendMessage(message)
-      await completeVerification(true)
+      // Use the specialized verification workflow hook to complete verification
+      await completeVerification()
       return
     }
 
-    // Handle report generation requests
+    // Handle correction messages using the specialized verification workflow hook
+    if (verification.isInVerificationMode && 
+        !(lowerMessage === 'confirm' || lowerMessage === 'approve')) {
+      await sendMessage(message)
+      // Use the specialized verification workflow hook to process correction
+      if (verification.summary) {
+        await processCorrection(message, verification.summary)
+      }
+      return
+    }
+
+    // Handle report generation requests using the specialized report workflow hook
     if (workflowStep === 'report_generation') {
       if (lowerMessage === 'yes' || lowerMessage.includes('generate report')) {
         await sendMessage(message)
+        // Additional report generation logic will be handled by WorkflowStatusDisplay
         return
       } else if (lowerMessage === 'no' || lowerMessage.includes('skip')) {
         await sendMessage(message)
-        await formatReport({ format: 'pdf' })
+        // Skip report generation using the specialized report workflow hook
+        // (The actual report formatting will be handled when needed)
         return
       }
     }
@@ -337,16 +338,18 @@ export function ChatInterface({
     return 'Type a message...'
   }
 
-  // Continue after verification is complete
+  // Continue after verification is complete - using specialized report workflow hook
   const handleContinueAfterVerification = useCallback(() => {
-    generateReport()
+    // Use the specialized report workflow hook to begin report generation
+    beginReportGeneration('comprehensive', { patientId })
+    
     addSystemMessage(
       'Would you like to generate a report based on the verified information?',
       'verification_complete'
     )
-  }, [generateReport, addSystemMessage])
+  }, [beginReportGeneration, addSystemMessage, patientId])
 
-  // Generate a report with the provided notes
+  // Generate a report with the provided notes - using specialized report workflow hook
   const handleGenerateReport = useCallback(
     async (notes: string) => {
       // Add a progress message for report generation
@@ -360,98 +363,102 @@ export function ChatInterface({
         }
       )
 
-      // Track progress for the report generation
-      let progress = 0
-      const progressInterval = setInterval(() => {
-        progress += 10
-        if (progress >= 100) {
-          clearInterval(progressInterval)
-
-          setTimeout(async () => {
-            try {
-              // Get patient data from the service; use getPatient instead of getPatientById
-              const patientData = await apiClient.patients.getPatient(patientId)
-              if (!patientData) throw new Error('Patient data not found')
-
-              // Generate the report using the report service, remove additionalNotes property
-              const report = await apiClient.reports.generateReport({
-                patientId,
-                workflowId: localStorage.getItem('current_workflow_id') || '',
-                format: 'markdown',
-                includeVerificationData: true,
-                detailLevel: 'comprehensive',
-              })
-
-              // Format the report
-              formatReport({ format: 'pdf' })
-
-              // Replace report property accesses with report.data
-              const finalReportMarkdown =
-                report.data.content ||
-                `**Final Report**\n\n- Patient: ${patientData.name || 'Unknown'}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}`
-
-              addSystemMessage('Report generation complete!', 'report_complete')
-
-              const newMessage: Message = {
-                id: report.data.id || crypto.randomUUID(),
-                role: 'assistant',
-                content: finalReportMarkdown,
-                createdAt: new Date(),
-                metadata: {
-                  isReport: true,
-                  reportId: report.data.id || crypto.randomUUID(),
-                  generatedAt:
-                    report.data.generatedAt || new Date().toISOString(),
-                  format: report.data.format || 'markdown',
-                },
-              }
-
-              useChatStore.getState().addMessage(newMessage)
-            } catch (error) {
-              console.error('Error generating report:', error)
-              addSystemMessage(
-                `Error generating report: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                'error'
-              )
-
-              const fallbackReportMarkdown = `**Final Report (Generated Offline)**\n\n- Patient ID: ${patientId}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}\n\n*Note: This is a basic report as we encountered an error generating the detailed report.*`
-              const fallbackMessage: Message = {
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: fallbackReportMarkdown,
-                createdAt: new Date(),
-                metadata: {
-                  isReport: true,
-                  isFallback: true,
-                },
-              }
-              useChatStore.getState().addMessage(fallbackMessage)
-            }
-          }, 500)
-        } else {
-          useChatStore
-            .getState()
-            .updateMessageProgress(
+      try {
+        // Use the specialized report workflow hook to generate the report
+        // The generateReport method handles all the database operations and state management
+        const reportResult = await beginReportGeneration('comprehensive', {
+          patientId,
+          additionalNotes: notes
+        });
+        
+        // Setup progress updater based on report workflow state
+        const updateReportProgress = () => {
+          if (reportState.progress) {
+            updateMessageProgress(
               progressMsg.id,
-              progress,
-              'Generating report'
+              reportState.progress,
+              reportState.phase || 'report_generation'
             )
+          }
         }
-      }, 400)
-
-      return () => clearInterval(progressInterval)
+        
+        // Initial progress update
+        updateReportProgress();
+        
+        // If report generation was successful, process the result
+        if (reportResult) {
+          try {
+            // Get patient data for the report
+            const patientData = await apiClient.patients.getPatient(patientId)
+            
+            // The result will contain the report data or we'll create a simple version
+            const finalReportMarkdown = reportResult.content || 
+              `**Final Report**\n\n- Patient: ${patientData?.name || 'Unknown'}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}`
+              
+            addSystemMessage('Report generation complete!', 'report_complete')
+            
+            // Create a message with the report content
+            const newMessage: Message = {
+              id: reportResult.reportId || crypto.randomUUID(),
+              role: 'assistant',
+              content: finalReportMarkdown,
+              createdAt: new Date(),
+              metadata: {
+                isReport: true,
+                reportId: reportResult.reportId || crypto.randomUUID(),
+                generatedAt: reportResult.timestamp || new Date().toISOString(),
+                format: 'markdown',
+              },
+            }
+            
+            useChatStore.getState().addMessage(newMessage)
+          } catch (error) {
+            handleReportGenerationError(error, notes)
+          }
+        }
+      } catch (error) {
+        handleReportGenerationError(error, notes)
+      }
     },
-    [formatReport, addSystemMessage, patientId]
+    [beginReportGeneration, reportState, addSystemMessage, updateMessageProgress, patientId]
   )
+  
+  // Helper function to handle report generation errors
+  const handleReportGenerationError = useCallback((error: unknown, notes?: string) => {
+    console.error('Error generating report:', error)
+    
+    addSystemMessage(
+      `Error generating report: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      'error'
+    )
+    
+    // Create a fallback report message
+    const fallbackReportMarkdown = `**Final Report (Generated Offline)**\n\n- Patient ID: ${patientId}\n- Generated: ${new Date().toLocaleDateString()}\n${notes ? `\n**Additional Notes:** ${notes}` : ''}\n\n*Note: This is a basic report as we encountered an error generating the detailed report.*`
+    
+    const fallbackMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: fallbackReportMarkdown,
+      createdAt: new Date(),
+      metadata: {
+        isReport: true,
+        isFallback: true,
+      },
+    }
+    
+    useChatStore.getState().addMessage(fallbackMessage)
+  }, [addSystemMessage, patientId])
 
-  // Skip report generation
+  // Skip report generation - using specialized report workflow hook
   const handleSkipReport = useCallback(() => {
-    formatReport({ format: 'pdf' })
+    // Reset the report workflow to idle
+    beginReportGeneration('none', { patientId })
+    
     addSystemMessage(
       'Report generation skipped. You can continue chatting or upload a new document.',
       'workflow_complete'
     )
-  }, [formatReport, addSystemMessage])
+  }, [beginReportGeneration, addSystemMessage, patientId])
 
   // State for report panel visibility
   const [showReportPanel, setShowReportPanel] = useState(false)

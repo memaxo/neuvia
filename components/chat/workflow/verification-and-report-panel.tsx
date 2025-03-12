@@ -5,6 +5,10 @@ import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/stores/chat-store'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 import { useCallback } from 'react'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 interface ActiveDocument {
   id: string
@@ -30,17 +34,56 @@ export function VerificationAndReportPanel({
   onSkipReport: propOnSkipReport,
   onContinue: propOnContinue,
 }: VerificationAndReportPanelProps) {
-  // Get state from Zustand store
-  const storeWorkflowStep = useChatStore(state => state.workflow.currentStep)
-  const storeProcessingPhase = useChatStore(state => state.workflow.processingStatus.phase)
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize specialized workflow hooks
+  const {
+    state: documentState,
+    status: documentStatus
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: verificationState,
+    status: verificationStatus,
+    completeVerification
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: reportState,
+    status: reportStatus,
+    beginReportGeneration: beginReport
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Get data from Zustand store (still needed until fully migrated)
   const extractedDocument = useChatStore(state => state.extractedDocument)
   const generateReport = useChatStore(state => state.generateReport)
   const formatReport = useChatStore(state => state.formatReport)
-  const beginReportGeneration = useChatStore(state => state.beginReportGeneration)
+  const storeBeginReportGeneration = useChatStore(state => state.beginReportGeneration)
   
-  // Use props if provided, otherwise use store values
-  const currentStep = propCurrentStep || storeWorkflowStep
-  const currentPhase = propCurrentPhase || storeProcessingPhase
+  // Derive the current workflow step and phase from specialized hooks
+  const hooksCurrentStep = documentStatus.currentStep !== 'idle' ? documentStatus.currentStep : 
+                      verificationStatus.currentStep !== 'idle' ? verificationStatus.currentStep :
+                      reportStatus.currentStep !== 'idle' ? reportStatus.currentStep : 'idle'
+  
+  const hooksCurrentPhase = documentState.phase || verificationState.phase || reportState.phase
+  
+  // Use props if provided, otherwise use values from specialized hooks
+  const currentStep = propCurrentStep || hooksCurrentStep
+  const currentPhase = propCurrentPhase || hooksCurrentPhase
   
   // Create active document from extracted document if not provided
   const activeDocument = propActiveDocument || (extractedDocument ? {
@@ -50,30 +93,58 @@ export function VerificationAndReportPanel({
     kind: 'text'
   } : null)
   
-  // Default handlers using store actions
+  // Default handlers using specialized hooks
   const handleGenerateReport = useCallback(() => {
     if (propOnGenerateReport) {
       propOnGenerateReport()
     } else {
+      // Get patient ID if available
+      const patientId = typeof localStorage !== 'undefined' ? 
+        localStorage.getItem('current_patient_id') || undefined : undefined
+      
+      // Use specialized report workflow hook
+      if (patientId) {
+        void beginReport('comprehensive', { patientId })
+      } else {
+        void beginReport('comprehensive')
+      }
+      
+      // For backward compatibility
       generateReport()
     }
-  }, [propOnGenerateReport, generateReport])
+  }, [propOnGenerateReport, beginReport, generateReport])
   
   const handleSkipReport = useCallback(() => {
     if (propOnSkipReport) {
       propOnSkipReport()
     } else {
+      // Use specialized report workflow hook
+      void beginReport('none')
+      
+      // For backward compatibility
       formatReport({ format: 'pdf' })
     }
-  }, [propOnSkipReport, formatReport])
+  }, [propOnSkipReport, beginReport, formatReport])
   
   const handleContinue = useCallback(() => {
     if (propOnContinue) {
       propOnContinue()
     } else {
-      beginReportGeneration()
+      // Get patient ID if available
+      const patientId = typeof localStorage !== 'undefined' ? 
+        localStorage.getItem('current_patient_id') || undefined : undefined
+      
+      // Use specialized report workflow hook
+      if (patientId) {
+        void beginReport('comprehensive', { patientId })
+      } else {
+        void beginReport('comprehensive')
+      }
+      
+      // For backward compatibility
+      storeBeginReportGeneration()
     }
-  }, [propOnContinue, beginReportGeneration])
+  }, [propOnContinue, beginReport, storeBeginReportGeneration])
   return (
     <div className="mb-6">
       {currentStep === 'idle' && (

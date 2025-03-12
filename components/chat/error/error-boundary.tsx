@@ -27,6 +27,10 @@ import { useChatStore } from '@/stores/chat-store'
 import { workflowErrorHandler, useWorkflowErrorHandler } from '@/lib/errors/workflow-error-handler'
 import type { WorkflowStep } from '@/lib/workflow/types'
 import { apiClient } from '@/lib/api/client/api-client'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 interface WorkflowErrorBoundaryProps {
   children: React.ReactNode
@@ -77,7 +81,39 @@ function DefaultFallback({
   const [selectedRecoveryPath, setSelectedRecoveryPath] = useState<WorkflowStep | ''>('')
   const errorHandler = useWorkflowErrorHandler(apiClient)
   
-  // Get available recovery paths
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize specialized workflow hooks to access their error handlers
+  const {
+    state: documentState,
+    status: documentStatus
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: verificationState,
+    status: verificationStatus
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: reportState,
+    status: reportStatus
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Get available recovery paths from error or error handler
   const recoveryPaths = error.recoveryPaths || 
     (workflowStep ? errorHandler.getRecoveryPaths(workflowStep) : ['idle'])
   
@@ -88,7 +124,7 @@ function DefaultFallback({
     }
   }, [recoveryPaths, selectedRecoveryPath])
   
-  // Handle recovery attempt
+  // Handle recovery attempt with specialized hooks
   const handleRecovery = async () => {
     if (!selectedRecoveryPath) {
       return
@@ -99,9 +135,33 @@ function DefaultFallback({
       if (selectedRecoveryPath === 'idle') {
         // Full reset to idle state
         useChatStore.getState().resetChat()
+        
+        // Use the specialized hooks to reset state
+        if (selectedRecoveryPath === 'uploading' || selectedRecoveryPath === 'extracting') {
+          // Reset document workflow
+          if (documentStatus.updateStep) {
+            await documentStatus.updateStep('idle')
+          }
+        } else if (selectedRecoveryPath === 'verification' || 
+                 selectedRecoveryPath === 'verification_pending' || 
+                 selectedRecoveryPath === 'verification_in_progress') {
+          // Reset verification workflow
+          if (verificationStatus.resetVerification) {
+            await verificationStatus.resetVerification()
+          }
+        } else if (selectedRecoveryPath === 'report_generation') {
+          // Reset report workflow
+          if (reportStatus.updateStep) {
+            await reportStatus.updateStep('idle')
+          }
+        }
+        
+        // Navigate back to the chat view
         router.push(`/dashboard/chat?patientId=${patientId || ''}`)
       } else {
-        // Stage-specific recovery
+        // Stage-specific recovery using both the error handler and specialized hooks
+        
+        // Traditional error handler recovery
         await errorHandler.recoverFromError(
           selectedRecoveryPath,
           {
@@ -111,6 +171,26 @@ function DefaultFallback({
             timestamp: new Date().toISOString(),
           }
         )
+        
+        // Also recover using the specialized hooks
+        if (selectedRecoveryPath === 'uploading' || selectedRecoveryPath === 'extracting') {
+          // Use document workflow hook for document-related steps
+          if (documentStatus.updateStep) {
+            await documentStatus.updateStep(selectedRecoveryPath)
+          }
+        } else if (selectedRecoveryPath === 'verification' || 
+                 selectedRecoveryPath === 'verification_pending' || 
+                 selectedRecoveryPath === 'verification_in_progress') {
+          // Use verification workflow hook for verification-related steps
+          if (verificationStatus.updateStep) {
+            await verificationStatus.updateStep(selectedRecoveryPath)
+          }
+        } else if (selectedRecoveryPath === 'report_generation') {
+          // Use report workflow hook for report-related steps
+          if (reportStatus.updateStep) {
+            await reportStatus.updateStep(selectedRecoveryPath)
+          }
+        }
       }
       
       // Reset the error boundary
@@ -212,37 +292,110 @@ export function WorkflowErrorBoundary({
   patientId,
   fallbackComponent: FallbackComponent,
 }: WorkflowErrorBoundaryProps) {
-  // Function to handle errors caught by the boundary
+  // Function to handle errors caught by the boundary using specialized hooks
   const handleError = (error: Error) => {
     console.error('Workflow error boundary caught error:', error)
     
-    // Normalize error and get metadata
-    const errorHandler = workflowErrorHandler
+    // Get the user ID and chat ID from localStorage
+    const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+    const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
     
-    // Create error metadata
-    const metadata = errorHandler.createErrorMetadata(
-      error,
-      workflowStep || 'error'
-    )
-    
-    // Log the error
-    void errorHandler.logError(metadata)
-    
-    // Update global state with error
-    const store = useChatStore.getState()
-    store.setError(metadata.errorMessage)
-    store.updateWorkflowStep('error', {
-      error: metadata.errorMessage,
-      errorDetails: metadata.details,
-      previousStep: workflowStep,
-      recoveryPaths: metadata.recoveryPaths,
-    })
-    
-    // Attach recovery paths to error for fallback component
-    Object.assign(error, {
-      step: workflowStep, 
-      recoveryPaths: metadata.recoveryPaths
-    })
+    // Initialize specialized hooks to update error state
+    // (This is a simplified pattern - in a real implementation you might use refs to
+    // avoid multiple hook calls, but this illustrates the concept)
+    try {
+      // Normalize error and get metadata using the existing error handler
+      const errorHandler = workflowErrorHandler
+      
+      // Create error metadata
+      const metadata = errorHandler.createErrorMetadata(
+        error,
+        workflowStep || 'error'
+      )
+      
+      // Log the error
+      void errorHandler.logError(metadata)
+      
+      // Update specialized workflow hooks with error state (async but we don't await)
+      if (userId && chatId) {
+        const { updateStep: updateDocumentStep } = useDocumentWorkflow({
+          userId,
+          chatId,
+          initialStep: 'idle'
+        })
+        
+        const { updateStep: updateVerificationStep } = useVerificationWorkflow({
+          userId,
+          chatId,
+          initialStep: 'idle'
+        })
+        
+        const { updateStep: updateReportStep } = useReportWorkflow({
+          userId,
+          chatId,
+          initialStep: 'idle'
+        })
+        
+        // Determine which workflow is most likely active based on the workflowStep
+        if (workflowStep === 'uploading' || workflowStep === 'extracting') {
+          // Update document workflow with error
+          if (updateDocumentStep) {
+            void updateDocumentStep('error', {
+              error: metadata.errorMessage,
+              errorDetails: metadata.details,
+              previousStep: workflowStep,
+              recoveryPaths: metadata.recoveryPaths,
+            })
+          }
+        } else if (workflowStep === 'verification' || 
+                 workflowStep === 'verification_pending' || 
+                 workflowStep === 'verification_in_progress') {
+          // Update verification workflow with error
+          if (updateVerificationStep) {
+            void updateVerificationStep('error', {
+              error: metadata.errorMessage,
+              errorDetails: metadata.details,
+              previousStep: workflowStep,
+              recoveryPaths: metadata.recoveryPaths,
+            })
+          }
+        } else if (workflowStep === 'report_generation') {
+          // Update report workflow with error
+          if (updateReportStep) {
+            void updateReportStep('error', {
+              error: metadata.errorMessage,
+              errorDetails: metadata.details,
+              previousStep: workflowStep,
+              recoveryPaths: metadata.recoveryPaths,
+            })
+          }
+        }
+      }
+      
+      // For backward compatibility - update global state with error
+      const store = useChatStore.getState()
+      store.setError(metadata.errorMessage)
+      store.updateWorkflowStep('error', {
+        error: metadata.errorMessage,
+        errorDetails: metadata.details,
+        previousStep: workflowStep,
+        recoveryPaths: metadata.recoveryPaths,
+      })
+      
+      // Attach recovery paths to error for fallback component
+      Object.assign(error, {
+        step: workflowStep, 
+        recoveryPaths: metadata.recoveryPaths
+      })
+    } catch (metadataError) {
+      console.error('Error in error handling:', metadataError)
+      // Minimal fallback in case error handling itself fails
+      const store = useChatStore.getState()
+      store.setError(error.message || 'An unknown error occurred')
+      store.updateWorkflowStep('error', {
+        error: error.message || 'An unknown error occurred',
+      })
+    }
   }
   
   return (

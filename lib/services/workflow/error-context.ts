@@ -2,14 +2,100 @@ import { normalizeError } from '@/lib/errors';
 import type { WorkflowStep } from '@/lib/types/workflow';
 import type { ApplicationError } from '@/lib/errors';
 
+export interface ErrorContextOptions {
+  error: string;
+  errorType?: string;
+  errorCode?: string;
+  currentStep: WorkflowStep;
+  previousStep?: WorkflowStep;
+  recoveryPaths?: WorkflowStep[];
+  details?: Record<string, unknown>;
+}
+
+export interface WorkflowErrorContext {
+  errorMessage: string;
+  originalError?: unknown;
+  errorCode?: string;
+  errorType: 'validation' | 'network' | 'permission' | 'timeout' | 'system' | 'unknown';
+  workflowStep: WorkflowStep;
+  previousStep?: WorkflowStep;
+  recoveryPaths?: WorkflowStep[];
+  timestamp: string;
+  userAgent?: string;
+  clientId?: string;
+  details?: Record<string, unknown>;
+}
+
 /**
  * Builds detailed context objects for workflow errors
  */
 export class WorkflowErrorContextBuilder {
   /**
+   * Build a complete error context object with environment information
+   */
+  buildErrorContext(options: ErrorContextOptions): WorkflowErrorContext {
+    const {
+      error,
+      errorType = 'system',
+      errorCode = 'UNKNOWN_ERROR',
+      currentStep,
+      previousStep,
+      recoveryPaths,
+      details = {}
+    } = options;
+    
+    // Normalize the error type to a known value
+    const normalizedType = this.normalizeErrorType(errorType);
+    
+    return {
+      errorMessage: error,
+      errorCode,
+      errorType: normalizedType,
+      workflowStep: currentStep,
+      previousStep,
+      recoveryPaths,
+      timestamp: new Date().toISOString(),
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      clientId: typeof localStorage !== 'undefined'
+        ? localStorage.getItem('neuvia_client_id') ?? undefined
+        : undefined,
+      details
+    };
+  }
+  
+  /**
+   * Map string error types to known enum values
+   */
+  private normalizeErrorType(
+    errorType?: string
+  ): 'validation' | 'network' | 'permission' | 'timeout' | 'system' | 'unknown' {
+    if (!errorType) return 'unknown';
+    
+    switch (errorType.toLowerCase()) {
+      case 'validation':
+      case 'invalid':
+        return 'validation';
+      case 'network':
+      case 'connection':
+      case 'fetch':
+        return 'network';
+      case 'permission':
+      case 'unauthorized':
+      case 'forbidden':
+        return 'permission';
+      case 'timeout':
+        return 'timeout';
+      case 'system':
+        return 'system';
+      default:
+        return 'unknown';
+    }
+  }
+  
+  /**
    * Build context for workflow state update operations
    */
-  static buildUpdateErrorContext(
+  buildUpdateErrorContext(
     error: unknown,
     workflowId: string,
     fromStep?: WorkflowStep,
@@ -35,7 +121,7 @@ export class WorkflowErrorContextBuilder {
   /**
    * Build context for workflow creation operations
    */
-  static buildCreateErrorContext(
+  buildCreateErrorContext(
     error: unknown,
     userId: string,
     initialStep: WorkflowStep,
@@ -58,7 +144,7 @@ export class WorkflowErrorContextBuilder {
   /**
    * Build context for workflow query operations
    */
-  static buildQueryErrorContext(
+  buildQueryErrorContext(
     error: unknown,
     workflowId: string,
     operation: string

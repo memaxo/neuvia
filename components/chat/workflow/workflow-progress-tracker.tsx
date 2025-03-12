@@ -16,6 +16,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { WorkflowStep, ProcessingPhase } from '@/lib/workflow/types'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 interface WorkflowProgressTrackerProps {
   className?: string
@@ -34,10 +38,55 @@ export function WorkflowProgressTracker({
   size = 'md',
   showPhase = true
 }: WorkflowProgressTrackerProps) {
-  // Get workflow state from Zustand store
-  const workflowStep = useChatStore(state => state.workflow.currentStep)
-  const processingStatus = useChatStore(state => state.workflow.processingStatus)
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize specialized workflow hooks
+  const {
+    state: documentState,
+    status: documentStatus
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: verificationState,
+    status: verificationStatus
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const {
+    state: reportState,
+    status: reportStatus
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Get verification state from Zustand store (still needed for UI presentation)
   const verification = useChatStore(state => state.verification)
+  
+  // Derive the current workflow step from all specialized hooks
+  const workflowStep = documentStatus.currentStep !== 'idle' ? documentStatus.currentStep : 
+                      verificationStatus.currentStep !== 'idle' ? verificationStatus.currentStep :
+                      reportStatus.currentStep !== 'idle' ? reportStatus.currentStep : 'idle'
+                      
+  // Derive processing status from the specialized hooks
+  const error = documentState.error || verificationState.error || reportState.error
+  const processingStatus = {
+    status: error ? 'error' : 
+            documentStatus.isComplete || verificationStatus.isVerificationComplete || reportStatus.isComplete ? 'complete' : 
+            'processing',
+    progress: documentState.progress || verificationState.progress || reportState.progress || 0,
+    phase: documentState.phase || verificationState.phase || reportState.phase
+  }
 
   // Local state for animating progress changes
   const [displayProgress, setDisplayProgress] = useState(processingStatus.progress)

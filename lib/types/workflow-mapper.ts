@@ -4,7 +4,7 @@
 import { BaseEntityMapper } from './mapper-base';
 import type { WorkflowState, ProcessingPhase } from './workflow';
 import type { DbWorkflowState } from './db-adapters';
-import { WorkflowStepMapper } from '../services/workflow/step-mapping';
+import { WorkflowStepMapper } from '../services/workflow/utils/step-mapper';
 import type { Database } from './database';
 
 /**

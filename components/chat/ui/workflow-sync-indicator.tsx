@@ -1,12 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useWorkflowSync } from '@/lib/hooks/use-workflow-sync'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/utils/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { LoaderCircle, CheckCircle2, AlertTriangle, CloudOff, Clock } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, CloudOff, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 interface Props {
   className?: string
@@ -19,21 +23,73 @@ interface Props {
 /**
  * Component that shows real-time sync status for workflow changes
  * Displays connection status, last sync time, and pending transactions
+ * Uses specialized workflow hooks to determine the active workflow ID
  */
 export function WorkflowSyncIndicator({
   className,
   showDetails = false,
   size = 'md',
   hideWhenConnected = false,
-  workflowId
+  workflowId: propWorkflowId
 }: Props) {
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize specialized workflow hooks with minimal dependencies
+  const { workflowId: documentWorkflowId, state: documentState } = useDocumentWorkflow({
+    userId,
+    chatId
+  })
+  
+  const { workflowId: verificationWorkflowId, state: verificationState } = useVerificationWorkflow({
+    userId,
+    chatId
+  })
+  
+  const { workflowId: reportWorkflowId, state: reportState } = useReportWorkflow({
+    userId,
+    chatId
+  })
+  
+  // Derive the active workflow ID using useMemo to prevent unnecessary calculations
+  const activeWorkflowId = useMemo(() => {
+    // If a workflow ID is explicitly provided via props, use it
+    if (propWorkflowId) return propWorkflowId
+    
+    // Otherwise, determine which workflow is active based on state
+    if (documentState.currentStep && documentState.currentStep !== 'idle') {
+      return documentWorkflowId
+    }
+    
+    if (verificationState.currentStep && verificationState.currentStep !== 'idle') {
+      return verificationWorkflowId
+    }
+    
+    if (reportState.currentStep && reportState.currentStep !== 'idle') {
+      return reportWorkflowId
+    }
+    
+    // If no workflow is active, return the first available ID
+    return documentWorkflowId || verificationWorkflowId || reportWorkflowId || undefined
+  }, [
+    propWorkflowId, 
+    documentWorkflowId, 
+    verificationWorkflowId, 
+    reportWorkflowId,
+    documentState.currentStep,
+    verificationState.currentStep,
+    reportState.currentStep
+  ])
+
+  // Use the workflow sync hook with the active workflow ID
   const {
     isConnected,
     lastSyncedAt,
     error,
     pendingTransactions,
     forceSync
-  } = useWorkflowSync(workflowId)
+  } = useWorkflowSync(activeWorkflowId)
   
   const [lastSyncTimeText, setLastSyncTimeText] = useState<string>('')
   
@@ -53,7 +109,7 @@ export function WorkflowSyncIndicator({
     function updateSyncTimeText() {
       try {
         setLastSyncTimeText(
-          formatDistanceToNow(lastSyncedAt, { addSuffix: true })
+          formatDistanceToNow(new Date(lastSyncedAt), { addSuffix: true })
         )
       } catch (err) {
         setLastSyncTimeText('Unknown')
@@ -68,12 +124,15 @@ export function WorkflowSyncIndicator({
   
   // Determine icon and color based on status
   const getStatusInfo = () => {
-    if (error) {
+    // Check for errors in the specialized workflow hooks
+    const workflowError = documentState.error || verificationState.error || reportState.error
+    
+    if (error || workflowError) {
       return {
         icon: <AlertTriangle className="text-destructive size-3" />,
         label: 'Error',
         variant: 'destructive',
-        tooltip: error
+        tooltip: error || workflowError || 'Sync error'
       }
     }
     

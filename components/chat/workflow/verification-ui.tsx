@@ -20,6 +20,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
+import { useReportWorkflow } from '@/lib/workflow/hooks/use-report-workflow'
 
 /**
  * Verification status indicator component
@@ -83,7 +87,7 @@ export const VerificationStatus = ({
 }
 
 /**
- * Verification action buttons component with Zustand store integration
+ * Verification action buttons component with specialized hooks
  */
 export const VerificationActions = ({
   onConfirm,
@@ -96,19 +100,33 @@ export const VerificationActions = ({
   onHistory?: () => void
   className?: string
 }) => {
-  // Get actions and state from Zustand store
-  const confirmVerification = useChatStore(state => state.completeVerification)
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
+  
+  // Initialize verification workflow hook
+  const { 
+    completeVerification,
+    status: verificationStatus
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Get verification data from Zustand store (still needed until fully migrated)
   const currentSummary = useChatStore(state => state.verification.currentSummary)
   const verificationItems = useChatStore(state => state.verification.verificationItems)
   
-  // Use provided callbacks or default to store actions
+  // Use provided callbacks or default to specialized hook actions
   const handleConfirm = useCallback(() => {
     if (onConfirm) {
       onConfirm()
     } else {
-      confirmVerification(true)
+      // Use the specialized hook to complete verification
+      void completeVerification()
     }
-  }, [onConfirm, confirmVerification])
+  }, [onConfirm, completeVerification])
   
   const handleEdit = useCallback(() => {
     if (onEdit) {
@@ -203,7 +221,7 @@ export const SectionCorrectionButtons = ({
 }
 
 /**
- * Progress visualization for extraction and verification with Zustand integration
+ * Progress visualization for extraction and verification with specialized hooks
  */
 export const ProgressIndicator = ({
   value: propValue,
@@ -214,13 +232,45 @@ export const ProgressIndicator = ({
   phase?: string
   className?: string
 }) => {
-  // Get progress data from Zustand store if not provided
-  const storeProgress = useChatStore(state => state.workflow.processingStatus.progress)
-  const storePhase = useChatStore(state => state.workflow.processingStatus.phase)
+  // Get the user ID and chat ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  const chatId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_chat_id') || undefined : undefined
   
-  // Use props if provided, otherwise use store values
-  const value = propValue !== undefined ? propValue : storeProgress
-  const phase = propPhase || storePhase || 'Processing'
+  // Initialize specialized workflow hooks to access their states
+  const { 
+    state: documentState,
+    status: documentStatus
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const { 
+    state: verificationState,
+    status: verificationStatus
+  } = useVerificationWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  const { 
+    state: reportState,
+    status: reportStatus
+  } = useReportWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Derive progress data from specialized hooks
+  const hooksProgress = documentState.progress || verificationState.progress || reportState.progress || 0
+  const hooksPhase = documentState.phase || verificationState.phase || reportState.phase || 'Processing'
+  
+  // Use props if provided, otherwise use values from specialized hooks
+  const value = propValue !== undefined ? propValue : hooksProgress
+  const phase = propPhase || hooksPhase
   return (
     <div className={cn('w-full space-y-1', className)}>
       <div className="text-muted-foreground flex justify-between text-xs">

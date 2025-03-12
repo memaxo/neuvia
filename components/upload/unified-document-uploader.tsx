@@ -16,6 +16,10 @@ import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator
 
 // Import API client hooks
 import { useDocumentUpload, useDocumentProcess } from '@/lib/api/client/hooks'
+
+// Import specialized workflow hooks
+import { useDocumentWorkflow } from '@/lib/workflow/hooks/use-document-workflow'
+import { useVerificationWorkflow } from '@/lib/workflow/hooks/use-verification-workflow'
 import type {
   DocumentType,
   DocumentUploadStatus,
@@ -127,11 +131,29 @@ export function UnifiedDocumentUploader({
   // Access toast for notifications
   const { toast } = useToast()
   
-  // Get workflow actions from Zustand store
+  // Get the user ID for workflow hook initialization
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('current_user_id') || undefined : undefined
+  
+  // Use specialized document workflow hook
+  const {
+    processDocument: processDocumentHook,
+    updateProgress: updateProgressHook,
+    updateStep: updateWorkflowStepHook,
+    status: documentStatus,
+    state: documentState
+  } = useDocumentWorkflow({
+    userId,
+    chatId,
+    initialStep: 'idle'
+  })
+  
+  // Derive the current workflow step from document status
+  const workflowStep = documentStatus.currentStep
+  
+  // Maintain backward compatibility with Zustand store (still used in some parts)
   const updateWorkflowStep = useChatStore(state => state.updateWorkflowStep)
   const updateProgress = useChatStore(state => state.updateProgress)
   const processDocumentStore = useChatStore(state => state.processDocument)
-  const workflowStep = useChatStore(state => state.workflow.currentStep)
   
   // API client hooks
   const documentUploadMutation = useDocumentUpload()
@@ -139,26 +161,33 @@ export function UnifiedDocumentUploader({
   
   /**
    * Update the upload status and notify via callback if provided
+   * Uses specialized hooks for workflow state management
    */
   const updateStatus = useCallback((status: Partial<DocumentUploadStatus>) => {
     const newStatus = { ...uploadStatus, ...status }
     setUploadStatus(newStatus)
     onStatusChange?.(newStatus)
 
-    // Update workflow progress based on upload status
+    // Update workflow progress based on upload status using specialized hooks
     if (status.progress !== undefined) {
+      // Update both hooks and store for backward compatibility
+      updateProgressHook(status.progress, status.currentStep as ProcessingPhase)
       updateProgress(status.progress, status.currentStep as ProcessingPhase)
     }
     
-    // Update workflow step based on status
+    // Update workflow step based on status using specialized hooks
     if (status.status === 'uploading' && workflowStep !== 'uploading') {
+      // Update both hooks and store for backward compatibility
+      updateWorkflowStepHook('uploading', { fileName: file?.name, fileSize: file?.size })
       updateWorkflowStep('uploading', { fileName: file?.name, fileSize: file?.size })
     } else if (status.status === 'processing' && workflowStep !== 'extracting') {
+      updateWorkflowStepHook('extracting')
       updateWorkflowStep('extracting')
     } else if (status.status === 'error' && workflowStep !== 'error') {
+      updateWorkflowStepHook('error', { error: status.error })
       updateWorkflowStep('error', { error: status.error })
     }
-  }, [uploadStatus, onStatusChange, updateProgress, updateWorkflowStep, workflowStep, file])
+  }, [uploadStatus, onStatusChange, updateProgressHook, updateProgress, updateWorkflowStepHook, updateWorkflowStep, workflowStep, file])
   
   /**
    * Handle file upload and connect to workflow state
@@ -186,16 +215,16 @@ export function UnifiedDocumentUploader({
     })
     
     try {
-      // If we're using the chat store for processing, use that
+      // If we're using the chat store for processing, use the specialized hook
       if (storageContext === 'chat') {
-        // Check if the store's processDocument method is available
-        if (processDocumentStore) {
-          const result = await processDocumentStore(
-            fileToUpload, 
+        // Use the specialized document workflow hook
+        const result = await processDocumentHook(
+          fileToUpload, 
+          { 
             patientId,
-            typeof documentType === 'string' ? documentType : documentType.type,
-            controller.signal
-          )
+            documentType: typeof documentType === 'string' ? documentType : documentType.type
+          }
+        )
           
           // Update status to complete
           updateStatus({
