@@ -4,7 +4,8 @@ import { verificationService } from '@/lib/services/verification/verification-se
 import { reportService } from '@/lib/services/report/report-service';
 import { documentService } from '@/lib/services/document';
 import { eventService } from '@/lib/services/event-service';
-import { WorkflowStep, ProcessingPhase, DomainOnlyWorkflowStep } from '@/lib/types/workflow';
+import type { WorkflowStep} from '@/lib/types/workflow';
+import { ProcessingPhase, DomainOnlyWorkflowStep } from '@/lib/types/workflow';
 import { ApplicationError, normalizeError } from '@/lib/errors';
 import { EVENT_TYPES } from '@/lib/types/events';
 import logger from '@/lib/logger';
@@ -17,6 +18,9 @@ import type {
   ResearchCompletedEventPayload,
   ReportGeneratedEventPayload
 } from '@/lib/types/events';
+import type { VerificationResult } from '@/lib/types/verification';
+import type { ResearchResult } from '@/lib/types/research';
+import type { ReportData } from '@/lib/types/report';
 
 /**
  * Workflow Mediator
@@ -105,7 +109,18 @@ export class WorkflowMediator {
         workflowId,
         documentId: result.id,
         patientId,
-        document: result
+        document: {
+          id: result.id,
+          fileName: result.fileName,
+          fileType: result.fileType,
+          documentType: result.documentType,
+          ...(Object.entries(result as unknown as Record<string, unknown>).reduce((acc, [key, value]) => {
+            if (!['id', 'fileName', 'fileType', 'documentType'].includes(key)) {
+              acc[key] = value;
+            }
+            return acc;
+          }, {} as Record<string, unknown>))
+        }
       } as DocumentProcessedEventPayload);
 
       // Return document ID
@@ -276,6 +291,10 @@ export class WorkflowMediator {
         }
       );
 
+      // Get current workflow state to retrieve patientId
+      const workflowState = await workflowService.getWorkflowState(workflowId);
+      const patientId = workflowState?.metadata?.patientId as string || '';
+
       // Complete verification
       const result = await verificationService.completeVerification(
         workflowId,
@@ -304,11 +323,12 @@ export class WorkflowMediator {
       // Publish verification completed event
       eventService.publish(EVENT_TYPES.VERIFICATION_COMPLETED, {
         workflowId,
-        verificationResult: result.data,
+        patientId,
+        verificationResult: result.data as unknown as VerificationResult,
         isApproved
       } as VerificationCompletedEventPayload);
 
-      return result.data;
+      return result.data as unknown as Record<string, unknown>;
     } catch (error) {
       const normalizedError = normalizeError(error);
       
@@ -385,10 +405,10 @@ export class WorkflowMediator {
       eventService.publish(EVENT_TYPES.RESEARCH_COMPLETED, {
         workflowId,
         patientId,
-        researchResult
+        researchResult: researchResult as unknown as ResearchResult
       } as ResearchCompletedEventPayload);
 
-      return researchResult;
+      return researchResult as unknown as Record<string, unknown>;
     } catch (error) {
       const normalizedError = normalizeError(error);
       
@@ -466,10 +486,10 @@ export class WorkflowMediator {
         workflowId,
         patientId,
         reportId: reportData.report.id,
-        reportData
+        reportData: reportData as unknown as Record<string, unknown>
       } as ReportGeneratedEventPayload);
 
-      return reportData;
+      return reportData as unknown as Record<string, unknown>;
     } catch (error) {
       const normalizedError = normalizeError(error);
       
@@ -566,7 +586,8 @@ export class WorkflowMediator {
       return;
     }
 
-    const patientId = verificationResult.patientId || payload.patientId;
+    // Cast verificationResult to any to avoid type errors while accessing patientId
+    const patientId = (verificationResult as any).patientId || payload.patientId;
     if (!patientId) {
       this.logger.error('No patient ID found in verification result', { workflowId });
       return;
@@ -598,7 +619,7 @@ export class WorkflowMediator {
 
     try {
       // Auto-initiate report generation
-      await this.generateReport(workflowId, patientId, researchResult);
+      await this.generateReport(workflowId, patientId, researchResult as unknown as Record<string, unknown>);
     } catch (error) {
       this.logger.error('Error automatically initiating report generation after research', {
         workflowId, patientId

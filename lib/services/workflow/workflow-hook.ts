@@ -63,8 +63,18 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
             // Fetch the current state
             const currentState = await workflowService.getWorkflowState(existingWorkflow.id);
             if (currentState && mounted) {
-              setWorkflowState(currentState);
-              onStateChange?.(currentState);
+              // Cast the currentState to WorkflowState to fix type compatibility issues
+              const workflowState: WorkflowState = {
+                currentStep: currentState.currentStep as WorkflowStep,
+                progress: currentState.progress,
+                phase: currentState.phase as ProcessingPhase | undefined,
+                error: currentState.error,
+                metadata: currentState.metadata,
+                timestamp: currentState.timestamp || currentState.updatedAt
+              };
+              
+              setWorkflowState(workflowState);
+              onStateChange?.(workflowState);
             }
           }
         } else if (chatId) {
@@ -82,8 +92,18 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
             // Fetch the current state
             const currentState = await workflowService.getWorkflowState(result.id);
             if (currentState && mounted) {
-              setWorkflowState(currentState);
-              onStateChange?.(currentState);
+              // Cast the currentState to WorkflowState to fix type compatibility issues
+              const workflowState: WorkflowState = {
+                currentStep: currentState.currentStep as WorkflowStep,
+                progress: currentState.progress,
+                phase: currentState.phase as ProcessingPhase | undefined,
+                error: currentState.error,
+                metadata: currentState.metadata,
+                timestamp: currentState.timestamp || currentState.updatedAt
+              };
+              
+              setWorkflowState(workflowState);
+              onStateChange?.(workflowState);
             }
           }
         }
@@ -240,11 +260,21 @@ export function useWorkflow(options: UseWorkflowOptions = {}) {
       if (!workflowId) return { success: false };
       
       try {
-        const workflowState = await workflowService.getWorkflowState(workflowId);
+        const rawWorkflowState = await workflowService.getWorkflowState(workflowId);
         
-        if (!workflowState) {
+        if (!rawWorkflowState) {
           throw new Error(`Workflow not found: ${workflowId}`);
         }
+        
+        // Cast to WorkflowState
+        const workflowState: WorkflowState = {
+          currentStep: rawWorkflowState.currentStep as WorkflowStep,
+          progress: rawWorkflowState.progress,
+          phase: rawWorkflowState.phase as ProcessingPhase | undefined,
+          error: rawWorkflowState.error,
+          metadata: rawWorkflowState.metadata,
+          timestamp: rawWorkflowState.timestamp || rawWorkflowState.updatedAt
+        };
         
         // Get patient ID from workflow state
         const patientId = workflowState.metadata?.patientId as string;

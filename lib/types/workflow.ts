@@ -92,6 +92,7 @@ export enum ProcessingPhase {
   CORRECTION = 'correction',
   RESEARCH = 'research',
   REPORT_GENERATION = 'report_generation',
+  REPORT_FORMATTING = 'report_formatting',
   COMPLETION = 'completion',
   ERROR = 'error',
 }
