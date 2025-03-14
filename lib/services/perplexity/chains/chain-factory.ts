@@ -138,6 +138,39 @@ export class PerplexityChainFactory {
   }
 
   /**
+   * Create an appropriate chain based on an action and options
+   *
+   * @param action The action type describing the research intent
+   * @param options Research options
+   * @param config LangChain runnable config
+   * @returns Appropriate chain for the specified action
+   */
+  async createChainForAction(
+    action: string,
+    options?: ResearchOptions,
+    config?: RunnableConfig
+  ) {
+    // Determine the appropriate chain based on the action
+    switch (action) {
+      case 'medical-diagnosis':
+        return this.createMedicalDiagnosisChain(options, config);
+        
+      case 'comprehensive-research':
+        return this.createComprehensiveResearchChain(options, config);
+        
+      case 'literature-review':
+        return this.createLiteratureReviewChain(options, config);
+        
+      case 'citation-analysis':
+        return this.createCitationAnalysisChain(options, config);
+        
+      case 'standard':
+      default:
+        return this.createStandardResearchChain(options, config);
+    }
+  }
+
+  /**
    * Create a standard research chain
    *
    * @param options Research options
@@ -168,6 +201,155 @@ ${formatInstructions}`,
         this.getConfigValueForDepth('temperature', options?.depth),
       options?.maxTokens ??
         this.getConfigValueForDepth('maxTokens', options?.depth)
+    )
+
+    // Create chain
+    let chain = researchPrompt.pipe(model).pipe(outputParser)
+    
+    // Apply config if provided
+    if (config) {
+      chain = chain.withConfig(config)
+    }
+
+    return chain
+  }
+  
+  /**
+   * Create a comprehensive research chain with greater depth and detail
+   *
+   * @param options Research options
+   * @param config LangChain runnable config
+   * @returns Runnable sequence for comprehensive research
+   */
+  async createComprehensiveResearchChain(
+    options?: ResearchOptions,
+    config?: RunnableConfig
+  ) {
+    const formatInstructions = await outputParser.getFormatInstructions()
+
+    // Create the prompt template using a single template literal
+    const researchPrompt = this.langChain.createPromptTemplate(
+      `You are an advanced research specialist capable of deep, comprehensive investigation and analysis.
+Perform an in-depth research analysis of the following query: {query}
+
+Please ensure your research is:
+1. Comprehensive - covering all major aspects of the topic
+2. Evidence-based - referring to credible sources and studies
+3. Well-structured - organized logically with clear sections
+4. Balanced - presenting different perspectives when appropriate
+5. Current - including recent developments where relevant
+
+Depth: comprehensive
+
+${formatInstructions}`,
+      ['query']
+    )
+
+    // Create model
+    const model = this.createModelWithConfig(
+      options?.model ?? researchConfig.providers.perplexity.model,
+options?.temperature ?? this.getConfigValueForDepth('temperature', 'comprehensive'),
+      options?.maxTokens ?? this.getConfigValueForDepth('maxTokens', 'comprehensive')
+    )
+
+    // Create chain
+    let chain = researchPrompt.pipe(model).pipe(outputParser)
+    
+    // Apply config if provided
+    if (config) {
+      chain = chain.withConfig(config)
+    }
+
+    return chain
+  }
+  
+  /**
+   * Create a literature review chain focusing on academic sources
+   *
+   * @param options Research options
+   * @param config LangChain runnable config
+   * @returns Runnable sequence for literature review
+   */
+  async createLiteratureReviewChain(
+    options?: ResearchOptions,
+    config?: RunnableConfig
+  ) {
+    const formatInstructions = await outputParser.getFormatInstructions()
+
+    // Create the prompt template
+    const researchPrompt = this.langChain.createPromptTemplate(
+      `You are a research librarian specializing in scholarly literature reviews.
+Perform a comprehensive literature review on the following topic: {query}
+
+Your review should:
+1. Focus on academic and peer-reviewed sources where available
+2. Identify seminal works and key researchers in the field
+3. Organize findings by themes, methodologies, or chronology as appropriate
+4. Highlight areas of consensus and controversy
+5. Note any gaps in current research
+6. Include a critical evaluation of the quality of evidence
+
+Depth: {depth}
+
+${formatInstructions}`,
+      ['query', 'depth']
+    )
+
+    // Create model
+    const model = this.createModelWithConfig(
+      options?.model ?? researchConfig.providers.perplexity.model,
+      options?.temperature ?? this.getConfigValueForDepth('temperature', 'comprehensive'),
+      options?.maxTokens ?? this.getConfigValueForDepth('maxTokens', 'comprehensive')
+    )
+
+    // Create chain
+    let chain = researchPrompt.pipe(model).pipe(outputParser)
+    
+    // Apply config if provided
+    if (config) {
+      chain = chain.withConfig(config)
+    }
+
+    return chain
+  }
+  
+  /**
+   * Create a citation analysis chain focusing on credible sources
+   *
+   * @param options Research options
+   * @param config LangChain runnable config
+   * @returns Runnable sequence for citation analysis
+   */
+  async createCitationAnalysisChain(
+    options?: ResearchOptions,
+    config?: RunnableConfig
+  ) {
+    const formatInstructions = await outputParser.getFormatInstructions()
+
+    // Create the prompt template
+    const researchPrompt = this.langChain.createPromptTemplate(
+      `You are a research citation specialist who provides well-referenced analyses.
+Research the following query with particular attention to citing reliable sources: {query}
+
+Your research should:
+1. Prioritize credible, authoritative sources (academic journals, medical databases, governmental sources)
+2. Clearly cite each significant claim or finding
+3. Include full citation details where available (author, year, title, publication)
+4. Evaluate the quality and relevance of cited sources
+5. Organize information logically with clear section headings
+6. Maintain a neutral, evidence-based tone
+
+Depth: {depth}
+
+${formatInstructions}`,
+      ['query', 'depth']
+    )
+
+    // Create model
+    const model = this.createModelWithConfig(
+      options?.model ?? researchConfig.providers.perplexity.model,
+      options?.temperature ?? this.getConfigValueForDepth('temperature', options?.depth),
+      options?.maxTokens ?? this.getConfigValueForDepth('maxTokens', options?.depth)
     )
 
     // Create chain

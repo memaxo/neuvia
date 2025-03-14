@@ -683,6 +683,228 @@ export class PerplexityService {
       },
     })
   }
+  
+  /**
+   * Perform research operation with workflow tracking
+   *
+   * @param query Research query
+   * @param options Research options
+   * @param workflowId Optional workflow ID for tracking
+   * @param config Optional runnable config
+   * @returns Research result with workflow tracking
+   */
+  async performResearchWithWorkflow(
+    query: string,
+    options?: ResearchOptions,
+    workflowId?: string,
+    config?: RunnableConfig
+  ): Promise<ResearchResult> {
+    const moduleLogger = this.logger.withMetadata({
+      module: 'PerplexityService',
+      method: 'performResearchWithWorkflow',
+      query,
+      workflowId,
+    });
+    
+    moduleLogger.info('Starting research with workflow tracking', {
+      model: options?.model ?? researchConfig.providers.perplexity.model,
+      workflowId
+    });
+    
+    try {
+      // If no workflow ID, just perform regular research
+      if (!workflowId) {
+        return await this.performDeepResearch(query, options, DEFAULT_DEBUG, config);
+      }
+      
+      // Import workflow services
+      const { workflowEngine } = await import('@/lib/services/workflow/coordination/workflow-engine');
+      
+      // Check if workflow exists
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      // Create transaction ID for tracking
+      const transactionId = options?.transactionId || crypto.randomUUID();
+      const userId = options?.userId || 'system';
+      
+      if (workflowResult.isFailure()) {
+        if (workflowResult.error.code !== 'WORKFLOW_NOT_FOUND') {
+          moduleLogger.warn('Error getting workflow', {
+            workflowId,
+            error: workflowResult.error.message
+          });
+        }
+        
+        // Create workflow if not found
+        const createResult = await workflowEngine.createWorkflow(
+          'research-workflow',
+          workflowId,
+          {
+            userId,
+            query
+          }
+        );
+        
+        if (createResult.isFailure()) {
+          moduleLogger.error('Failed to create research workflow', {
+            workflowId,
+            error: createResult.error.message
+          });
+          
+          // Continue with research but without workflow tracking
+          return await this.performDeepResearch(query, options, DEFAULT_DEBUG, config);
+        }
+      }
+      
+      // Create research ID for tracking
+      const researchId = `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      
+      // Start research
+      const startAction = {
+        type: 'START_RESEARCH',
+        payload: {
+          query,
+          userId,
+          patientId: options?.patientId,
+          documentId: options?.documentId,
+          includeCitations: options?.includeCitations,
+          autoGenerateReport: options?.autoGenerateReport,
+          model: options?.model
+        },
+        meta: {
+          transactionId,
+          userId
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, startAction, {
+        transactionId,
+        userId
+      });
+      
+      // Mark research as starting
+      const researchStartAction = {
+        type: 'RESEARCH_START',
+        payload: {
+          researchId,
+          timestamp: new Date().toISOString()
+        },
+        meta: {
+          transactionId,
+          userId
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, researchStartAction, {
+        transactionId,
+        userId
+      });
+      
+      // Create progress tracking
+      let lastProgress = 0;
+      const progressTracker = (progress: number) => {
+        if (progress > lastProgress) {
+          lastProgress = progress;
+          
+          // Call the original progress callback
+          if (options?.onProgress) {
+            options.onProgress(progress);
+          }
+          
+          // Update workflow progress
+          const progressAction = {
+            type: 'RESEARCH_PROGRESS_UPDATE',
+            payload: {
+              progress,
+              timestamp: new Date().toISOString()
+            },
+            meta: {
+              transactionId,
+              userId
+            }
+          };
+          
+          workflowEngine.sendAction(workflowId, progressAction, {
+            transactionId,
+            userId
+          }).catch(err => {
+            moduleLogger.warn('Failed to update research progress', {
+              workflowId,
+              progress,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          });
+        }
+      };
+      
+      const updatedOptions = {
+        ...options,
+        onProgress: progressTracker
+      };
+      
+      try {
+        // Perform the actual research
+        const startTime = Date.now();
+        const result = await this.performDeepResearch(query, updatedOptions, DEFAULT_DEBUG, config);
+        const duration = Date.now() - startTime;
+        
+        // Mark research as completed
+        const completionAction = {
+          type: options?.autoGenerateReport === true ? 'RESEARCH_COMPLETED_AUTOREPORT' : 'RESEARCH_COMPLETED',
+          payload: {
+            researchId,
+            query,
+            content: result.text,
+            sources: result.sources,
+            summary: result.summary,
+            keyFindings: result.keyFindings,
+            duration,
+            modelName: result.modelName,
+            confidence: result.confidence,
+            timestamp: new Date().toISOString()
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        await workflowEngine.sendAction(workflowId, completionAction, {
+          transactionId,
+          userId
+        });
+        
+        return result;
+      } catch (researchError) {
+        // Mark research as failed
+        const failureAction = {
+          type: 'RESEARCH_FAILED',
+          payload: {
+            researchId,
+            error: researchError instanceof Error ? researchError.message : String(researchError),
+            errorType: 'api_error',
+            timestamp: new Date().toISOString()
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        await workflowEngine.sendAction(workflowId, failureAction, {
+          transactionId,
+          userId
+        });
+        
+        throw researchError;
+      }
+    } catch (error) {
+      moduleLogger.error('Error in research workflow', {}, error);
+      
+      // Fall back to regular research
+      return await this.performDeepResearch(query, options, DEFAULT_DEBUG, config);
+    }
+  }
 }
 
 // Export singleton instance

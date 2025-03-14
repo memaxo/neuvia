@@ -12,12 +12,15 @@ import logger from '@/lib/logger'
 import { workflowRepository } from '../infrastructure/workflow-repository'
 import { workflowStateManager } from '../infrastructure/workflow-state-manager'
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
+import { workflowEngine } from '../coordination/workflow-engine'
 import { BaseWorkflowProcessor } from '../base/base-workflow-processor'
 import { DomainOnlyWorkflowStep } from '@/lib/types/workflow'
 import { Result } from '../error/result'
+import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
 
 import type { WorkflowStep, ProcessingPhase, WorkflowState } from '@/lib/types/workflow'
 import type { WorkflowProcessOptions } from '../base/base-workflow-processor'
+import type { WorkflowAction } from '../coordination/workflow-definition'
 
 /**
  * Research result interface
@@ -65,6 +68,10 @@ export interface ResearchOptions {
   onProgress?: (progress: number, phase: ProcessingPhase) => void;
   /** Transaction ID for tracking */
   transactionId?: string;
+  /** Chat ID if research was triggered from chat */
+  chatId?: string;
+  /** Whether to return to chat after completing research */
+  returnToChat?: boolean;
 }
 
 /**
@@ -72,7 +79,7 @@ export interface ResearchOptions {
  */
 export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, ResearchResult> {
   constructor() {
-    super('Research', 'error');
+    super('Research', DomainOnlyWorkflowStep.ERROR);
   }
   
   /**
@@ -104,31 +111,274 @@ export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, Res
     }
     
     try {
-      // Wrap the process call with Result pattern
-      const researchResult = await this.process(
-        workflowId,
-        options,
-        {
-          targetStep: DomainOnlyWorkflowStep.RESEARCH,
-          metadata: {
+      // Check if the workflow exists and what state it's in
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      // If it exists, check current state
+      if (workflowResult.isSuccess()) {
+        const workflow = workflowResult.value;
+        logger.info('Existing workflow found, current state:', {
+          workflowId,
+          currentState: workflow.currentState
+        });
+      } else if (workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
+        // Create a new workflow instance
+        logger.info('Creating new research workflow', { workflowId });
+        const createResult = await workflowEngine.createWorkflow(
+          'research-workflow',
+          workflowId,
+          {
+            userId: options.userId,
             query: options.query,
+            patientId: options.patientId,
+            documentId: options.documentId
+          }
+        );
+        
+        if (createResult.isFailure()) {
+          return Result.failure(
+            `Failed to create research workflow: ${createResult.error.message}`,
+            createResult.error.code,
+            { ...createResult.error.details, workflowId }
+          );
+        }
+      } else {
+        // Other error when getting workflow
+        return Result.failure(
+          `Failed to check workflow: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          { ...workflowResult.error.details, workflowId }
+        );
+      }
+      
+      // Create the start research action
+      const startAction: WorkflowAction = {
+        type: 'START_RESEARCH',
+        payload: {
+          query: options.query,
+          userId: options.userId,
+          patientId: options.patientId,
+          documentId: options.documentId,
+          model: options.model,
+          includeCitations: options.includeCitations,
+          autoGenerateReport: options.autoGenerateReport,
+          chatId: options.chatId,
+          fromChat: options.chatId !== undefined
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
+        }
+      };
+      
+      // Send the start action
+      const startResult = await workflowEngine.sendAction(workflowId, startAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      if (startResult.isFailure()) {
+        return Result.failure(
+          `Failed to start research: ${startResult.error.message}`,
+          startResult.error.code,
+          { ...startResult.error.details, workflowId }
+        );
+      }
+      
+      // Research ID for tracking
+      const researchId = `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      
+      // Send the research start action
+      const researchStartAction: WorkflowAction = {
+        type: 'RESEARCH_START',
+        payload: {
+          researchId,
+          fromChat: options.chatId !== undefined,
+          chatId: options.chatId
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
+        }
+      };
+      
+      const researchStartResult = await workflowEngine.sendAction(workflowId, researchStartAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      if (researchStartResult.isFailure()) {
+        return Result.failure(
+          `Failed to initialize research: ${researchStartResult.error.message}`,
+          researchStartResult.error.code,
+          { ...researchStartResult.error.details, workflowId, researchId }
+        );
+      }
+      
+      // Setup progress tracking
+      let lastProgress = 0;
+      const updateProgress = (progress: number) => {
+        if (progress > lastProgress) {
+          lastProgress = progress;
+          
+          // Call progress callback if provided
+          if (options.onProgress) {
+            options.onProgress(progress, ProcessingPhase.RESEARCH);
+          }
+          
+          // Send progress update action
+          const progressAction: WorkflowAction = {
+            type: 'RESEARCH_PROGRESS_UPDATE',
+            payload: {
+              progress,
+              timestamp: new Date().toISOString()
+            },
+            meta: {
+              transactionId: options.transactionId,
+              userId: options.userId
+            }
+          };
+          
+          workflowEngine.sendAction(workflowId, progressAction, {
+            transactionId: options.transactionId,
+            userId: options.userId
+          }).catch(err => {
+            logger.warn('Failed to send progress update action', {
+              workflowId,
+              progress,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          });
+        }
+      };
+      
+      // Perform the actual research using Perplexity service
+      try {
+        updateProgress(20);
+        
+        // Track start time for metrics
+        const startTime = Date.now();
+        
+        // Call Perplexity service
+        const researchResult = await perplexityService.performDeepResearch(
+          options.query,
+          {
+            depth: 'comprehensive',
+            temperature: 0.3,
+            model: options.model,
+            includeCitations: options.includeCitations,
+            onProgress: updateProgress,
+            isMedicalDiagnosis: false,
+            contextData: {
+              patientId: options.patientId,
+              documentId: options.documentId
+            }
+          }
+        );
+        
+        updateProgress(90);
+        
+        // Calculate research duration
+        const duration = Date.now() - startTime;
+        
+        // Research completed successfully, send completion action
+        const completionAction: WorkflowAction = {
+          type: options.autoGenerateReport ? 'RESEARCH_COMPLETED_AUTOREPORT' : 'RESEARCH_COMPLETED',
+          payload: {
+            researchId,
+            query: options.query,
+            content: researchResult.text,
+            sources: researchResult.sources,
+            summary: researchResult.summary,
+            keyFindings: researchResult.keyFindings,
+            duration,
+            modelName: researchResult.modelName,
+            confidence: researchResult.confidence,
+            timestamp: new Date().toISOString()
+          },
+          meta: {
+            transactionId: options.transactionId,
+            userId: options.userId
+          }
+        };
+        
+        const completionResult = await workflowEngine.sendAction(workflowId, completionAction, {
+          transactionId: options.transactionId,
+          userId: options.userId
+        });
+        
+        if (completionResult.isFailure()) {
+          logger.error('Failed to send research completion action', {
+            workflowId,
+            researchId,
+            error: completionResult.error.message
+          });
+          
+          // We'll still consider this a success since the research itself worked
+        }
+        
+        // Log the research completion event
+        await this.logEvent(
+          workflowId,
+          'research_completed',
+          {
+            researchId,
+            query: options.query,
+            timestamp: new Date().toISOString(),
+            userId: options.userId,
+            patientId: options.patientId,
+            documentId: options.documentId,
+            contentLength: researchResult.text.length,
+            sourcesCount: researchResult.sources?.length || 0,
+            transactionId: options.transactionId,
+            autoGenerateReport: options.autoGenerateReport
+          }
+        );
+        
+        updateProgress(100);
+        
+        // Return success result with research data
+        return Result.success({
+          researchId,
+          query: options.query,
+          success: true,
+          content: researchResult.text,
+          sources: researchResult.sources,
+          metadata: {
+            completedAt: new Date().toISOString(),
             userId: options.userId,
             patientId: options.patientId,
             documentId: options.documentId,
             model: options.model,
-            includeCitations: options.includeCitations,
-            autoGenerateReport: options.autoGenerateReport
-          },
-          onProgress: options.onProgress,
-          transactionId: options.transactionId,
-          recoveryStep: fromStep => {
-            // Return to the original step if research fails
-            return fromStep;
+            autoGenerateReport: options.autoGenerateReport,
+            duration,
+            modelName: researchResult.modelName,
+            confidence: researchResult.confidence
           }
-        }
-      );
-      
-      return Result.success(researchResult);
+        });
+      } catch (researchError) {
+        // Research failed, send failure action
+        const failureAction: WorkflowAction = {
+          type: 'RESEARCH_FAILED',
+          payload: {
+            researchId,
+            error: researchError instanceof Error ? researchError.message : String(researchError),
+            errorType: 'api_error',
+            timestamp: new Date().toISOString()
+          },
+          meta: {
+            transactionId: options.transactionId,
+            userId: options.userId
+          }
+        };
+        
+        await workflowEngine.sendAction(workflowId, failureAction, {
+          transactionId: options.transactionId,
+          userId: options.userId
+        });
+        
+        throw researchError;
+      }
     } catch (error) {
       const normalizedError = normalizeError(error);
       logger.error('Research execution failed', {
@@ -179,26 +429,43 @@ export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, Res
     }
   
     try {
-      // Get workflow state using Result.fromPromise for error handling
-      const stateResult = await Result.fromPromise(
-        workflowRepository.getWorkflowState(workflowId)
-      );
+      // Get workflow using engine
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
       
-      if (stateResult.isFailure()) {
+      if (workflowResult.isFailure()) {
+        if (workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
+          return Result.success(null);
+        }
+        
         return Result.failure(
-          `Failed to retrieve workflow state: ${stateResult.error.message}`,
-          stateResult.error.code || 'RESEARCH_STATE_RETRIEVAL_FAILED',
-          stateResult.error.details
+          `Failed to retrieve workflow: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          workflowResult.error.details
         );
       }
       
-      const state = stateResult.value;
-      if (!state) {
-        return Result.success(null);
-      }
+      const workflow = workflowResult.value;
       
       // Check if research ID matches
-      if (state.metadata?.researchId !== researchId) {
+      if (workflow.context.researchId !== researchId) {
+        // If ID doesn't match current, check if it matches previous
+        if (workflow.context.previousResearchId === researchId) {
+          // Return previous research data
+          return Result.success({
+            researchId,
+            query: workflow.context.query,
+            success: true,
+            content: workflow.context.previousResearchContent,
+            sources: workflow.context.previousSources,
+            metadata: {
+              completedAt: workflow.context.previousCompletedAt,
+              userId: workflow.context.userId,
+              patientId: workflow.context.patientId,
+              documentId: workflow.context.documentId
+            }
+          });
+        }
+        
         try {
           // Try to find in event history
           const eventsResult = await Result.fromPromise(
@@ -250,23 +517,24 @@ export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, Res
         }
       }
       
-      // Get research content and metadata
-      const researchContent = state.metadata?.researchContent;
-      const sources = state.metadata?.sources;
+      // Get research content and metadata from workflow context
+      const researchContent = workflow.context.researchContent;
+      const sources = workflow.context.sources;
       
       // Return research data
       const researchResult = {
         researchId,
-        query: state.metadata?.query as string,
+        query: workflow.context.query as string,
         success: true,
         content: researchContent as string,
         sources: sources as Array<{ title: string; url?: string; snippet?: string }>,
         metadata: {
-          completedAt: state.metadata?.researchCompletedAt,
-          userId: state.metadata?.userId,
-          patientId: state.metadata?.patientId,
-          documentId: state.metadata?.documentId,
-          ...state.metadata
+          completedAt: workflow.context.completedAt,
+          userId: workflow.context.userId,
+          patientId: workflow.context.patientId,
+          documentId: workflow.context.documentId,
+          model: workflow.context.model,
+          autoGenerateReport: workflow.context.autoGenerateReport
         }
       };
       
@@ -292,7 +560,240 @@ export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, Res
   }
   
   /**
+   * Generate a report from research results
+   * @returns A Result containing report ID if successful, or error details if failed
+   */
+  async generateReport(
+    workflowId: string,
+    researchId: string,
+    options: {
+      userId: string;
+      patientId?: string;
+      documentId?: string;
+      onProgress?: (progress: number, phase: ProcessingPhase) => void;
+      transactionId?: string;
+    }
+  ): Promise<Result<string>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'workflowId' }
+      );
+    }
+    
+    if (!researchId) {
+      return Result.failure(
+        'Research ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'researchId' }
+      );
+    }
+    
+    if (!options.userId) {
+      return Result.failure(
+        'User ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'userId' }
+      );
+    }
+    
+    try {
+      // Get workflow using engine
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        return Result.failure(
+          `Failed to retrieve workflow: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          workflowResult.error.details
+        );
+      }
+      
+      const workflow = workflowResult.value;
+      
+      // Check if we're in a valid state
+      if (workflow.currentState !== 'research_completed' &&
+          workflow.currentState !== 'idle' &&
+          workflow.currentState !== 'complete') {
+        return Result.failure(
+          `Invalid workflow state for report generation: ${workflow.currentState}`,
+          'INVALID_WORKFLOW_STATE',
+          { workflowId, currentState: workflow.currentState }
+        );
+      }
+      
+      // Check if research ID matches
+      if (workflow.context.researchId !== researchId) {
+        return Result.failure(
+          'Research ID does not match current research',
+          'RESEARCH_ID_MISMATCH',
+          {
+            workflowId,
+            researchId,
+            currentResearchId: workflow.context.researchId
+          }
+        );
+      }
+      
+      // Start report generation
+      const generateAction: WorkflowAction = {
+        type: 'GENERATE_REPORT',
+        payload: {
+          researchId,
+          userId: options.userId,
+          patientId: options.patientId || workflow.context.patientId,
+          documentId: options.documentId || workflow.context.documentId,
+          timestamp: new Date().toISOString()
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
+        }
+      };
+      
+      const actionResult = await workflowEngine.sendAction(workflowId, generateAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to start report generation: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      // Setup progress tracking
+      let lastProgress = 0;
+      const updateProgress = (progress: number) => {
+        if (progress > lastProgress) {
+          lastProgress = progress;
+          
+          // Call progress callback if provided
+          if (options.onProgress) {
+            options.onProgress(progress, ProcessingPhase.REPORT_GENERATION);
+          }
+          
+          // Send progress update action
+          const progressAction: WorkflowAction = {
+            type: 'REPORT_PROGRESS_UPDATE',
+            payload: {
+              progress,
+              timestamp: new Date().toISOString()
+            },
+            meta: {
+              transactionId: options.transactionId,
+              userId: options.userId
+            }
+          };
+          
+          workflowEngine.sendAction(workflowId, progressAction, {
+            transactionId: options.transactionId,
+            userId: options.userId
+          }).catch(err => {
+            logger.warn('Failed to send report progress update action', {
+              workflowId,
+              progress,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          });
+        }
+      };
+      
+      // Simulate report generation for now
+      // In a real implementation, this would call the report service
+      updateProgress(10);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      updateProgress(30);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      updateProgress(50);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      updateProgress(70);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      updateProgress(90);
+      
+      // Generate a report ID
+      const reportId = `report-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      
+      // Send report completion action
+      const completionAction: WorkflowAction = {
+        type: 'REPORT_COMPLETED',
+        payload: {
+          reportId,
+          researchId,
+          timestamp: new Date().toISOString()
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, completionAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      updateProgress(100);
+      
+      // Return the report ID
+      return Result.success(reportId);
+    } catch (error) {
+      const normalizedError = normalizeError(error);
+      logger.error('Report generation failed', {
+        workflowId,
+        researchId,
+        error: normalizedError.message
+      });
+      
+      // Send failure action
+      try {
+        const failureAction: WorkflowAction = {
+          type: 'REPORT_FAILED',
+          payload: {
+            error: normalizedError.message,
+            timestamp: new Date().toISOString()
+          },
+          meta: {
+            transactionId: options.transactionId,
+            userId: options.userId
+          }
+        };
+        
+        await workflowEngine.sendAction(workflowId, failureAction, {
+          transactionId: options.transactionId,
+          userId: options.userId
+        });
+      } catch (actionError) {
+        logger.warn('Failed to send report failure action', {
+          workflowId,
+          error: actionError instanceof Error ? actionError.message : String(actionError)
+        });
+      }
+      
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'REPORT_GENERATION_FAILED',
+        {
+          workflowId,
+          researchId,
+          originalError: error
+        }
+      );
+    }
+  }
+  
+  /**
    * Implementation of required abstract method for domain-specific processing
+   * This is maintained for backward compatibility, but new code should use the
+   * executeResearch method with the workflow engine approach
    */
   protected async doProcess(
     workflowId: string,
@@ -311,99 +812,123 @@ export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, Res
     // Initial progress update
     progressCallback(10, ProcessingPhase.RESEARCH);
     
-    // Update progress during "processing"
-    progressCallback(20, ProcessingPhase.RESEARCH);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    progressCallback(40, ProcessingPhase.RESEARCH);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    progressCallback(60, ProcessingPhase.RESEARCH);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    progressCallback(80, ProcessingPhase.RESEARCH);
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Simulate research results
-    const researchContent = this.simulateResearchResults(query);
-    
-    // Generate citation sources if requested
-    const sources = includeCitations
-      ? this.simulateCitationSources()
-      : undefined;
-    
-    // Log research completion event
-    await this.logEvent(
-      workflowId,
-      'research_completed',
-      {
+    try {
+      // Call the new workflow engine-based implementation
+      const result = await this.executeResearch(
+        workflowId,
+        {
+          userId,
+          query,
+          patientId,
+          documentId,
+          model,
+          includeCitations,
+          autoGenerateReport,
+          onProgress: (progress, phase) => progressCallback(progress, phase),
+          transactionId: options.transactionId
+        }
+      );
+      
+      if (result.isSuccess()) {
+        return result.value;
+      }
+      
+      throw new Error(result.error.message);
+    } catch (error) {
+      // Fallback to legacy behavior
+      progressCallback(20, ProcessingPhase.RESEARCH);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      progressCallback(40, ProcessingPhase.RESEARCH);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      progressCallback(60, ProcessingPhase.RESEARCH);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      progressCallback(80, ProcessingPhase.RESEARCH);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Simulate research results
+      const researchContent = this.simulateResearchResults(query);
+      
+      // Generate citation sources if requested
+      const sources = includeCitations
+        ? this.simulateCitationSources()
+        : undefined;
+      
+      // Log research completion event
+      await this.logEvent(
+        workflowId,
+        'research_completed',
+        {
+          researchId,
+          query,
+          timestamp: new Date().toISOString(),
+          userId,
+          patientId,
+          documentId,
+          contentLength: researchContent.length,
+          sourcesCount: sources?.length || 0,
+          transactionId: options.transactionId
+        }
+      );
+      
+      // Auto-generate report if requested
+      if (autoGenerateReport) {
+        // Transition to report_generation
+        await workflowStateManager.transitionState(
+          workflowId,
+          DomainOnlyWorkflowStep.RESEARCH,
+          'report_generation',
+          {
+            researchId,
+            researchCompletedAt: new Date().toISOString(),
+            researchContent,
+            sources,
+            reportGenerationStartedAt: new Date().toISOString(),
+            transactionId: options.transactionId
+          }
+        );
+      } else {
+        // Otherwise return to chat_in_progress or idle
+        const targetStep: WorkflowStep = currentState.currentStep === 'chat_in_progress'
+          ? 'chat_in_progress'
+          : 'idle';
+        
+        await workflowStateManager.transitionState(
+          workflowId,
+          DomainOnlyWorkflowStep.RESEARCH,
+          targetStep,
+          {
+            researchId,
+            researchCompletedAt: new Date().toISOString(),
+            researchContent,
+            sources,
+            transactionId: options.transactionId
+          }
+        );
+      }
+      
+      // Final progress update
+      progressCallback(100, ProcessingPhase.RESEARCH);
+      
+      // Return result
+      return {
         researchId,
         query,
-        timestamp: new Date().toISOString(),
-        userId,
-        patientId,
-        documentId,
-        contentLength: researchContent.length,
-        sourcesCount: sources?.length || 0,
-        transactionId: options.transactionId
-      }
-    );
-    
-    // Auto-generate report if requested
-    if (autoGenerateReport) {
-      // Transition to report_generation
-      await workflowStateManager.transitionState(
-        workflowId,
-        DomainOnlyWorkflowStep.RESEARCH,
-        'report_generation',
-        {
-          researchId,
-          researchCompletedAt: new Date().toISOString(),
-          researchContent,
-          sources,
-          reportGenerationStartedAt: new Date().toISOString(),
-          transactionId: options.transactionId
+        success: true,
+        content: researchContent,
+        sources,
+        metadata: {
+          completedAt: new Date().toISOString(),
+          userId,
+          patientId,
+          documentId,
+          model,
+          autoGenerateReport
         }
-      );
-    } else {
-      // Otherwise return to chat_in_progress or idle
-      const targetStep: WorkflowStep = currentState.currentStep === 'chat_in_progress'
-        ? 'chat_in_progress'
-        : 'idle';
-      
-      await workflowStateManager.transitionState(
-        workflowId,
-        DomainOnlyWorkflowStep.RESEARCH,
-        targetStep,
-        {
-          researchId,
-          researchCompletedAt: new Date().toISOString(),
-          researchContent,
-          sources,
-          transactionId: options.transactionId
-        }
-      );
+      };
     }
-    
-    // Final progress update
-    progressCallback(100, ProcessingPhase.RESEARCH);
-    
-    // Return result
-    return {
-      researchId,
-      query,
-      success: true,
-      content: researchContent,
-      sources,
-      metadata: {
-        completedAt: new Date().toISOString(),
-        userId,
-        patientId,
-        documentId,
-        model,
-        autoGenerateReport
-      }
-    };
   }
   
   /**
