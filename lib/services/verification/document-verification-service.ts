@@ -26,8 +26,7 @@ export class DocumentVerificationService {
   /**
    * Generate verification for a document.
    *
-   * This method now relies only on the API client approach
-   * (removing the server-side fallback and UI references).
+   * Now uses the workflow engine with fallback to API client.
    */
   async generateVerification(
     options: GenerateVerificationOptions
@@ -46,7 +45,62 @@ export class DocumentVerificationService {
     try {
       moduleLogger.info('Generating verification for document', { workflowId: options.workflowId })
 
-      // Call the API through the adapter
+      // Try workflow engine approach first
+      try {
+        // Import verification workflow to avoid circular dependencies
+        const { verificationWorkflow } = await import('@/lib/services/workflow/domain/verification-workflow');
+        
+        // Check if we have a workflowId
+        if (options.workflowId) {
+          // Get or create userId from document metadata
+          const userId = (options.document.userId as string) ||
+                         (options.document.createdBy as string) ||
+                         'system';
+          
+          // Process using workflow engine
+          const result = await verificationWorkflow.initiateVerification(
+            options.workflowId,
+            {
+              userId,
+              documentId: (options.document.id as string) || options.document.documentId as string,
+              documentData: options.document,
+              autoGenerateReport: false
+            }
+          );
+          
+          if (result.isSuccess()) {
+            moduleLogger.info('Verification generated successfully via workflow engine', {
+              summaryId: result.value.summaryId,
+              verificationId: result.value.verificationId
+            });
+            
+            return {
+              success: true,
+              data: {
+                summaryId: result.value.summaryId || options.summaryId || '',
+                summary: result.value.data?.currentSummary ||
+                         (options.document.text as string) ||
+                         JSON.stringify(options.document),
+                structuredData: result.value.data?.structuredData || options.document,
+              },
+              timestamp: new Date().toISOString(),
+            };
+          }
+          
+          // Log failure but continue to API client approach
+          moduleLogger.warn('Workflow engine verification failed, using API client', {
+            workflowId: options.workflowId,
+            error: result.error.message
+          });
+        }
+      } catch (engineError) {
+        moduleLogger.warn('Error using workflow engine for verification', {
+          error: engineError instanceof Error ? engineError.message : String(engineError),
+          workflowId: options.workflowId
+        });
+      }
+
+      // Call the API through the adapter (fallback approach)
       const result = await verificationAdapter.generateVerificationRequest({
         document: options.document,
         workflowId: options.workflowId || '',
@@ -63,7 +117,7 @@ export class DocumentVerificationService {
         })
       }
 
-      moduleLogger.info('Verification generated successfully', {
+      moduleLogger.info('Verification generated successfully via API client', {
         summaryId: result.data.summaryId,
       })
 

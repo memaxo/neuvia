@@ -89,26 +89,136 @@ class VerificationService {
    * @param options - Optional additional parameters
    * @param options.items - Specific items that were verified
    * @param options.comments - Any comments on the verification decision
+   * @param options.userId - The ID of the user completing the verification
+   * @param options.verificationId - The ID of the verification
    * 
    * @returns A promise resolving to the completed verification result
    * 
    * @remarks
    * This is a convenience method that takes separate parameters instead of a single options object.
    * It internally calls verificationResultService.completeVerification with the appropriate structure.
+   * For isApproved=true, it confirms the verification; otherwise rejects it.
    * 
    * @throws {VerificationError} If the verification completion fails
    */
   async completeVerification(
     workflowId: string,
     isApproved: boolean,
-    options?: { items?: any[]; comments?: string }
+    options?: {
+      items?: any[];
+      comments?: string;
+      userId?: string;
+      verificationId?: string;
+    }
   ): Promise<VerificationServiceResult<VerificationResult>> {
-    return verificationResultService.completeVerification({
-      workflowId,
-      isApproved,
-      items: options?.items,
-      comments: options?.comments
-    });
+    try {
+      // Get verification ID from workflow state if not provided
+      let verificationId = options?.verificationId;
+      
+      if (!verificationId) {
+        // Import workflow engine here to avoid circular dependencies
+        const { workflowEngine } = await import('@/lib/services/workflow/coordination/workflow-engine');
+        
+        // Get workflow state to extract verification ID
+        const workflowResult = await workflowEngine.getWorkflow(workflowId);
+        
+        if (workflowResult.isSuccess()) {
+          verificationId = workflowResult.value.context.verificationId;
+        }
+      }
+      
+      // If approved, confirm verification; otherwise reject it
+      if (isApproved) {
+        // Import verification workflow to avoid circular dependencies
+        const { verificationWorkflow } = await import('@/lib/services/workflow/domain/verification-workflow');
+        
+        const completeResult = await verificationWorkflow.completeVerification(
+          workflowId,
+          verificationId || '',
+          options?.userId || 'system',
+          false // Don't auto-generate report by default
+        );
+        
+        if (completeResult.isFailure()) {
+          throw new VerificationError({
+            message: completeResult.error.message,
+            code: completeResult.error.code,
+            data: completeResult.error.details
+          });
+        }
+        
+        return {
+          success: true,
+          data: {
+            isCompleted: true,
+            isApproved: true,
+            items: options?.items || [],
+            completedAt: new Date().toISOString(),
+            verificationMetadata: {
+              verification_status: VerificationStatus.completed,
+              originalSummaryId: verificationId || '',
+              currentVersionId: verificationId || '',
+              correctionCount: completeResult.value.data?.correctionCount || 0,
+              corrections: [],
+              lastUpdated: new Date().toISOString(),
+              verifiedAt: new Date().toISOString(),
+              verifiedBy: options?.userId
+            }
+          },
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        // Import verification workflow to avoid circular dependencies
+        const { verificationWorkflow } = await import('@/lib/services/workflow/domain/verification-workflow');
+        
+        const rejectResult = await verificationWorkflow.rejectVerification(
+          workflowId,
+          verificationId || '',
+          options?.userId || 'system',
+          options?.comments || 'Verification rejected'
+        );
+        
+        if (rejectResult.isFailure()) {
+          throw new VerificationError({
+            message: rejectResult.error.message,
+            code: rejectResult.error.code,
+            data: rejectResult.error.details
+          });
+        }
+        
+        return {
+          success: true,
+          data: {
+            isCompleted: true,
+            isApproved: false,
+            items: options?.items || [],
+            completedAt: new Date().toISOString(),
+            verificationMetadata: {
+              verification_status: VerificationStatus.failed,
+              originalSummaryId: verificationId || '',
+              currentVersionId: verificationId || '',
+              correctionCount: rejectResult.value.data?.correctionCount || 0,
+              corrections: [],
+              lastUpdated: new Date().toISOString(),
+              rejectedAt: new Date().toISOString(),
+              rejectedBy: options?.userId,
+              rejectionReason: options?.comments
+            }
+          },
+          timestamp: new Date().toISOString()
+        };
+      }
+    } catch (error) {
+      const normalizedError = normalizeError(error);
+      
+      // Fall back to the old implementation if workflow engine approach fails
+      return verificationResultService.completeVerification({
+        workflowId,
+        isApproved,
+        items: options?.items,
+        comments: options?.comments
+      });
+    }
   }
 
   /**

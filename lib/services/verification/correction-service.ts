@@ -88,7 +88,7 @@ export class CorrectionService {
   /**
    * Process a correction to update the patient summary.
    */
-  async processCorrection(options: ProcessCorrectionOptions): Promise<
+  async processCorrection(options: ProcessCorrectionOptions): Promise
     VerificationServiceResult<{
       summaryId: string
       summary: string
@@ -106,7 +106,64 @@ export class CorrectionService {
     try {
       moduleLogger.info('Processing correction', { workflowId: options.workflowId })
 
-      // Call the API through the client
+      // Try workflow engine approach first
+      try {
+        // Import verification workflow to avoid circular dependencies
+        const { verificationWorkflow } = await import('@/lib/services/workflow/domain/verification-workflow');
+        
+        // Get verification ID from workflow state
+        const { workflowEngine } = await import('@/lib/services/workflow/coordination/workflow-engine');
+        const workflowResult = await workflowEngine.getWorkflow(options.workflowId as string);
+        
+        if (workflowResult.isSuccess()) {
+          const verificationId = workflowResult.value.context.verificationId;
+          
+          // Process the correction using workflow engine
+          const correctionResult = await verificationWorkflow.processCorrection(
+            options.workflowId as string,
+            verificationId,
+            {
+              userId: 'system', // System user as default
+              correctedFields: {
+                summary: options.currentSummary,
+                correction: options.correction
+              },
+              userComments: options.correction
+            }
+          );
+          
+          if (correctionResult.isSuccess()) {
+            moduleLogger.info('Correction processed successfully via workflow engine', {
+              summaryId: correctionResult.value.summaryId,
+              verificationId
+            });
+            
+            return {
+              success: true,
+              data: {
+                summaryId: correctionResult.value.summaryId || '',
+                summary: correctionResult.value.data?.currentSummary || options.currentSummary,
+                structuredData: correctionResult.value.data?.structuredData,
+                correctionCount: correctionResult.value.data?.correctionCount
+              },
+              timestamp: new Date().toISOString(),
+            };
+          }
+        }
+        
+        // Fall back to API client if workflow engine approach fails
+        moduleLogger.info('Falling back to API client for correction processing', {
+          workflowId: options.workflowId,
+          reason: 'Workflow engine approach failed'
+        });
+      } catch (engineError) {
+        moduleLogger.warn('Error using workflow engine for correction', {
+          error: engineError instanceof Error ? engineError.message : String(engineError),
+          workflowId: options.workflowId
+        });
+      }
+
+      // Call the API through the client (fallback approach)
       const result = await apiClient.verification.processCorrection({
         correction: options.correction,
         currentSummary: options.currentSummary,
@@ -123,7 +180,7 @@ export class CorrectionService {
         })
       }
 
-      moduleLogger.info('Correction processed successfully', {
+      moduleLogger.info('Correction processed successfully via API client', {
         summaryId: result.data.summaryId,
       })
 

@@ -100,7 +100,48 @@ export enum ReportFormat {
   /**
    * Markdown format
    */
-  MARKDOWN = 'markdown'
+  MARKDOWN = 'markdown',
+  
+  /**
+   * Microsoft Word format
+   */
+  DOCX = 'docx'
+}
+
+/**
+ * Report workflow state enum
+ * Maps to workflow steps in the report workflow definition
+ */
+export enum ReportWorkflowState {
+  /**
+   * Initial idle state
+   */
+  IDLE = 'idle',
+  
+  /**
+   * Report is being generated
+   */
+  GENERATING = 'report_generation',
+  
+  /**
+   * Report is ready for presentation
+   */
+  PRESENTATION = 'report_presentation',
+  
+  /**
+   * Report is being formatted to a different output type
+   */
+  FORMATTING = 'report_formatting',
+  
+  /**
+   * Workflow is complete
+   */
+  COMPLETE = 'complete',
+  
+  /**
+   * An error occurred
+   */
+  ERROR = 'error'
 }
 
 /**
@@ -373,9 +414,130 @@ export interface ReportGenerationProgress {
   estimatedTimeRemainingMs?: number;
   
   /**
+   * Current workflow state
+   */
+  state?: ReportWorkflowState;
+  
+  /**
    * Additional progress metadata
    */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Report workflow context
+ * Represents the state data maintained through the report workflow
+ */
+export interface ReportWorkflowContext {
+  /**
+   * User ID who requested the report
+   */
+  userId?: string;
+  
+  /**
+   * Progress percentage (0-100)
+   */
+  progress: number;
+  
+  /**
+   * Current processing phase
+   */
+  phase?: ProcessingPhase;
+  
+  /**
+   * When the report generation started
+   */
+  startedAt?: string;
+  
+  /**
+   * When the report generation completed
+   */
+  completedAt?: string;
+  
+  /**
+   * Patient ID associated with the report
+   */
+  patientId?: string;
+  
+  /**
+   * Document ID associated with the report
+   */
+  documentId?: string;
+  
+  /**
+   * Verification ID if report is based on verified data
+   */
+  verificationId?: string;
+  
+  /**
+   * Type of report being generated
+   */
+  reportType: ReportType;
+  
+  /**
+   * Current format of the report
+   */
+  format: ReportFormat;
+  
+  /**
+   * Whether to include citations
+   */
+  includeCitations: boolean;
+  
+  /**
+   * Whether to include appendices
+   */
+  includeAppendices: boolean;
+  
+  /**
+   * Whether to include visualizations
+   */
+  includeVisualizations: boolean;
+  
+  /**
+   * ID of the generated report
+   */
+  reportId?: string;
+  
+  /**
+   * Title of the generated report
+   */
+  reportTitle?: string;
+  
+  /**
+   * Content of the generated report
+   */
+  reportContent?: string;
+  
+  /**
+   * Metadata about the report
+   */
+  reportMetadata?: Record<string, unknown>;
+  
+  /**
+   * Format-specific options
+   */
+  formatOptions?: Record<string, unknown>;
+  
+  /**
+   * List of available formats for this report
+   */
+  availableFormats: string[];
+  
+  /**
+   * Error message if report generation failed
+   */
+  error?: string;
+  
+  /**
+   * When the error occurred
+   */
+  errorTimestamp?: string;
+  
+  /**
+   * Context where the error occurred
+   */
+  errorContext?: string;
 }
 
 /**

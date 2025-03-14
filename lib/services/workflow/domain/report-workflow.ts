@@ -12,9 +12,11 @@ import logger from '@/lib/logger'
 import { workflowRepository } from '../infrastructure/workflow-repository'
 import { workflowStateManager } from '../infrastructure/workflow-state-manager'
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
-import { workflowTransactionManager } from '../workflow-transaction-manager'
+import { BaseWorkflowProcessor } from '../base/base-workflow-processor'
+import { Result } from '../error/result'
 
-import type { WorkflowStep, ProcessingPhase } from '@/lib/types/workflow'
+import type { WorkflowStep, ProcessingPhase, WorkflowState } from '@/lib/types/workflow'
+import type { WorkflowProcessOptions } from '../base/base-workflow-processor'
 
 /**
  * Report generation result
@@ -40,7 +42,7 @@ export interface ReportGenerationResult {
  * Report format options
  */
 export interface ReportFormatOptions {
-  /** Format to generate (markdown, html, pdf, etc.) */
+  /** Format to generate (markdown, html, pdf, docx) */
   format: 'markdown' | 'html' | 'pdf' | 'docx';
   /** Format-specific options */
   formatOptions?: Record<string, unknown>;
@@ -79,70 +81,368 @@ export interface ReportGenerationOptions {
 /**
  * Report workflow processor
  */
-export class ReportWorkflow {
-  private readonly logger = logger.withMetadata({ module: 'ReportWorkflow' });
+export class ReportWorkflow extends BaseWorkflowProcessor<ReportGenerationOptions, ReportGenerationResult> {
+  constructor() {
+    super('Report', 'error');
+  }
   
   /**
    * Generate report
+   * Returns Result<ReportGenerationResult> for consistent error handling
    */
   async generateReport(
     workflowId: string,
     options: ReportGenerationOptions
-  ): Promise<ReportGenerationResult> {
-    try {
-      // Start transaction for report generation
-      return await workflowTransactionManager.executeTransaction(
-        workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
+  ): Promise<Result<ReportGenerationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { options }
+      );
+    }
+    
+    if (!options.userId) {
+      return Result.failure(
+        'User ID is required',
+        'USER_INVALID_ID',
+        { workflowId }
+      );
+    }
+    
+    // Validate that at least one ID is provided 
+    if (!options.documentId && !options.patientId && !options.verificationId) {
+      return Result.failure(
+        'At least one of documentId, patientId, or verificationId is required',
+        'INVALID_REPORT_SOURCE',
+        { workflowId, userId: options.userId }
+      );
+    }
+    
+    // Use the base process method with domain-specific input
+    return this.process(
+      workflowId,
+      options,
+      {
+        targetStep: 'report_generation',
+        metadata: {
+          documentId: options.documentId,
+          patientId: options.patientId,
+          verificationId: options.verificationId,
+          userId: options.userId,
+          model: options.model,
+          formatOptions: options.formatOptions
+        },
+        onProgress: options.onProgress,
+        transactionId: options.transactionId,
+        recoveryStep: currentState => {
+          // Determine appropriate recovery step based on source
+          if (currentState.currentStep === 'verification_completed') {
+            return 'verification_completed';
           }
-          
-          // Determine appropriate source step - report generation can come from multiple steps
-          const fromStep: WorkflowStep = currentState.currentStep;
-          
-          // Get data from state if not provided in options
-          const documentId = options.documentId || currentState.metadata?.documentId;
-          const patientId = options.patientId || currentState.metadata?.patientId;
-          const verificationId = options.verificationId || currentState.metadata?.verificationId;
-          
-          // Initial progress update
-          progressCallback(10, ProcessingPhase.REPORT_GENERATION);
-          
-          // Update workflow state to report_generation
-          await workflowStateManager.transitionState(
+          return 'idle';
+        }
+      }
+    );
+  }
+  
+  /**
+   * Format report in different output formats
+   * Returns Result<ReportGenerationResult> for consistent error handling
+   */
+  async formatReport(
+    workflowId: string,
+    reportId: string,
+    formatOptions: ReportFormatOptions
+  ): Promise<Result<ReportGenerationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { reportId, formatOptions }
+      );
+    }
+    
+    if (!reportId) {
+      return Result.failure(
+        'Report ID is required',
+        'REPORT_INVALID_ID',
+        { workflowId, formatOptions }
+      );
+    }
+    
+    if (!formatOptions || !formatOptions.format) {
+      return Result.failure(
+        'Valid format options are required',
+        'FORMAT_OPTIONS_INVALID',
+        { workflowId, reportId }
+      );
+    }
+    
+    try {
+      // Get current state to verify the report ID using Result pattern
+      const stateResult = await Result.fromPromise(
+        workflowRepository.getWorkflowState(workflowId)
+      );
+      
+      if (stateResult.isFailure()) {
+        return Result.failure(
+          `Failed to retrieve workflow state: ${stateResult.error.message}`,
+          stateResult.error.code,
+          { workflowId, reportId, formatOptions }
+        );
+      }
+      
+      const currentState = stateResult.value;
+      if (!currentState) {
+        return Result.failure(
+          'Workflow state not found',
+          'WORKFLOW_STATE_NOT_FOUND',
+          { workflowId, reportId }
+        );
+      }
+      
+      // Ensure we're in a valid state for formatting
+      if (currentState.currentStep !== 'report_presentation' &&
+          currentState.currentStep !== 'complete') {
+        return Result.failure(
+          'Cannot format report in current workflow state',
+          'INVALID_WORKFLOW_STATE',
+          {
+            currentStep: currentState.currentStep,
+            expectedSteps: ['report_presentation', 'complete'],
             workflowId,
-            fromStep,
-            'report_generation',
-            {
-              documentId,
-              patientId,
-              verificationId,
-              reportGenerationStartedAt: new Date().toISOString(),
-              userId: options.userId,
-              model: options.model,
-              formatOptions: options.formatOptions,
-              transactionId
-            }
+            reportId
+          }
+        );
+      }
+      
+      // Ensure this workflow has the correct report ID
+      if (currentState.metadata?.reportId !== reportId) {
+        return Result.failure(
+          'Report ID mismatch',
+          'REPORT_ID_MISMATCH',
+          {
+            workflowId,
+            reportId,
+            currentReportId: currentState.metadata?.reportId
+          }
+        );
+      }
+      
+      // Extract user ID from state
+      const userId = currentState.metadata?.userId as string;
+      if (!userId) {
+        return Result.failure(
+          'User ID not found in workflow state',
+          'USER_ID_NOT_FOUND',
+          { workflowId, reportId }
+        );
+      }
+      
+      // Use the base process method with domain-specific input
+      return this.process(
+        workflowId,
+        {
+          userId,
+          documentId: currentState.metadata?.documentId as string,
+          patientId: currentState.metadata?.patientId as string,
+          formatOptions
+        },
+        {
+          targetStep: currentState.currentStep,
+          metadata: {
+            reportId,
+            format: formatOptions.format
+          },
+          onProgress: progress => {
+            // Simple progress callback for report formatting
+            logger.info(`Report formatting progress: ${progress}%`);
+          },
+          recoveryStep: currentState.currentStep
+        }
+      );
+    } catch (error) {
+      // Convert unexpected errors to Result failures
+      const normalizedError = normalizeError(error);
+      return Result.failure(
+        `Failed to format report: ${normalizedError.message}`,
+        normalizedError.code || 'REPORT_FORMATTING_ERROR',
+        {
+          workflowId,
+          reportId,
+          format: formatOptions.format,
+          error: normalizedError
+        }
+      );
+    }
+  }
+  
+  /**
+   * Get report by ID - read-only operation
+   * Returns Result<ReportGenerationResult | null> for consistent error handling
+   */
+  async getReport(
+    workflowId: string,
+    reportId: string
+  ): Promise<Result<ReportGenerationResult | null>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { reportId }
+      );
+    }
+    
+    if (!reportId) {
+      return Result.failure(
+        'Report ID is required',
+        'REPORT_INVALID_ID',
+        { workflowId }
+      );
+    }
+    
+    try {
+      // Get workflow state using Result pattern
+      const stateResult = await Result.fromPromise(
+        workflowRepository.getWorkflowState(workflowId)
+      );
+      
+      if (stateResult.isFailure()) {
+        return Result.failure(
+          `Failed to retrieve workflow state: ${stateResult.error.message}`,
+          stateResult.error.code,
+          { workflowId, reportId }
+        );
+      }
+      
+      const state = stateResult.value;
+      if (!state) {
+        // Not an error, just no state found
+        return Result.success(null);
+      }
+      
+      // Check if report ID matches
+      if (state.metadata?.reportId !== reportId) {
+        // Try to find in event history using Result pattern
+        const eventsResult = await Result.fromPromise(
+          workflowEventSourcing.getEventHistory(workflowId, {
+            eventType: ['report_generated', 'report_formatted']
+          })
+        );
+        
+        if (eventsResult.isFailure()) {
+          return Result.failure(
+            `Failed to retrieve event history: ${eventsResult.error.message}`,
+            eventsResult.error.code,
+            { workflowId, reportId }
           );
-          
-          // Generate report ID
-          const reportId = `report-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-          
-          // Update progress during "processing"
-          progressCallback(30, ProcessingPhase.REPORT_GENERATION);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          progressCallback(50, ProcessingPhase.REPORT_GENERATION);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          progressCallback(70, ProcessingPhase.REPORT_GENERATION);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Simulate report content generation
-          const reportContent = `
+        }
+        
+        const events = eventsResult.value;
+        
+        // Find event with this report ID
+        for (const event of events) {
+          if (event.event_data?.reportId === reportId) {
+            // Return basic info from event
+            return Result.success({
+              reportId,
+              documentId: event.event_data.documentId,
+              patientId: event.event_data.patientId,
+              success: true,
+              metadata: {
+                timestamp: event.occurred_at,
+                eventType: event.event_type,
+                ...event.event_data
+              }
+            });
+          }
+        }
+        
+        // Not an error, just no report found with this ID
+        return Result.success(null);
+      }
+      
+      // Get report content
+      const reportContent = state.metadata?.reportContent;
+      const documentId = state.metadata?.documentId;
+      const patientId = state.metadata?.patientId;
+      
+      // Return report data wrapped in a success Result
+      return Result.success({
+        reportId,
+        documentId: documentId as string,
+        patientId: patientId as string,
+        success: true,
+        content: reportContent as string,
+        metadata: {
+          generatedAt: state.metadata?.reportGeneratedAt,
+          formats: state.metadata?.reportFormats,
+          ...state.metadata
+        }
+      });
+    } catch (error) {
+      // Convert unexpected errors to Result failures
+      const normalizedError = normalizeError(error);
+      logger.error('Failed to get report', {
+        workflowId,
+        reportId,
+        error: normalizedError.message
+      });
+      
+      return Result.failure(
+        `Failed to get report: ${normalizedError.message}`,
+        normalizedError.code || 'REPORT_RETRIEVAL_ERROR',
+        {
+          workflowId,
+          reportId,
+          error: normalizedError
+        }
+      );
+    }
+  }
+  
+  /**
+   * Implementation of required abstract method for domain-specific processing
+   */
+  protected async doProcess(
+    workflowId: string,
+    input: ReportGenerationOptions,
+    currentState: WorkflowState,
+    options: WorkflowProcessOptions & {
+      progressCallback?: (progress: number, phase: ProcessingPhase) => void;
+    }
+  ): Promise<ReportGenerationResult> {
+    const progressCallback = options.progressCallback || (() => {});
+    const { userId, documentId, patientId, verificationId, model, formatOptions, autoComplete } = input;
+    
+    // Handle different operations based on current state and metadata
+    
+    // Case 1: Report generation flow
+    if (currentState.currentStep === 'report_generation' ||
+        currentState.currentStep === 'verification_completed') {
+      
+      // Initial progress
+      progressCallback(10, ProcessingPhase.REPORT_GENERATION);
+      
+      // Generate report ID
+      const reportId = `report-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      
+      // Update progress during "processing"
+      progressCallback(30, ProcessingPhase.REPORT_GENERATION);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      progressCallback(50, ProcessingPhase.REPORT_GENERATION);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      progressCallback(70, ProcessingPhase.REPORT_GENERATION);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Simulate report content generation
+      const reportContent = `
 # Medical Report
 ## Patient Information
 PatientID: ${patientId || 'Unknown'}
@@ -165,340 +465,180 @@ This is a sample generated report for demonstration purposes.
 Report ID: ${reportId}
 `;
 
-          // Update progress
-          progressCallback(90, ProcessingPhase.REPORT_GENERATION);
-          
-          // Log report generation event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'report_generated',
-            {
-              reportId,
-              documentId,
-              patientId,
-              verificationId,
-              timestamp: new Date().toISOString(),
-              userId: options.userId,
-              contentLength: reportContent.length,
-              model: options.model,
-              transactionId
-            }
-          );
-          
-          // Transition to report presentation
-          await workflowStateManager.transitionState(
-            workflowId,
-            'report_generation',
-            'report_presentation',
-            {
-              reportId,
-              documentId,
-              patientId,
-              reportGeneratedAt: new Date().toISOString(),
-              reportMetadata: {
-                contentLength: reportContent.length,
-                format: options.formatOptions?.format || 'markdown',
-                model: options.model
-              },
-              transactionId
-            }
-          );
-          
-          // Auto-complete workflow if requested
-          if (options.autoComplete) {
-            await workflowStateManager.completeWorkflow(
-              workflowId,
-              {
-                reportId,
-                documentId,
-                patientId,
-                completedAt: new Date().toISOString(),
-                completedBy: options.userId,
-                transactionId
-              }
-            );
-          }
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.REPORT_GENERATION);
-          
-          // Return result
-          return {
-            reportId,
-            documentId: documentId as string,
-            patientId: patientId as string,
-            success: true,
-            content: reportContent,
-            metadata: {
-              generatedAt: new Date().toISOString(),
-              userId: options.userId,
-              model: options.model,
-              format: options.formatOptions?.format || 'markdown',
-              contentLength: reportContent.length
-            }
-          };
-        },
+      // Log report generation event
+      await this.logEvent(
+        workflowId,
+        'report_generated',
         {
-          step: 'report_generation',
-          metadata: {
-            documentId: options.documentId,
-            patientId: options.patientId,
-            verificationId: options.verificationId,
-            userId: options.userId
-          },
-          onProgress: options.onProgress,
-          transactionId: options.transactionId,
-          recoveryStep: fromStep => {
-            // Determine appropriate recovery step based on source
-            if (fromStep === 'verification_completed') {
-              return 'verification_completed';
-            }
-            return 'idle';
-          }
+          reportId,
+          documentId,
+          patientId,
+          verificationId,
+          userId,
+          contentLength: reportContent.length,
+          model,
+          transactionId: options.transactionId
         }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Report generation failed', {
-        workflowId,
-        options,
-        error: normalizedError.message
-      });
       
-      // Return error result
-      return {
-        reportId: '',
-        documentId: options.documentId,
-        patientId: options.patientId,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Format report in different output formats
-   */
-  async formatReport(
-    workflowId: string,
-    reportId: string,
-    formatOptions: ReportFormatOptions
-  ): Promise<ReportGenerationResult> {
-    try {
-      // Start transaction for report formatting
-      return await workflowTransactionManager.executeTransaction(
+      // Transition to report presentation
+      await workflowStateManager.transitionState(
         workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Ensure we're in a valid state for formatting
-          if (currentState.currentStep !== 'report_presentation' && 
-              currentState.currentStep !== 'complete') {
-            throw new ApplicationError({
-              message: 'Cannot format report in current workflow state',
-              code: 'INVALID_WORKFLOW_STATE',
-              data: {
-                currentStep: currentState.currentStep,
-                expectedSteps: ['report_presentation', 'complete'],
-                workflowId,
-                reportId
-              }
-            });
-          }
-          
-          // Ensure this workflow has the correct report ID
-          if (currentState.metadata?.reportId !== reportId) {
-            throw new ApplicationError({
-              message: 'Report ID mismatch',
-              code: 'REPORT_ID_MISMATCH',
-              data: {
-                workflowId,
-                reportId,
-                currentReportId: currentState.metadata?.reportId
-              }
-            });
-          }
-          
-          // Get document and patient IDs
-          const documentId = currentState.metadata?.documentId;
-          const patientId = currentState.metadata?.patientId;
-          
-          // Update progress
-          progressCallback(30, ProcessingPhase.REPORT_FORMATTING);
-          
-          // Simulate report formatting
-          const formattedContent = this.simulateFormatting(
-            currentState.metadata?.reportContent || 'No content available',
-            formatOptions
-          );
-          
-          // Update progress
-          progressCallback(70, ProcessingPhase.REPORT_FORMATTING);
-          
-          // Log report formatting event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'report_formatted',
-            {
-              reportId,
-              documentId,
-              patientId,
-              timestamp: new Date().toISOString(),
-              format: formatOptions.format,
-              contentLength: formattedContent.length,
-              transactionId
-            }
-          );
-          
-          // Update state with formatting info
-          await workflowStateManager.transitionState(
-            workflowId,
-            currentState.currentStep,
-            currentState.currentStep, // Same state but updated metadata
-            {
-              reportId,
-              reportFormattedAt: new Date().toISOString(),
-              reportFormats: [...(currentState.metadata?.reportFormats || []), formatOptions.format],
-              [`report_${formatOptions.format}`]: {
-                contentLength: formattedContent.length,
-                generatedAt: new Date().toISOString(),
-                formatOptions
-              },
-              transactionId
-            }
-          );
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.REPORT_FORMATTING);
-          
-          // Return result
-          return {
-            reportId,
-            documentId: documentId as string,
-            patientId: patientId as string,
-            success: true,
-            content: formattedContent,
-            metadata: {
-              format: formatOptions.format,
-              formattedAt: new Date().toISOString(),
-              contentLength: formattedContent.length,
-              formatOptions
-            }
-          };
-        },
+        'report_generation',
+        'report_presentation',
         {
-          step: currentState => currentState.currentStep,
-          metadata: {
-            reportId,
-            format: formatOptions.format
+          reportId,
+          documentId,
+          patientId,
+          reportContent,
+          reportGeneratedAt: new Date().toISOString(),
+          reportMetadata: {
+            contentLength: reportContent.length,
+            format: formatOptions?.format || 'markdown',
+            model
           },
-          onProgress: progress => {
-            // Simple progress callback
-            this.logger.info(`Report formatting progress: ${progress}%`);
-          },
-          recoveryStep: fromStep => fromStep // Stay in the same state on failure
+          transactionId: options.transactionId
         }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Report formatting failed', {
-        workflowId,
-        reportId,
-        formatOptions,
-        error: normalizedError.message
-      });
       
-      // Return error result
-      return {
-        reportId,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Get report by ID
-   */
-  async getReport(
-    workflowId: string,
-    reportId: string
-  ): Promise<ReportGenerationResult | null> {
-    try {
-      // Get workflow state
-      const state = await workflowRepository.getWorkflowState(workflowId);
-      if (!state) {
-        return null;
-      }
-      
-      // Check if report ID matches
-      if (state.metadata?.reportId !== reportId) {
-        // Try to find in event history
-        const events = await workflowEventSourcing.getEventHistory(workflowId, {
-          eventType: ['report_generated', 'report_formatted']
-        });
-        
-        // Find event with this report ID
-        for (const event of events) {
-          if (event.event_data?.reportId === reportId) {
-            // Return basic info from event
-            return {
-              reportId,
-              documentId: event.event_data.documentId,
-              patientId: event.event_data.patientId,
-              success: true,
-              metadata: {
-                timestamp: event.occurred_at,
-                eventType: event.event_type,
-                ...event.event_data
-              }
-            };
+      // Auto-complete workflow if requested
+      if (autoComplete) {
+        await workflowStateManager.completeWorkflow(
+          workflowId,
+          {
+            reportId,
+            documentId,
+            patientId,
+            completedAt: new Date().toISOString(),
+            completedBy: userId,
+            transactionId: options.transactionId
           }
-        }
-        
-        return null;
+        );
       }
       
-      // Get report content
-      const reportContent = state.metadata?.reportContent;
-      const documentId = state.metadata?.documentId;
-      const patientId = state.metadata?.patientId;
+      // Final progress update
+      progressCallback(100, ProcessingPhase.REPORT_GENERATION);
       
-      // Return report data
+      // Return result
       return {
         reportId,
-        documentId: documentId as string,
-        patientId: patientId as string,
+        documentId,
+        patientId,
         success: true,
-        content: reportContent as string,
+        content: reportContent,
         metadata: {
-          generatedAt: state.metadata?.reportGeneratedAt,
-          formats: state.metadata?.reportFormats,
-          ...state.metadata
+          generatedAt: new Date().toISOString(),
+          userId,
+          model,
+          format: formatOptions?.format || 'markdown',
+          contentLength: reportContent.length
         }
       };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get report', {
+    }
+    // Case 2: Report formatting flow
+    else if ((currentState.currentStep === 'report_presentation' ||
+              currentState.currentStep === 'complete') &&
+              formatOptions) {
+      
+      const reportId = currentState.metadata?.reportId as string;
+      const reportContent = currentState.metadata?.reportContent as string;
+      
+      if (!reportId || !reportContent) {
+        throw new ApplicationError({
+          message: 'Report content or ID not found in workflow state',
+          code: 'REPORT_CONTENT_MISSING',
+          data: {
+            workflowId,
+            currentStep: currentState.currentStep
+          }
+        });
+      }
+      
+      // Update progress
+      progressCallback(30, ProcessingPhase.REPORT_FORMATTING);
+      
+      // Simulate report formatting
+      const formattedContent = this.formatReportContent(
+        reportContent,
+        formatOptions
+      );
+      
+      // Update progress
+      progressCallback(70, ProcessingPhase.REPORT_FORMATTING);
+      
+      // Log report formatting event
+      await this.logEvent(
         workflowId,
+        'report_formatted',
+        {
+          reportId,
+          documentId,
+          patientId,
+          format: formatOptions.format,
+          contentLength: formattedContent.length,
+          transactionId: options.transactionId
+        }
+      );
+      
+      // Transition to report_presentation with the updated format
+      await workflowStateManager.transitionState(
+        workflowId,
+        currentState.currentStep,
+        'report_presentation',
+        {
+          reportId,
+          reportFormattedAt: new Date().toISOString(),
+          reportFormats: [...(currentState.metadata?.reportFormats || []), formatOptions.format],
+          [`report_${formatOptions.format}`]: {
+            contentLength: formattedContent.length,
+            generatedAt: new Date().toISOString(),
+            formatOptions
+          },
+          formattedContent: formattedContent,
+          currentFormat: formatOptions.format,
+          transactionId: options.transactionId
+        }
+      );
+      
+      // Final progress update
+      progressCallback(100, ProcessingPhase.REPORT_FORMATTING);
+      
+      // Return result
+      return {
         reportId,
-        error: normalizedError.message
+        documentId,
+        patientId,
+        success: true,
+        content: formattedContent,
+        metadata: {
+          format: formatOptions.format,
+          formattedAt: new Date().toISOString(),
+          contentLength: formattedContent.length,
+          formatOptions
+        }
+      };
+    }
+    else {
+      throw new ApplicationError({
+        message: 'Unsupported report operation',
+        code: 'UNSUPPORTED_REPORT_OPERATION',
+        data: {
+          currentStep: currentState.currentStep,
+          input
+        }
       });
-      return null;
     }
   }
   
   /**
-   * Simulate formatting report in different output formats
+   * Format report content in different output formats
+   * Uses integration with report formatters when possible
    */
-  private simulateFormatting(content: string, options: ReportFormatOptions): string {
+  private formatReportContent(content: string, options: ReportFormatOptions): string {
     const { format } = options;
+    
+    // In a production implementation, this would use the report formatter service
+    // For now, we'll use a simple simulation
     
     switch (format) {
       case 'html':
@@ -533,6 +673,162 @@ Report ID: ${reportId}
       case 'markdown':
       default:
         return content;
+    }
+  }
+  
+  /**
+   * Process verification completion and trigger report generation
+   * This is a cross-domain workflow transition handler
+   */
+  async processVerificationCompletion(
+    workflowId: string,
+    verificationId: string,
+    options: {
+      userId: string;
+      patientId?: string;
+      documentId?: string;
+      autoGenerateReport?: boolean;
+      transactionId?: string;
+    }
+  ): Promise<Result<ReportGenerationResult>> {
+    try {
+      const { userId, patientId, documentId, autoGenerateReport = true, transactionId } = options;
+      
+      // Log transition event
+      await this.logEvent(
+        workflowId,
+        'verification_completion_processed',
+        {
+          verificationId,
+          documentId,
+          patientId,
+          userId,
+          transactionId,
+          timestamp: new Date().toISOString()
+        }
+      );
+      
+      // If auto-generate report is enabled, start report generation
+      if (autoGenerateReport) {
+        return await this.generateReport(workflowId, {
+          userId,
+          patientId,
+          documentId,
+          verificationId,
+          autoComplete: true,
+          transactionId
+        });
+      }
+      
+      // Otherwise, return a placeholder result
+      return Result.success({
+        reportId: '',
+        documentId,
+        patientId,
+        success: true,
+        metadata: {
+          verificationId,
+          userId,
+          message: 'Verification completed, ready for report generation',
+          generatedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      const normalizedError = normalizeError(error);
+      this.logger.error('Failed to process verification completion', {
+        workflowId,
+        verificationId,
+        error: normalizedError.message
+      });
+      
+      return Result.failure(
+        `Failed to process verification completion: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_PROCESSING_ERROR',
+        {
+          workflowId,
+          verificationId,
+          ...options
+        }
+      );
+    }
+  }
+  
+  /**
+   * Process research completion and generate report
+   * This is a cross-domain workflow transition handler
+   */
+  async processResearchCompletion(
+    workflowId: string,
+    researchId: string,
+    researchData: Record<string, unknown>,
+    options: {
+      userId: string;
+      patientId?: string;
+      autoGenerateReport?: boolean;
+      transactionId?: string;
+    }
+  ): Promise<Result<ReportGenerationResult>> {
+    try {
+      const { userId, patientId, autoGenerateReport = true, transactionId } = options;
+      
+      // Log transition event
+      await this.logEvent(
+        workflowId,
+        'research_completion_processed',
+        {
+          researchId,
+          patientId,
+          userId,
+          transactionId,
+          timestamp: new Date().toISOString()
+        }
+      );
+      
+      // If auto-generate report is enabled, start report generation
+      if (autoGenerateReport) {
+        return await this.generateReport(workflowId, {
+          userId,
+          patientId,
+          autoComplete: true,
+          transactionId,
+          // Include research data in metadata
+          formatOptions: {
+            format: 'markdown',
+            includeCitations: true,
+            includeReferences: true
+          }
+        });
+      }
+      
+      // Otherwise, return a placeholder result
+      return Result.success({
+        reportId: '',
+        patientId,
+        success: true,
+        metadata: {
+          researchId,
+          userId,
+          message: 'Research completed, ready for report generation',
+          generatedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      const normalizedError = normalizeError(error);
+      this.logger.error('Failed to process research completion', {
+        workflowId,
+        researchId,
+        error: normalizedError.message
+      });
+      
+      return Result.failure(
+        `Failed to process research completion: ${normalizedError.message}`,
+        normalizedError.code || 'RESEARCH_PROCESSING_ERROR',
+        {
+          workflowId,
+          researchId,
+          ...options
+        }
+      );
     }
   }
 }

@@ -25,12 +25,18 @@ import type { Database } from '@/lib/types/database'
  * - inProgress: Verification is actively underway
  * - completed: Verification has been successfully completed
  * - failed: Verification was rejected or otherwise failed
+ * - awaitingCorrection: Verification is awaiting user correction input
+ * - correcting: User is actively making corrections
+ * - reviewing: User is reviewing the verification
  */
 export enum VerificationStatus {
   pending = 'pending',
   inProgress = 'inProgress',
   completed = 'completed',
   failed = 'failed',
+  awaitingCorrection = 'awaitingCorrection',
+  correcting = 'correcting',
+  reviewing = 'reviewing',
 }
 
 /**
@@ -167,9 +173,50 @@ export interface VerificationItem {
 }
 
 /**
- * Records a single correction or change to the verified content.
+ * Represents possible user interaction states during verification
+ * Used to track how the user is interacting with the verification UI
  */
-export interface CorrectionEntry {
+export enum UserInteractionState {
+  /**
+   * User is viewing the verification
+   */
+  VIEWING = 'viewing',
+  
+  /**
+   * User is editing/making corrections
+   */
+  EDITING = 'editing',
+  
+  /**
+   * User is reviewing before submission
+   */
+  REVIEWING = 'reviewing',
+  
+  /**
+   * User has been prompted for input
+   */
+  PROMPTED = 'prompted',
+  
+  /**
+   * User is confirming an action
+   */
+  CONFIRMING = 'confirming',
+  
+  /**
+   * User is cancelling an action
+   */
+  CANCELLING = 'cancelling',
+  
+  /**
+   * No active interaction
+   */
+  IDLE = 'idle'
+}
+
+/**
+ * Verification metadata interface that tracks changes during verification
+ */
+interface CorrectionEntry {
   /**
    * Unique ID for the correction entry.
    */
@@ -254,6 +301,36 @@ export interface VerificationMetadata {
    * If verificationStatus is failed, an optional reason for rejection.
    */
   rejectionReason?: string
+  
+  /**
+   * Current user interaction state for UI tracking
+   */
+  userInteractionState?: UserInteractionState
+  
+  /**
+   * Fields that have been modified during verification
+   */
+  modifiedFields?: string[]
+  
+  /**
+   * When the last user interaction occurred
+   */
+  lastInteractionAt?: Timestamp
+  
+  /**
+   * Which user last interacted with the verification
+   */
+  lastInteractionBy?: UUID
+  
+  /**
+   * Whether verification requires user attention
+   */
+  requiresUserAttention?: boolean
+  
+  /**
+   * User prompt message if awaiting input
+   */
+  userPrompt?: string
 }
 
 /**

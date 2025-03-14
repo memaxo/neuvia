@@ -7,6 +7,13 @@ import type { ApiClient } from '@/lib/api/client/api-client'
 import type { Json } from '@/lib/types/database'
 import { workflowService } from '@/lib/services/workflow/core/workflow-service'
 import { WorkflowErrorContextBuilder } from '@/lib/services/workflow/error-context'
+import { WorkflowStepMapper } from '@/lib/services/workflow/utils/step-mapper'
+import { Result, type ResultError } from '@/lib/services/workflow/error/result'
+import { 
+  recoveryService, 
+  RecoveryStrategy, 
+  type RecoveryOptions 
+} from '@/lib/services/workflow/recovery/recovery-service'
 
 /**
  * Error category for different workflow errors
@@ -67,6 +74,7 @@ export class WorkflowErrorHandler {
 
   /**
    * Normalizes an unknown error into a structured object
+   * Enhanced to handle ResultError objects from the Result pattern
    */
   public normalizeError(
     error: unknown,
@@ -77,6 +85,52 @@ export class WorkflowErrorHandler {
     code?: string
     details?: Record<string, unknown>
   } {
+    // Check if it's a ResultError from the Result pattern
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      'code' in error
+    ) {
+      // Handle ResultError objects directly
+      const resultErr = error as ResultError;
+      const message = resultErr.message || fallbackMessage;
+      const code = resultErr.code || 'UNKNOWN_ERROR';
+      
+      // Classify by message content
+      const lowerMsg = message.toLowerCase();
+      let type: WorkflowErrorMetadata['errorType'] = 'system';
+      
+      if (
+        lowerMsg.includes('network') ||
+        lowerMsg.includes('fetch') ||
+        lowerMsg.includes('connection')
+      ) {
+        type = 'network';
+      } else if (lowerMsg.includes('timeout')) {
+        type = 'timeout';
+      } else if (
+        lowerMsg.includes('permission') ||
+        lowerMsg.includes('access denied') ||
+        lowerMsg.includes('forbidden')
+      ) {
+        type = 'permission';
+      } else if (
+        lowerMsg.includes('validation') ||
+        lowerMsg.includes('invalid') ||
+        lowerMsg.includes('required')
+      ) {
+        type = 'validation';
+      }
+      
+      return {
+        message,
+        type,
+        code,
+        details: resultErr.details || {},
+      };
+    }
+    
     // If it's one of our "ApplicationErrors" (with isOperational):
     if (
       typeof error === 'object' &&
@@ -122,6 +176,29 @@ export class WorkflowErrorHandler {
       }
     }
 
+    // Check for Result objects
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      error instanceof Result
+    ) {
+      const result = error as Result<unknown>;
+      
+      if (result.isFailure()) {
+        // Extract the error info from the Result
+        const resultError = result.error;
+        return this.normalizeError(resultError, fallbackMessage);
+      } else {
+        // This shouldn't happen - we shouldn't be normalizing success results
+        return {
+          message: 'Attempted to normalize a successful Result as an error',
+          type: 'system',
+          code: 'INVALID_ERROR_NORMALIZATION',
+          details: { originalResult: result.toObject() },
+        };
+      }
+    }
+
     // Plain Error
     if (error instanceof Error) {
       const message = error.message || fallbackMessage
@@ -152,37 +229,10 @@ export class WorkflowErrorHandler {
 
   /**
    * Return possible recovery paths for a given step
+   * Delegates to the centralized RecoveryService
    */
   public getRecoveryPaths(currentStep: WorkflowStep): WorkflowStep[] {
-    switch (currentStep) {
-      case 'uploading':
-        return ['idle', 'uploading']
-      case 'extracting':
-        return ['idle', 'uploading', 'extracting']
-      case 'verification':
-      case 'verification_pending':
-      case 'verification_in_progress':
-      case 'verification_completed':
-      case 'verification_failed':
-        return ['verification', 'verification_in_progress']
-      case 'report_generation':
-        return ['verification_completed', 'report_generation']
-      case 'chat_started':
-      case 'chat_in_progress':
-      case 'chat_completed':
-        return ['chat_started', 'chat_in_progress']
-      case 'complete':
-        return ['idle', 'complete']
-      case DomainOnlyWorkflowStep.RESEARCH:
-        return [DomainOnlyWorkflowStep.RESEARCH, 'report_generation']
-      case DomainOnlyWorkflowStep.REPORT_PRESENTATION:
-        return [DomainOnlyWorkflowStep.REPORT_PRESENTATION, 'complete']
-      case DomainOnlyWorkflowStep.ERROR:
-      case 'chat_error':
-      default:
-        // The default fallback is to just reset or remain on error
-        return ['idle']
-    }
+    return recoveryService.getRecoveryPaths(currentStep);
   }
 
   /**
@@ -261,47 +311,73 @@ export class WorkflowErrorHandler {
   }
 
   /**
-   * Attempt automated recovery using the workflow service
+   * Attempt automated recovery using the centralized recovery service
+   * Enhanced to work with Result pattern
    */
-  public async attemptRecovery(metadata: WorkflowErrorMetadata): Promise<boolean> {
-    // Get workflowId from localStorage or metadata
-    const workflowId = 
-      metadata.details?.workflowId as string || 
-      (typeof localStorage !== 'undefined' ? localStorage.getItem('current_workflow_id') : null)
-    
-    // Try database recovery first if workflowId is available
-    if (workflowId) {
-      try {
-        const recoverySuccess = await this.recoverWithDatabaseFunction(workflowId, metadata)
-        if (recoverySuccess) {
-          return true
-        }
-      } catch (dbError) {
-        console.error('Database recovery failed, falling back to in-memory recovery:', dbError)
+  public async attemptRecovery(metadata: WorkflowErrorMetadata): Promise<Result<boolean>> {
+    try {
+      // Get workflowId from localStorage or metadata
+      const workflowId = 
+        metadata.details?.workflowId as string || 
+        (typeof localStorage !== 'undefined' ? localStorage.getItem('current_workflow_id') : null);
+      
+      // Get transaction ID if available
+      const transactionId = metadata.details?.transactionId as string;
+      
+      // Determine appropriate recovery strategy based on error type
+      const { primary, fallbacks } = recoveryService.getRecommendedStrategy(metadata);
+      
+      // Special handling for network errors - delay recovery attempt
+      if (metadata.errorType === 'network') {
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
+      
+      // Create recovery options
+      const recoveryOptions: RecoveryOptions = {
+        workflowId: workflowId || undefined,
+        transactionId,
+        metadata,
+        strategy: primary,
+        fallbackStrategies: fallbacks,
+        showToast: true,
+        maxRetries: 1,
+        retryCount: typeof metadata.details?.retryCount === 'number' ? metadata.details.retryCount : 0
+      };
+      
+      // Attempt recovery with centralized service
+      const recoveryResult = await recoveryService.recoverFromError(recoveryOptions);
+      
+      if (recoveryResult.isSuccess()) {
+        return Result.success(recoveryResult.value.success);
+      } else {
+        // If recovery service returned a failure Result
+        return Result.failure(
+          recoveryResult.error.message,
+          recoveryResult.error.code,
+          recoveryResult.error.details
+        );
+      }
+    } catch (error) {
+      // If recovery itself fails, return a failure Result
+      const normalizedError = this.normalizeError(error);
+      console.error('Recovery attempt failed:', normalizedError.message);
+      
+      return Result.failure(
+        `Recovery attempt failed: ${normalizedError.message}`,
+        'RECOVERY_ERROR',
+        {
+          originalError: error,
+          metadata,
+          errorType: normalizedError.type
+        }
+      );
     }
-    
-    // Fall back to memory-based recovery
-    if (metadata.errorType === 'network') {
-      // Wait 2 seconds for network errors, then try recovery
-      return await new Promise((resolve) => {
-        setTimeout(() => {
-          void (async () => {
-            const result = await this.recoverFromError(
-              metadata.previousStep ?? 'idle',
-              metadata
-            )
-            resolve(result)
-          })()
-        }, 2000)
-      })
-    }
-    
-    return this.recoverFromError(metadata.previousStep ?? 'idle', metadata)
   }
   
   /**
    * Recover using the workflow service's recovery function
+   * Delegates to the centralized RecoveryService
+   * @deprecated Use recoveryService.recoverFromError() instead
    */
   private async recoverWithDatabaseFunction(
     workflowId: string,
@@ -312,172 +388,58 @@ export class WorkflowErrorHandler {
       const recoveryStep =
         metadata.recoveryPaths && metadata.recoveryPaths.length > 0
           ? metadata.recoveryPaths[0]
-          : metadata.previousStep || 'idle'
+          : metadata.previousStep || 'idle';
       
-      // Call the database recovery function
-      const success = await workflowService.recoverWorkflowState(
+      // Use the centralized recovery service with DATABASE strategy
+      const recoveryResult = await recoveryService.recoverFromError({
         workflowId,
-        recoveryStep,
-        {
-          error: metadata.errorMessage,
-          errorType: metadata.errorType,
-          errorCode: metadata.errorCode,
-          errorTimestamp: metadata.timestamp,
-          originalStep: metadata.workflowStep,
-          recoveryDetails: metadata.details || {}
-        }
-      )
+        metadata,
+        strategy: RecoveryStrategy.DATABASE,
+        recoveryStep
+      });
       
-      if (success) {
-        // Update local state to match recovered state
-        const store = useChatStore.getState()
-        store.resetError()
-        store.updateWorkflowStep(recoveryStep, {
-          recoveredAt: new Date().toISOString(),
-          recoveredFrom: metadata.workflowStep,
-          isRecovery: true
-        })
-        
-        return true
-      }
-      
-      return false
+      return recoveryResult.isSuccess() && recoveryResult.value.success;
     } catch (error) {
-      console.error('Error during database recovery attempt:', error)
-      return false
+      console.error('Error during database recovery attempt:', error);
+      return false;
     }
   }
 
   /**
    * Provide a function for recovering from an error to a specified stage
-   * Uses the chat store for UI state management
+   * Delegates to the centralized RecoveryService
+   * @deprecated Use recoveryService.recoverFromError() instead
    */
   public async recoverFromError(
     targetStage: WorkflowStep,
     metadata: WorkflowErrorMetadata
   ): Promise<boolean> {
-    const store = useChatStore.getState()
-    
     try {
-      switch (targetStage) {
-        case 'idle':
-          store.resetChat()
-          store.updateWorkflowStep('idle', {})
-          store.setError(null)
-          return true
-
-        case 'uploading': {
-          const currentUpload = metadata.details?.file
-          if (currentUpload === null || currentUpload === undefined) {
-            return false
-          }
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep('uploading', {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        case 'extracting': {
-          const documentId = metadata.details?.documentId
-          if (documentId === null || documentId === undefined) {
-            return false
-          }
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep('extracting', {
-            isRetry: true,
-            documentId,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        // Combine verification cases
-        case 'verification':
-        case 'verification_pending':
-        case 'verification_in_progress': {
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep(targetStage, {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        case 'report_generation': {
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep('report_generation', {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        case 'complete':
-          store.setError(null)
-          store.updateWorkflowStep('complete', {})
-          return true
-
-        // Combine chat cases
-        case 'chat_started':
-        case 'chat_in_progress':
-        case 'chat_completed': {
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep(targetStage, {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        // Domain-only steps
-        case DomainOnlyWorkflowStep.RESEARCH:
-        case DomainOnlyWorkflowStep.REPORT_PRESENTATION: {
-          store.setError(null)
-          const rawRetryCount = metadata.details?.retryCount
-          const retryCount = typeof rawRetryCount === 'number' ? rawRetryCount : 0
-          store.updateWorkflowStep(targetStage, {
-            isRetry: true,
-            previousError: metadata.errorMessage,
-            retryCount: retryCount + 1,
-          })
-          return true
-        }
-
-        default:
-          // fallback to reset
-          store.resetChat()
-          store.updateWorkflowStep('idle', {})
-          store.setError(null)
-          return true
-      }
+      // Use the centralized recovery service with MEMORY strategy
+      const recoveryResult = await recoveryService.recoverFromError({
+        metadata,
+        strategy: RecoveryStrategy.MEMORY,
+        fallbackStrategies: [RecoveryStrategy.UI],
+        recoveryStep: targetStage
+      });
+      
+      return recoveryResult.isSuccess() && recoveryResult.value.success;
     } catch (recoveryError) {
-      console.error('Error during recovery attempt:', recoveryError)
-      const norm = this.normalizeError(recoveryError)
-      store.setError(`Recovery failed: ${norm.message}`)
+      console.error('Error during recovery attempt:', recoveryError);
+      
+      // Handle recovery failure with minimal UI updates
+      const store = useChatStore.getState();
+      const norm = this.normalizeError(recoveryError);
+      store.setError(`Recovery failed: ${norm.message}`);
+      
       // Note: 'error' is not a valid step in the DB enum, so we use DomainOnlyWorkflowStep.ERROR
       store.updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
         error: `Recovery failed: ${norm.message}`,
         originalError: metadata.errorMessage,
         recoveryFailed: true,
-      })
-      return false
+      });
+      
+      return false;
     }
   }
 
@@ -494,7 +456,7 @@ export class WorkflowErrorHandler {
 
   /**
    * Handle an error end-to-end: log, update store, optionally recover
-   * Uses both the chat store and the workflow service for error handling
+   * Enhanced to use the centralized RecoveryService
    */
   public async handleError(
     error: unknown,
@@ -506,72 +468,140 @@ export class WorkflowErrorHandler {
       attemptRecovery?: boolean
       workflowId?: string
     }
-  ): Promise<WorkflowErrorMetadata> {
-    const metadata = this.createErrorMetadata(
-      error,
-      currentStep,
-      options?.previousStep,
-      options?.details
-    )
-    
-    // Log the error
-    await this.logError(metadata)
+  ): Promise<Result<WorkflowErrorMetadata>> {
+    try {
+      // Extract error details from Result objects if present
+      let processedError = error;
+      if (error instanceof Result && error.isFailure()) {
+        processedError = error.error;
+      }
+      
+      const metadata = this.createErrorMetadata(
+        processedError,
+        currentStep,
+        options?.previousStep,
+        options?.details
+      );
+      
+      // Log the error
+      await this.logError(metadata);
 
-    // Update UI state
-    const store = useChatStore.getState()
-    store.setError(metadata.errorMessage)
-    store.updateWorkflowStep(DomainOnlyWorkflowStep.ERROR, {
-      error: metadata.errorMessage,
-      errorDetails: metadata.details,
-      errorType: metadata.errorType,
-      previousStep: metadata.previousStep,
-      recoveryPaths: metadata.recoveryPaths,
-    })
-    
-    // Try to use database services for error handling if workflowId is provided
-    const workflowId = options?.workflowId || 
-                       (typeof localStorage !== 'undefined' ? localStorage.getItem('current_workflow_id') : null)
-    
-    if (workflowId) {
-      try {
-        // Log the error event
-        await workflowService.logWorkflowEvent(
-          workflowId,
-          'error_occurred',
-          {
-            error: metadata.errorMessage,
-            errorType: metadata.errorType,
-            previousStep: metadata.previousStep,
-            timestamp: metadata.timestamp,
-            details: metadata.details
-          }
-        )
+      // Determine the appropriate error step
+      const domain = metadata.details?.domain as string | undefined;
+      const domainErrorStep = metadata.details?.domainErrorStep as WorkflowStep | undefined;
+      const errorStep = domainErrorStep || DomainOnlyWorkflowStep.ERROR;
+      
+      // Update UI state
+      const store = useChatStore.getState();
+      store.setError(metadata.errorMessage);
+      store.updateWorkflowStep(errorStep, {
+        error: metadata.errorMessage,
+        errorDetails: metadata.details,
+        errorType: metadata.errorType,
+        previousStep: metadata.previousStep,
+        recoveryPaths: metadata.recoveryPaths,
+        domain,
+        domainErrorStep
+      });
+      
+      // Get workflowId and transaction ID
+      const workflowId = options?.workflowId || 
+                        (typeof localStorage !== 'undefined' ? localStorage.getItem('current_workflow_id') : null);
+      const transactionId = metadata.details?.transactionId as string;
+      
+      // Create recovery logger
+      const recoveryLogger = recoveryService.createRecoveryLogger();
+      
+      // Log the error event using the recovery service
+      if (workflowId) {
+        await recoveryService.updateAuditLog(workflowId, 'recovery_attempt', {
+          error: metadata.errorMessage,
+          errorType: metadata.errorType,
+          previousStep: metadata.previousStep,
+          timestamp: metadata.timestamp,
+          details: metadata.details
+        });
+      }
+      
+      // Attempt recovery if requested
+      if (
+        options?.attemptRecovery === true &&
+        metadata.recoveryPaths !== null &&
+        metadata.recoveryPaths !== undefined &&
+        metadata.recoveryPaths.length > 0
+      ) {
+        // Get recommended recovery strategy
+        const { primary, fallbacks } = recoveryService.getRecommendedStrategy(metadata);
         
-        // Use recoverWorkflowState for database-level recovery if requested
-        if (
-          options?.attemptRecovery === true &&
-          metadata.recoveryPaths !== null &&
-          metadata.recoveryPaths !== undefined &&
-          metadata.recoveryPaths.length > 0
-        ) {
-          const recoveryStep = metadata.recoveryPaths[0]
-          const recoveryMetadata = {
-            error: metadata.errorMessage,
-            errorType: metadata.errorType,
-            errorTimestamp: metadata.timestamp,
-            recoveryPath: recoveryStep,
-            originalStep: currentStep,
-            originalError: error instanceof Error ? error.message : String(error),
-            recoveryDetails: metadata.details
+        // Log recovery start
+        if (workflowId) {
+          recoveryLogger.logRecoveryStart(workflowId, metadata, {
+            transactionId,
+            strategy: primary
+          });
+        }
+        
+        // Execute recovery through centralized service
+        const recoveryResult = await recoveryService.recoverFromError({
+          workflowId: workflowId || undefined,
+          transactionId,
+          metadata,
+          strategy: primary,
+          fallbackStrategies: fallbacks,
+          showToast: options?.showToast !== false
+        });
+        
+        // Process recovery result
+        if (recoveryResult.isSuccess()) {
+          // Log recovery completion
+          if (workflowId) {
+            recoveryLogger.logRecoveryComplete(workflowId, recoveryResult.value, metadata);
           }
           
-          await workflowService.recoverWorkflowState(
-            workflowId,
-            recoveryStep,
-            recoveryMetadata
-          )
+          // If recovery failed despite using all strategies
+          if (!recoveryResult.value.success) {
+            console.warn('All recovery strategies failed:', recoveryResult.value.error?.message);
+            
+            // Set error state in database if no recovery requested
+            if (workflowId) {
+              await workflowService.setWorkflowError(
+                workflowId,
+                metadata.errorMessage,
+                {
+                  errorType: metadata.errorType,
+                  errorTimestamp: metadata.timestamp,
+                  originalStep: currentStep,
+                  details: {
+                    ...metadata.details,
+                    recoveryAttempted: true,
+                    recoveryFailed: true
+                  }
+                }
+              );
+            }
+          }
         } else {
-          // Set error state in database if no recovery requested
+          // Recovery service threw an error
+          console.error('Recovery failed with error:', recoveryResult.error.message);
+          
+          // Set error state in database
+          if (workflowId) {
+            await workflowService.setWorkflowError(
+              workflowId,
+              metadata.errorMessage,
+              {
+                errorType: metadata.errorType,
+                errorTimestamp: metadata.timestamp,
+                originalStep: currentStep,
+                recoveryError: recoveryResult.error.message,
+                details: metadata.details
+              }
+            );
+          }
+        }
+      } else {
+        // No recovery requested, just set error state in database
+        if (workflowId) {
           await workflowService.setWorkflowError(
             workflowId,
             metadata.errorMessage,
@@ -581,43 +611,51 @@ export class WorkflowErrorHandler {
               originalStep: currentStep,
               details: metadata.details
             }
-          )
-        }
-      } catch (dbError) {
-        console.error('Failed to update database error state:', dbError)
-        
-        // Fall back to in-memory recovery if database update fails
-        if (
-          options?.attemptRecovery === true &&
-          metadata.recoveryPaths !== null &&
-          metadata.recoveryPaths !== undefined &&
-          metadata.recoveryPaths.length > 0
-        ) {
-          void this.attemptRecovery(metadata)
+          );
         }
       }
-    } else {
-      // Fall back to in-memory recovery if no workflowId
-      if (
-        options?.attemptRecovery === true &&
-        metadata.recoveryPaths !== null &&
-        metadata.recoveryPaths !== undefined &&
-        metadata.recoveryPaths.length > 0
-      ) {
-        void this.attemptRecovery(metadata)
+
+      // Show toast notification if requested
+      if (options?.showToast !== false) {
+        toast({
+          title: metadata.errorType === 'network' ? 'Network Error' : 'Error',
+          description: metadata.errorMessage,
+          variant: 'destructive',
+        });
       }
-    }
 
-    // Show toast notification if requested
-    if (options?.showToast !== false) {
-      toast({
-        title: metadata.errorType === 'network' ? 'Network Error' : 'Error',
-        description: metadata.errorMessage,
-        variant: 'destructive',
-      })
+      return Result.success(metadata);
+    } catch (handlerError) {
+      // Meta-error: something went wrong in our error handler
+      console.error('Error in handleError method:', handlerError);
+      
+      // Create a minimal error metadata for the meta-error
+      const fallbackMetadata: WorkflowErrorMetadata = {
+        errorMessage: handlerError instanceof Error ? handlerError.message : 'Error in error handler',
+        errorType: 'system',
+        workflowStep: currentStep,
+        timestamp: new Date().toISOString(),
+        details: {
+          originalError: error,
+          metaError: handlerError
+        }
+      };
+      
+      // Show minimal toast for the meta-error
+      if (options?.showToast !== false) {
+        toast({
+          title: 'System Error',
+          description: 'An error occurred while handling another error',
+          variant: 'destructive',
+        });
+      }
+      
+      return Result.failure(
+        'Error handling failed',
+        'ERROR_HANDLER_FAILED',
+        { originalError: error, handlerError, fallbackMetadata }
+      );
     }
-
-    return metadata
   }
 }
 

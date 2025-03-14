@@ -22,6 +22,23 @@ export interface ReportFormatter {
    * @returns Array of section names
    */
   getSectionNames(): string[];
+  
+  /**
+   * Get supported output formats
+   * Helps with format selection as part of workflow state
+   *
+   * @returns Array of supported format names
+   */
+  getSupportedFormats(): string[];
+  
+  /**
+   * Get format-specific options schema
+   * Helps validate format options as part of workflow state
+   *
+   * @param format The format to get options for
+   * @returns Record of format-specific options with default values
+   */
+  getFormatOptions(format: string): Record<string, unknown>;
 }
 
 /**
@@ -67,6 +84,44 @@ export class MedicalDiagnosisFormatter implements ReportFormatter {
   getSectionNames(): string[] {
     return ['Patient Information', 'Diagnosis', 'Recommendations', 'Sources'];
   }
+  
+  getSupportedFormats(): string[] {
+    return ['markdown', 'html', 'pdf', 'text'];
+  }
+  
+  getFormatOptions(format: string): Record<string, unknown> {
+    const baseOptions = {
+      includeCitations: true,
+      includeAppendices: false
+    };
+    
+    switch (format) {
+      case 'html':
+        return {
+          ...baseOptions,
+          includeStyles: true,
+          responsiveDesign: true,
+          tableOfContents: true
+        };
+      case 'pdf':
+        return {
+          ...baseOptions,
+          pageSize: 'letter',
+          includeCoverPage: true,
+          includeFooters: true,
+          includePageNumbers: true
+        };
+      case 'text':
+        return {
+          ...baseOptions,
+          plainTextWidth: 80,
+          useAsciiArt: false
+        };
+      case 'markdown':
+      default:
+        return baseOptions;
+    }
+  }
 }
 
 /**
@@ -108,6 +163,59 @@ export class ResearchFormatter implements ReportFormatter {
   getSectionNames(): string[] {
     return ['Research Query', 'Findings', 'Key Points', 'Sources'];
   }
+  
+  getSupportedFormats(): string[] {
+    return ['markdown', 'html', 'pdf', 'text', 'docx', 'json'];
+  }
+  
+  getFormatOptions(format: string): Record<string, unknown> {
+    const baseOptions = {
+      includeCitations: true,
+      includeReferences: true
+    };
+    
+    switch (format) {
+      case 'html':
+        return {
+          ...baseOptions,
+          includeStyles: true,
+          responsiveDesign: true,
+          tableOfContents: true,
+          citationStyle: 'IEEE'
+        };
+      case 'pdf':
+        return {
+          ...baseOptions,
+          pageSize: 'letter',
+          includeCoverPage: true,
+          includeFooters: true,
+          includePageNumbers: true,
+          citationStyle: 'IEEE'
+        };
+      case 'docx':
+        return {
+          ...baseOptions,
+          styles: 'academic',
+          citationStyle: 'IEEE',
+          includeMetadata: true
+        };
+      case 'json':
+        return {
+          ...baseOptions,
+          structuredSections: true,
+          includeMetadata: true,
+          formatVersion: '1.0'
+        };
+      case 'text':
+        return {
+          ...baseOptions,
+          plainTextWidth: 80
+        };
+      case 'markdown':
+      default:
+        return baseOptions;
+    }
+  }
 }
 
 /**
@@ -131,6 +239,32 @@ export class StandardFormatter implements ReportFormatter {
   
   getSectionNames(): string[] {
     return ['Content', 'Sources'];
+  }
+  
+  getSupportedFormats(): string[] {
+    return ['markdown', 'html', 'text'];
+  }
+  
+  getFormatOptions(format: string): Record<string, unknown> {
+    const baseOptions = {
+      includeSources: true
+    };
+    
+    switch (format) {
+      case 'html':
+        return {
+          ...baseOptions,
+          includeStyles: true
+        };
+      case 'text':
+        return {
+          ...baseOptions,
+          plainTextWidth: 80
+        };
+      case 'markdown':
+      default:
+        return baseOptions;
+    }
   }
 }
 

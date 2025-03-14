@@ -14,8 +14,14 @@ import { workflowRepository } from '../infrastructure/workflow-repository'
 import { workflowStateManager } from '../infrastructure/workflow-state-manager'
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
 import { workflowTransactionManager } from '../workflow-transaction-manager'
+import { workflowEngine } from '../coordination/workflow-engine'
+import { verificationWorkflowDefinition } from '../definitions/verification-workflow-definition'
+import { BaseWorkflowProcessor } from '../base/base-workflow-processor'
+import { Result } from '../error/result'
 
-import type { WorkflowStep, ProcessingPhase } from '@/lib/types/workflow'
+import type { WorkflowStep, ProcessingPhase, WorkflowState } from '@/lib/types/workflow'
+import type { WorkflowProcessOptions } from '../base/base-workflow-processor'
+import type { WorkflowAction } from '../coordination/workflow-definition'
 
 /**
  * Verification result
@@ -71,722 +77,1182 @@ export interface VerificationOptions {
 
 /**
  * Verification workflow processor
+ * Now leverages the declarative workflow engine
  */
-export class VerificationWorkflow {
-  private readonly logger = logger.withMetadata({ module: 'VerificationWorkflow' });
+export class VerificationWorkflow extends BaseWorkflowProcessor<VerificationOptions, VerificationResult> {
+  constructor() {
+    super('Verification', 'verification_failed');
+    
+    // Register the verification workflow definition with the engine
+    if (!workflowEngine.hasWorkflow('verification-workflow')) {
+      workflowEngine.registerWorkflow(verificationWorkflowDefinition);
+      logger.info('Registered verification workflow with engine');
+    }
+  }
   
   /**
-   * Initialize verification process
+   * Initialize verification process using workflow engine
+   * Returns Result<VerificationResult> for consistent error handling
    */
   async initiateVerification(
     workflowId: string,
     options: VerificationOptions
-  ): Promise<VerificationResult> {
-    try {
-      // Start transaction for verification
-      return await workflowTransactionManager.executeTransaction(
-        workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Determine source step
-          const fromStep: WorkflowStep = currentState.currentStep;
-          
-          // Update workflow state to verification_pending
-          await workflowStateManager.transitionState(
-            workflowId,
-            fromStep,
-            'verification_pending',
-            {
-              documentId: options.documentId,
-              documentData: options.documentData,
-              userId: options.userId,
-              verificationStartedAt: new Date().toISOString(),
-              transactionId
-            }
-          );
-          
-          // Update progress
-          progressCallback(20, ProcessingPhase.VERIFICATION);
-          
-          // Generate verification ID
-          const verificationId = `verify-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-          
-          // Prepare verification data
-          const verificationData = {
-            ...options.documentData,
-            verificationId,
-            documentId: options.documentId,
-            createdAt: new Date().toISOString(),
-            status: 'pending'
-          };
-          
-          // Log verification initiation event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'verification_started',
-            {
-              verificationId,
-              documentId: options.documentId,
-              timestamp: new Date().toISOString(),
-              userId: options.userId,
-              transactionId
-            }
-          );
-          
-          // Update progress
-          progressCallback(50, ProcessingPhase.VERIFICATION);
-          
-          // Transition to in_progress state
-          await workflowStateManager.transitionState(
-            workflowId,
-            'verification_pending',
-            'verification_in_progress',
-            {
-              verificationId,
-              verificationData,
-              transactionId
-            }
-          );
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.VERIFICATION_PENDING);
-          
-          // Return verification result
-          return {
-            verificationId,
-            documentId: options.documentId,
-            success: true,
-            data: verificationData,
-            metadata: {
-              status: 'pending',
-              createdAt: new Date().toISOString(),
-              userId: options.userId
-            }
-          };
-        },
-        {
-          step: 'verification_pending',
-          metadata: {
-            documentId: options.documentId,
-            userId: options.userId
-          },
-          onProgress: options.onProgress,
-          transactionId: options.transactionId,
-          recoveryStep: fromStep => {
-            // Determine appropriate recovery step based on source
-            if (fromStep === 'extracting' || fromStep === 'verification_pending') {
-              return 'idle';
-            }
-            return 'error';
-          }
-        }
+  ): Promise<Result<VerificationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { options }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to initiate verification', {
+    }
+    
+    if (!options.documentId) {
+      return Result.failure(
+        'Document ID is required',
+        'DOCUMENT_INVALID_ID',
+        { workflowId }
+      );
+    }
+    
+    if (!options.userId) {
+      return Result.failure(
+        'User ID is required',
+        'USER_INVALID_ID',
+        { workflowId, documentId: options.documentId }
+      );
+    }
+    
+    try {
+      // Get or create workflow instance
+      let workflowInstance = await workflowEngine.getWorkflow(workflowId).catch(() => null);
+      
+      if (!workflowInstance) {
+        // Create a new workflow instance
+        const createResult = await workflowEngine.createWorkflow(
+          'verification-workflow',
+          workflowId,
+          {
+            userId: options.userId,
+            documentId: options.documentId,
+            autoGenerateReport: options.autoGenerateReport
+          }
+        );
+        
+        if (createResult.isFailure()) {
+          return Result.failure(
+            `Failed to create verification workflow: ${createResult.error.message}`,
+            createResult.error.code,
+            createResult.error.details
+          );
+        }
+        
+        workflowInstance = createResult.value;
+      }
+      
+      // Set up progress tracking
+      const progressCallback = options.onProgress || (() => {});
+      const transactionId = options.transactionId || crypto.randomUUID();
+      
+      // Create an action to initiate verification
+      const action: WorkflowAction = {
+        type: 'INITIATE_VERIFICATION',
+        payload: {
+          userId: options.userId,
+          documentId: options.documentId,
+          documentText: typeof options.documentData === 'string'
+            ? options.documentData
+            : options.documentData.content || JSON.stringify(options.documentData),
+          patientId: options.documentData.patientId,
+          autoGenerateReport: options.autoGenerateReport,
+          documentMetadata: options.documentData
+        },
+        meta: {
+          transactionId,
+          userId: options.userId
+        }
+      };
+      
+      // First update progress to indicate start
+      progressCallback(10, ProcessingPhase.VERIFICATION);
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action, {
+        transactionId,
+        userId: options.userId
+      });
+      
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to initiate verification: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      // Update progress to indicate pre-processing
+      progressCallback(50, ProcessingPhase.VERIFICATION);
+      
+      // Prepare verification requires another action
+      const prepareAction: WorkflowAction = {
+        type: 'PREPARE_VERIFICATION',
+        payload: {
+          summary: typeof options.documentData === 'string'
+            ? options.documentData
+            : options.documentData.content || JSON.stringify(options.documentData),
+          structuredData: typeof options.documentData === 'object' ? options.documentData : undefined
+        },
+        meta: {
+          transactionId,
+          userId: options.userId
+        }
+      };
+      
+      // Send the prepare action
+      const prepareResult = await workflowEngine.sendAction(workflowId, prepareAction, {
+        transactionId,
+        userId: options.userId
+      });
+      
+      if (prepareResult.isFailure()) {
+        return Result.failure(
+          `Failed to prepare verification: ${prepareResult.error.message}`,
+          prepareResult.error.code,
+          prepareResult.error.details
+        );
+      }
+      
+      // Final progress update
+      progressCallback(100, ProcessingPhase.VERIFICATION_PENDING);
+      
+      // Get updated workflow state
+      const currentWorkflow = prepareResult.value;
+      
+      // Return verification result
+      return Result.success({
+        verificationId: currentWorkflow.context.verificationId,
+        documentId: options.documentId,
+        summaryId: currentWorkflow.context.summaryId,
+        success: true,
+        data: currentWorkflow.context.verificationMetadata,
+        metadata: {
+          status: currentWorkflow.context.status,
+          createdAt: currentWorkflow.context.startedAt,
+          userId: options.userId,
+          currentSummary: currentWorkflow.context.currentSummary
+        }
+      });
+    } catch (error) {
+      // Handle unexpected errors
+      const normalizedError = normalizeError(error);
+      logger.error('Error initiating verification with workflow engine', {
         workflowId,
         documentId: options.documentId,
         error: normalizedError.message
       });
       
-      // Return error result
-      return {
-        verificationId: '',
-        documentId: options.documentId,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
+      return Result.failure(
+        `Verification initialization failed: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_INITIALIZATION_ERROR',
+        {
+          workflowId,
+          documentId: options.documentId,
+          ...normalizedError.data
+        }
+      );
     }
   }
   
   /**
-   * Process verification correction
+   * Process verification correction using workflow engine
+   * Returns Result<VerificationResult> for consistent error handling
    */
   async processCorrection(
     workflowId: string,
     verificationId: string,
     correction: CorrectionData
-  ): Promise<VerificationResult> {
-    try {
-      // Start transaction for correction processing
-      return await workflowTransactionManager.executeTransaction(
-        workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Ensure we're in the correct state
-          if (currentState.currentStep !== 'verification_in_progress') {
-            throw new ApplicationError({
-              message: 'Cannot process correction in current workflow state',
-              code: 'INVALID_WORKFLOW_STATE',
-              data: {
-                currentStep: currentState.currentStep,
-                expectedStep: 'verification_in_progress',
-                workflowId,
-                verificationId
-              }
-            });
-          }
-          
-          // Ensure this workflow has the correct verification ID
-          if (currentState.metadata?.verificationId !== verificationId) {
-            throw new ApplicationError({
-              message: 'Verification ID mismatch',
-              code: 'VERIFICATION_ID_MISMATCH',
-              data: {
-                workflowId,
-                verificationId,
-                currentVerificationId: currentState.metadata?.verificationId
-              }
-            });
-          }
-          
-          // Get the current verification data
-          const currentVerificationData = currentState.metadata?.verificationData || {};
-          const documentId = currentVerificationData.documentId || currentState.metadata?.documentId;
-          
-          if (!documentId) {
-            throw new Error('Document ID not found in workflow state');
-          }
-          
-          // Update progress
-          progressCallback(20, ProcessingPhase.VERIFICATION_PROCESSING);
-          
-          // Apply corrections to verification data
-          const updatedVerificationData = {
-            ...currentVerificationData,
-            ...correction.correctedFields,
-            lastModifiedAt: new Date().toISOString(),
-            lastModifiedBy: correction.userId,
-            status: 'updated',
-            userComments: correction.userComments,
-            versionId: correction.versionId || `v-${Date.now()}`
-          };
-          
-          // Update progress
-          progressCallback(60, ProcessingPhase.VERIFICATION_PROCESSING);
-          
-          // Log correction event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'verification_updated',
-            {
-              verificationId,
-              documentId,
-              timestamp: new Date().toISOString(),
-              userId: correction.userId,
-              correctionFields: Object.keys(correction.correctedFields),
-              versionId: updatedVerificationData.versionId,
-              transactionId
-            }
-          );
-          
-          // Update workflow state with corrected data
-          await workflowStateManager.transitionState(
-            workflowId,
-            'verification_in_progress',
-            'verification_in_progress', // Same state but updated metadata
-            {
-              verificationData: updatedVerificationData,
-              transactionId
-            }
-          );
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.VERIFICATION_PROCESSING);
-          
-          // Return updated verification result
-          return {
-            verificationId,
-            documentId: documentId as string,
-            success: true,
-            data: updatedVerificationData,
-            metadata: {
-              status: 'updated',
-              lastModifiedAt: new Date().toISOString(),
-              userId: correction.userId,
-              versionId: updatedVerificationData.versionId
-            }
-          };
-        },
-        {
-          step: 'verification_in_progress',
-          metadata: {
-            verificationId,
-            userId: correction.userId
-          },
-          onProgress: progress => {
-            // Simple progress callback
-            this.logger.info(`Correction processing progress: ${progress}%`);
-          },
-          recoveryStep: 'verification_in_progress' // Stay in the same state on failure
-        }
+  ): Promise<Result<VerificationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { verificationId }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to process correction', {
-        workflowId,
-        verificationId,
-        error: normalizedError.message
+    }
+    
+    if (!verificationId) {
+      return Result.failure(
+        'Verification ID is required',
+        'VERIFICATION_INVALID_ID',
+        { workflowId }
+      );
+    }
+    
+    if (!correction || !correction.userId) {
+      return Result.failure(
+        'Valid correction data with user ID is required',
+        'CORRECTION_DATA_INVALID',
+        { workflowId, verificationId }
+      );
+    }
+    
+    try {
+      // Get current workflow state
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        return Result.failure(
+          `Failed to get workflow state: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          workflowResult.error.details
+        );
+      }
+      
+      const workflow = workflowResult.value;
+      
+      // Verify verification ID
+      if (workflow.context.verificationId !== verificationId) {
+        return Result.failure(
+          'Verification ID mismatch',
+          'VERIFICATION_ID_MISMATCH',
+          {
+            workflowId,
+            verificationId,
+            currentVerificationId: workflow.context.verificationId
+          }
+        );
+      }
+      
+      // Create an action for the correction
+      const transactionId = crypto.randomUUID();
+      const action: WorkflowAction = {
+        type: 'SUBMIT_CORRECTION',
+        payload: {
+          correctionText: correction.userComments || 'User correction',
+          correctionFields: correction.correctedFields,
+          versionId: correction.versionId
+        },
+        meta: {
+          transactionId,
+          userId: correction.userId
+        }
+      };
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action, {
+        transactionId,
+        userId: correction.userId
       });
       
-      // Return error result
-      return {
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to process correction: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      // The workflow engine has updated the state, now retrieve the current summary
+      const currentWorkflow = actionResult.value;
+      const documentId = currentWorkflow.context.documentId;
+      
+      // Return verification result
+      return Result.success({
         verificationId,
-        documentId: '',
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
+        documentId: documentId || '',
+        summaryId: currentWorkflow.context.summaryId,
+        success: true,
+        data: {
+          correctionCount: currentWorkflow.context.correctionCount,
+          correctionHistory: currentWorkflow.context.corrections,
+          currentSummary: currentWorkflow.context.currentSummary
+        },
+        metadata: {
+          status: currentWorkflow.context.status,
+          lastModifiedAt: new Date().toISOString(),
+          userId: correction.userId,
+          correctionFields: correction.correctedFields
+        }
+      });
+    } catch (error) {
+      // Handle unexpected errors
+      const normalizedError = normalizeError(error);
+      
+      // Check if it's a concurrency error
+      if (normalizedError.message.includes('CONCURRENT_MODIFICATION') ||
+          normalizedError.code === 'CONCURRENT_MODIFICATION' ||
+          normalizedError.message.includes('Version mismatch')) {
+        return Result.failure(
+          'Another user has modified this verification since you started editing',
+          'VERIFICATION_CONCURRENT_MODIFICATION',
+          {
+            workflowId,
+            verificationId,
+            userId: correction.userId
+          }
+        );
+      }
+      
+      return Result.failure(
+        `Failed to process verification correction: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_CORRECTION_ERROR',
+        {
+          workflowId,
+          verificationId,
+          userId: correction.userId,
+          error: normalizedError
+        }
+      );
     }
   }
   
   /**
-   * Complete verification process
+   * Complete verification process using workflow engine
+   * Returns Result<VerificationResult> for consistent error handling
    */
   async completeVerification(
     workflowId: string,
     verificationId: string,
     userId: string,
     autoGenerateReport: boolean = false
-  ): Promise<VerificationResult> {
-    try {
-      // Start transaction for verification completion
-      return await workflowTransactionManager.executeTransaction(
-        workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Ensure we're in the correct state
-          if (currentState.currentStep !== 'verification_in_progress') {
-            throw new ApplicationError({
-              message: 'Cannot complete verification in current workflow state',
-              code: 'INVALID_WORKFLOW_STATE',
-              data: {
-                currentStep: currentState.currentStep,
-                expectedStep: 'verification_in_progress',
-                workflowId,
-                verificationId
-              }
-            });
-          }
-          
-          // Ensure this workflow has the correct verification ID
-          if (currentState.metadata?.verificationId !== verificationId) {
-            throw new ApplicationError({
-              message: 'Verification ID mismatch',
-              code: 'VERIFICATION_ID_MISMATCH',
-              data: {
-                workflowId,
-                verificationId,
-                currentVerificationId: currentState.metadata?.verificationId
-              }
-            });
-          }
-          
-          // Get the current verification data
-          const verificationData = currentState.metadata?.verificationData || {};
-          const documentId = verificationData.documentId || currentState.metadata?.documentId;
-          
-          if (!documentId) {
-            throw new Error('Document ID not found in workflow state');
-          }
-          
-          // Update progress
-          progressCallback(30, ProcessingPhase.VERIFICATION_COMPLETION);
-          
-          // Finalize verification data
-          const finalVerificationData = {
-            ...verificationData,
-            completedAt: new Date().toISOString(),
-            completedBy: userId,
-            status: 'completed'
-          };
-          
-          // Log verification completion event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'verification_completed',
-            {
-              verificationId,
-              documentId,
-              timestamp: finalVerificationData.completedAt,
-              userId,
-              transactionId
-            }
-          );
-          
-          // Update progress
-          progressCallback(70, ProcessingPhase.VERIFICATION_COMPLETION);
-          
-          // Update workflow state to verification_completed
-          await workflowStateManager.transitionState(
-            workflowId,
-            'verification_in_progress',
-            'verification_completed',
-            {
-              verificationId,
-              verificationData: finalVerificationData,
-              documentId,
-              completedAt: finalVerificationData.completedAt,
-              completedBy: userId,
-              transactionId
-            }
-          );
-          
-          // Handle auto report generation
-          if (autoGenerateReport) {
-            // Transition to report generation
-            await workflowStateManager.transitionState(
-              workflowId,
-              'verification_completed',
-              'report_generation',
-              {
-                verificationId,
-                documentId,
-                reportGenerationStartedAt: new Date().toISOString(),
-                transactionId
-              }
-            );
-          }
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.VERIFICATION_COMPLETION);
-          
-          // Return result
-          return {
-            verificationId,
-            documentId: documentId as string,
-            success: true,
-            data: finalVerificationData,
-            metadata: {
-              status: 'completed',
-              completedAt: finalVerificationData.completedAt,
-              userId,
-              autoGenerateReport
-            }
-          };
-        },
-        {
-          step: 'verification_in_progress',
-          metadata: {
-            verificationId,
-            userId
-          },
-          onProgress: progress => {
-            // Simple progress callback
-            this.logger.info(`Verification completion progress: ${progress}%`);
-          },
-          recoveryStep: 'verification_in_progress' // Stay in verification on failure
-        }
+  ): Promise<Result<VerificationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { verificationId, userId }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to complete verification', {
-        workflowId,
-        verificationId,
-        error: normalizedError.message
+    }
+    
+    if (!verificationId) {
+      return Result.failure(
+        'Verification ID is required',
+        'VERIFICATION_INVALID_ID',
+        { workflowId, userId }
+      );
+    }
+    
+    if (!userId) {
+      return Result.failure(
+        'User ID is required',
+        'USER_INVALID_ID',
+        { workflowId, verificationId }
+      );
+    }
+    
+    try {
+      // Get current workflow state
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        return Result.failure(
+          `Failed to get workflow state: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          workflowResult.error.details
+        );
+      }
+      
+      const workflow = workflowResult.value;
+      
+      // Verify verification ID
+      if (workflow.context.verificationId !== verificationId) {
+        return Result.failure(
+          'Verification ID mismatch',
+          'VERIFICATION_ID_MISMATCH',
+          {
+            workflowId,
+            verificationId,
+            currentVerificationId: workflow.context.verificationId
+          }
+        );
+      }
+      
+      // Create an action to confirm verification
+      const transactionId = crypto.randomUUID();
+      const action: WorkflowAction = {
+        type: 'CONFIRM_VERIFICATION',
+        payload: {
+          autoGenerateReport
+        },
+        meta: {
+          transactionId,
+          userId
+        }
+      };
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action, {
+        transactionId,
+        userId
       });
       
-      // Return error result
-      return {
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to complete verification: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      // If auto-generate report is enabled, send another action
+      if (autoGenerateReport) {
+        const reportAction: WorkflowAction = {
+          type: 'GENERATE_REPORT',
+          payload: {},
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        await workflowEngine.sendAction(workflowId, reportAction, {
+          transactionId,
+          userId
+        });
+      }
+      
+      // The workflow engine has updated the state
+      const currentWorkflow = actionResult.value;
+      const documentId = currentWorkflow.context.documentId;
+      
+      // Return verification result
+      return Result.success({
         verificationId,
-        documentId: '',
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
+        documentId: documentId || '',
+        summaryId: currentWorkflow.context.summaryId,
+        success: true,
+        data: currentWorkflow.context.verificationMetadata,
+        metadata: {
+          status: 'completed',
+          completedAt: currentWorkflow.context.completedAt,
+          userId,
+          autoGenerateReport
+        }
+      });
+    } catch (error) {
+      // Handle unexpected errors
+      const normalizedError = normalizeError(error);
+      
+      // Check if it's a concurrency error
+      if (normalizedError.message.includes('CONCURRENT_MODIFICATION') ||
+          normalizedError.code === 'CONCURRENT_MODIFICATION') {
+        return Result.failure(
+          'This verification was modified by another user while you were completing it',
+          'VERIFICATION_CONCURRENT_MODIFICATION',
+          {
+            workflowId,
+            verificationId,
+            userId
+          }
+        );
+      }
+      
+      return Result.failure(
+        `Failed to complete verification: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_COMPLETION_ERROR',
+        {
+          workflowId,
+          verificationId,
+          userId,
+          autoGenerateReport,
+          error: normalizedError
+        }
+      );
     }
   }
   
   /**
-   * Reject verification (mark as failed)
+   * Reject verification (mark as failed) using workflow engine
+   * Returns Result<VerificationResult> for consistent error handling
    */
   async rejectVerification(
     workflowId: string,
     verificationId: string,
     userId: string,
     reason: string
-  ): Promise<VerificationResult> {
-    try {
-      // Start transaction for verification rejection
-      return await workflowTransactionManager.executeTransaction(
-        workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Check current state
-          const fromStep = currentState.currentStep;
-          if (fromStep !== 'verification_in_progress' && fromStep !== 'verification_pending') {
-            throw new ApplicationError({
-              message: 'Cannot reject verification in current workflow state',
-              code: 'INVALID_WORKFLOW_STATE',
-              data: {
-                currentStep: fromStep,
-                expectedSteps: ['verification_in_progress', 'verification_pending'],
-                workflowId,
-                verificationId
-              }
-            });
-          }
-          
-          // Ensure this workflow has the correct verification ID
-          if (currentState.metadata?.verificationId !== verificationId) {
-            throw new ApplicationError({
-              message: 'Verification ID mismatch',
-              code: 'VERIFICATION_ID_MISMATCH',
-              data: {
-                workflowId,
-                verificationId,
-                currentVerificationId: currentState.metadata?.verificationId
-              }
-            });
-          }
-          
-          // Get document ID
-          const verificationData = currentState.metadata?.verificationData || {};
-          const documentId = verificationData.documentId || currentState.metadata?.documentId;
-          
-          if (!documentId) {
-            throw new Error('Document ID not found in workflow state');
-          }
-          
-          // Update progress
-          progressCallback(40, ProcessingPhase.VERIFICATION_REJECTION);
-          
-          // Create rejection data
-          const rejectionData = {
-            ...verificationData,
-            rejectedAt: new Date().toISOString(),
-            rejectedBy: userId,
-            rejectionReason: reason,
-            status: 'rejected'
-          };
-          
-          // Log verification rejection event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'verification_failed',
-            {
-              verificationId,
-              documentId,
-              timestamp: rejectionData.rejectedAt,
-              userId,
-              reason,
-              transactionId
-            }
-          );
-          
-          // Update progress
-          progressCallback(70, ProcessingPhase.VERIFICATION_REJECTION);
-          
-          // Update workflow state to verification_failed
-          await workflowStateManager.transitionState(
-            workflowId,
-            fromStep,
-            'verification_failed',
-            {
-              verificationId,
-              verificationData: rejectionData,
-              documentId,
-              rejectedAt: rejectionData.rejectedAt,
-              rejectedBy: userId,
-              rejectionReason: reason,
-              transactionId
-            }
-          );
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.VERIFICATION_REJECTION);
-          
-          // Return result
-          return {
-            verificationId,
-            documentId: documentId as string,
-            success: false,
-            data: rejectionData,
-            metadata: {
-              status: 'rejected',
-              rejectedAt: rejectionData.rejectedAt,
-              userId,
-              reason
-            }
-          };
-        },
-        {
-          step: 'verification_failed',
-          metadata: {
-            verificationId,
-            userId,
-            rejectionReason: reason
-          },
-          onProgress: progress => {
-            // Simple progress callback
-            this.logger.info(`Verification rejection progress: ${progress}%`);
-          },
-          recoveryStep: fromStep => fromStep
-        }
+  ): Promise<Result<VerificationResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { verificationId, userId, reason }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to reject verification', {
-        workflowId,
-        verificationId,
-        error: normalizedError.message
+    }
+    
+    if (!verificationId) {
+      return Result.failure(
+        'Verification ID is required',
+        'VERIFICATION_INVALID_ID',
+        { workflowId, userId, reason }
+      );
+    }
+    
+    if (!userId) {
+      return Result.failure(
+        'User ID is required',
+        'USER_INVALID_ID',
+        { workflowId, verificationId, reason }
+      );
+    }
+    
+    if (!reason) {
+      return Result.failure(
+        'Rejection reason is required',
+        'REJECTION_REASON_MISSING',
+        { workflowId, verificationId, userId }
+      );
+    }
+    
+    try {
+      // Get current workflow state
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        return Result.failure(
+          `Failed to get workflow state: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          workflowResult.error.details
+        );
+      }
+      
+      const workflow = workflowResult.value;
+      
+      // Verify verification ID
+      if (workflow.context.verificationId !== verificationId) {
+        return Result.failure(
+          'Verification ID mismatch',
+          'VERIFICATION_ID_MISMATCH',
+          {
+            workflowId,
+            verificationId,
+            currentVerificationId: workflow.context.verificationId
+          }
+        );
+      }
+      
+      // Create an action to reject verification
+      const transactionId = crypto.randomUUID();
+      const action: WorkflowAction = {
+        type: 'REJECT_VERIFICATION',
+        payload: {
+          reason
+        },
+        meta: {
+          transactionId,
+          userId
+        }
+      };
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action, {
+        transactionId,
+        userId
       });
       
-      // Return error result
-      return {
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to reject verification: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      // The workflow engine has updated the state
+      const currentWorkflow = actionResult.value;
+      const documentId = currentWorkflow.context.documentId;
+      
+      // Return verification result
+      return Result.success({
         verificationId,
-        documentId: '',
+        documentId: documentId || '',
         success: false,
-        metadata: {
-          error: normalizedError.message
+        data: {
+          rejectionReason: reason
         },
-        error: normalizedError.message
-      };
+        metadata: {
+          status: 'rejected',
+          rejectedAt: currentWorkflow.context.completedAt,
+          userId,
+          reason
+        }
+      });
+    } catch (error) {
+      // Handle unexpected errors
+      const normalizedError = normalizeError(error);
+      
+      // Check if it's a concurrency error
+      if (normalizedError.message.includes('CONCURRENT_MODIFICATION') ||
+          normalizedError.code === 'CONCURRENT_MODIFICATION') {
+        return Result.failure(
+          'This verification was modified by another user while you were rejecting it',
+          'VERIFICATION_CONCURRENT_MODIFICATION',
+          {
+            workflowId,
+            verificationId,
+            userId
+          }
+        );
+      }
+      
+      return Result.failure(
+        `Failed to reject verification: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_REJECTION_ERROR',
+        {
+          workflowId,
+          verificationId,
+          userId,
+          reason,
+          error: normalizedError
+        }
+      );
     }
   }
   
   /**
-   * Get verification status
+   * Get verification status using workflow engine
+   * Returns Result<VerificationResult | null> for consistent error handling
    */
   async getVerificationStatus(
     workflowId: string,
     verificationId: string
-  ): Promise<VerificationResult | null> {
+  ): Promise<Result<VerificationResult | null>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_INVALID_ID',
+        { verificationId }
+      );
+    }
+    
+    if (!verificationId) {
+      return Result.failure(
+        'Verification ID is required',
+        'VERIFICATION_INVALID_ID',
+        { workflowId }
+      );
+    }
+    
     try {
-      // Get workflow state
-      const state = await workflowRepository.getWorkflowState(workflowId);
-      if (!state) {
-        return null;
+      // Get workflow state using workflow engine
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        // If workflow not found, it's not an error for this method
+        if (workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
+          return Result.success(null);
+        }
+        
+        return Result.failure(
+          `Failed to retrieve workflow state: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          { workflowId, verificationId }
+        );
       }
+      
+      const workflow = workflowResult.value;
       
       // Check if verification ID matches
-      if (state.metadata?.verificationId !== verificationId) {
+      if (workflow.context.verificationId !== verificationId) {
         // Try to find in event history
-        const events = await workflowEventSourcing.getEventHistory(workflowId, {
-          eventType: [
-            'verification_started',
-            'verification_updated',
-            'verification_completed',
-            'verification_failed'
-          ]
-        });
-        
-        // Find event with this verification ID
-        for (const event of events) {
-          if (event.event_data?.verificationId === verificationId) {
-            // Return basic info from event
-            return {
-              verificationId,
-              documentId: event.event_data.documentId || '',
-              success: event.event_type === 'verification_completed',
-              metadata: {
-                status: this.mapEventTypeToStatus(event.event_type),
-                timestamp: event.occurred_at,
-                eventType: event.event_type,
-                ...event.event_data
-              }
-            };
+        try {
+          const events = await workflowEventSourcing.getEventHistory(workflowId, {
+            eventType: [
+              'verification_started',
+              'verification_updated',
+              'verification_completed',
+              'verification_failed'
+            ]
+          });
+          
+          // Find event with this verification ID
+          for (const event of events) {
+            if (event.event_data?.verificationId === verificationId) {
+              // Return basic info from event
+              return Result.success({
+                verificationId,
+                documentId: event.event_data.documentId || '',
+                success: event.event_type === 'verification_completed',
+                metadata: {
+                  status: this.mapEventTypeToStatus(event.event_type),
+                  timestamp: event.occurred_at,
+                  eventType: event.event_type,
+                  ...event.event_data
+                }
+              });
+            }
           }
+        } catch (error) {
+          // We can ignore errors in history lookup
+          logger.warn('Failed to lookup verification in event history', {
+            workflowId,
+            verificationId,
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
         
-        return null;
+        // Not an error, just no data found with this ID
+        return Result.success(null);
       }
       
-      // Get verification data
-      const verificationData = state.metadata?.verificationData || {};
-      const documentId = verificationData.documentId || state.metadata?.documentId;
+      // Determine status based on workflow state
+      const success = workflow.currentState === 'verification_completed';
+      const documentId = workflow.context.documentId;
       
       if (!documentId) {
-        return null;
+        // This is unexpected but not an error - just incomplete data
+        return Result.success(null);
       }
       
-      // Determine status based on workflow step
-      const status = this.mapWorkflowStepToStatus(state.currentStep);
-      const success = state.currentStep === 'verification_completed';
-      
-      // Return verification status
-      return {
+      // Return verification status wrapped in a success Result
+      return Result.success({
         verificationId,
-        documentId: documentId as string,
+        documentId,
+        summaryId: workflow.context.summaryId,
         success,
-        data: verificationData,
+        data: workflow.context.verificationMetadata,
         metadata: {
-          status,
-          workflowStep: state.currentStep,
-          ...state.metadata
+          status: workflow.context.status,
+          currentState: workflow.currentState,
+          ...workflow.context
         }
-      };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get verification status', {
+      });
+    } catch (error) {
+      // Convert unexpected errors to Result failures
+      const normalizedError = normalizeError(error);
+      logger.error('Failed to get verification status', {
         workflowId,
         verificationId,
         error: normalizedError.message
       });
-      return null;
+      
+      return Result.failure(
+        `Failed to get verification status: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_STATUS_ERROR',
+        {
+          workflowId,
+          verificationId,
+          error: normalizedError
+        }
+      );
     }
   }
   
   /**
-   * Map event type to verification status
+   * Reset verification to idle state using workflow engine
    */
-  private mapEventTypeToStatus(eventType: string): string {
-    switch (eventType) {
-      case 'verification_started':
-        return 'pending';
-      case 'verification_updated':
-        return 'in_progress';
-      case 'verification_completed':
-        return 'completed';
-      case 'verification_failed':
-        return 'rejected';
-      default:
-        return 'unknown';
+  async resetVerification(
+    workflowId: string
+  ): Promise<Result<boolean>> {
+    try {
+      // Get workflow state
+      const workflowResult = await workflowEngine.getWorkflow(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        // If workflow not found, there's nothing to reset
+        if (workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
+          return Result.success(true);
+        }
+        
+        return Result.failure(
+          `Failed to retrieve workflow state: ${workflowResult.error.message}`,
+          workflowResult.error.code,
+          { workflowId }
+        );
+      }
+      
+      // Create an action to reset verification
+      const action: WorkflowAction = {
+        type: 'RESET_VERIFICATION',
+        payload: {}
+      };
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action);
+      
+      if (actionResult.isFailure()) {
+        return Result.failure(
+          `Failed to reset verification: ${actionResult.error.message}`,
+          actionResult.error.code,
+          actionResult.error.details
+        );
+      }
+      
+      return Result.success(true);
+    } catch (error) {
+      // Convert unexpected errors to Result failures
+      const normalizedError = normalizeError(error);
+      logger.error('Failed to reset verification', {
+        workflowId,
+        error: normalizedError.message
+      });
+      
+      return Result.failure(
+        `Failed to reset verification: ${normalizedError.message}`,
+        normalizedError.code || 'VERIFICATION_RESET_ERROR',
+        {
+          workflowId,
+          error: normalizedError
+        }
+      );
     }
   }
   
   /**
-   * Map workflow step to verification status
+   * Implement required abstract method for domain-specific processing
+   * Now delegates to workflow engine
    */
-  private mapWorkflowStepToStatus(step: WorkflowStep): string {
-    switch (step) {
-      case 'verification_pending':
-        return 'pending';
-      case 'verification_in_progress':
-        return 'in_progress';
-      case 'verification_completed':
-        return 'completed';
-      case 'verification_failed':
-        return 'rejected';
-      case 'report_generation':
-      case 'report_presentation':
-        return 'completed';
-      default:
-        return 'unknown';
+  protected async doProcess(
+    workflowId: string,
+    input: VerificationOptions,
+    currentState: WorkflowState,
+    options: WorkflowProcessOptions & {
+      progressCallback?: (progress: number, phase: ProcessingPhase) => void;
+    }
+  ): Promise<VerificationResult> {
+    const { userId, documentId, documentData, autoGenerateReport } = input;
+    const progressCallback = options.progressCallback || (() => {});
+    
+    try {
+      // Get or create workflow instance
+      let workflowInstance = await workflowEngine.getWorkflow(workflowId)
+        .then(result => result.isSuccess() ? result.value : null)
+        .catch(() => null);
+      
+      if (!workflowInstance) {
+        // Create a new workflow instance
+        const createResult = await workflowEngine.createWorkflow(
+          'verification-workflow',
+          workflowId,
+          {
+            userId,
+            documentId,
+            autoGenerateReport
+          }
+        );
+        
+        if (createResult.isFailure()) {
+          throw new Error(`Failed to create workflow: ${createResult.error.message}`);
+        }
+        
+        workflowInstance = createResult.value;
+      }
+      
+      // Create appropriate action based on current state
+      const transactionId = options.transactionId || crypto.randomUUID();
+      let action: WorkflowAction;
+      
+      // Determine the appropriate action based on the current step
+      if (currentState.currentStep === 'idle' ||
+          currentState.currentStep === 'verification_pending' ||
+          currentState.currentStep === 'extracting') {
+        // For verification initialization
+        action
+===
+    </search>
+    <content>
+===
+  /**
+   * Implement required abstract method for domain-specific processing
+   * Now delegates to workflow engine
+   */
+  protected async doProcess(
+    workflowId: string,
+    input: VerificationOptions,
+    currentState: WorkflowState,
+    options: WorkflowProcessOptions & {
+      progressCallback?: (progress: number, phase: ProcessingPhase) => void;
+    }
+  ): Promise<VerificationResult> {
+    const { userId, documentId, documentData, autoGenerateReport } = input;
+    const progressCallback = options.progressCallback || (() => {});
+    
+    try {
+      // Get or create workflow instance
+      let workflowInstance = await workflowEngine.getWorkflow(workflowId)
+        .then(result => result.isSuccess() ? result.value : null)
+        .catch(() => null);
+      
+      if (!workflowInstance) {
+        // Create a new workflow instance
+        const createResult = await workflowEngine.createWorkflow(
+          'verification-workflow',
+          workflowId,
+          {
+            userId,
+            documentId,
+            autoGenerateReport
+          }
+        );
+        
+        if (createResult.isFailure()) {
+          throw new Error(`Failed to create workflow: ${createResult.error.message}`);
+        }
+        
+        workflowInstance = createResult.value;
+      }
+      
+      // Create appropriate action based on current state
+      const transactionId = options.transactionId || crypto.randomUUID();
+      let action: WorkflowAction;
+      
+      // Determine the appropriate action based on the current step
+      if (currentState.currentStep === 'idle' ||
+          currentState.currentStep === 'verification_pending' ||
+          currentState.currentStep === 'extracting') {
+        // For verification initialization
+        action = {
+          type: 'INITIATE_VERIFICATION',
+          payload: {
+            userId,
+            documentId,
+            documentText: typeof documentData === 'string'
+              ? documentData
+              : documentData.content || JSON.stringify(documentData),
+            patientId: documentData.patientId,
+            autoGenerateReport,
+            documentMetadata: documentData
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        // Update progress
+        progressCallback(20, ProcessingPhase.VERIFICATION);
+      }
+      else if (currentState.currentStep === 'verification_in_progress' &&
+               documentData.correctionData) {
+        // For correction processing
+        const correction = documentData.correctionData as CorrectionData;
+        
+        action = {
+          type: 'SUBMIT_CORRECTION',
+          payload: {
+            correctionText: correction.userComments || 'User correction',
+            correctionFields: correction.correctedFields,
+            versionId: correction.versionId
+          },
+          meta: {
+            transactionId,
+            userId: correction.userId || userId
+          }
+        };
+        
+        // Update progress
+        progressCallback(20, ProcessingPhase.VERIFICATION_PROCESSING);
+      }
+      else if (currentState.currentStep === 'verification_in_progress' &&
+               documentData.status === 'completed') {
+        // For verification completion
+        action = {
+          type: 'CONFIRM_VERIFICATION',
+          payload: {
+            autoGenerateReport
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        // Update progress
+        progressCallback(30, ProcessingPhase.VERIFICATION_COMPLETION);
+      }
+      else if ((currentState.currentStep === 'verification_in_progress' ||
+                currentState.currentStep === 'verification_pending') &&
+               documentData.status === 'rejected') {
+        // For verification rejection
+        const reason = documentData.rejectionReason as string;
+        
+        action = {
+          type: 'REJECT_VERIFICATION',
+          payload: {
+            reason: reason || 'Verification rejected by user'
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        // Update progress
+        progressCallback(40, ProcessingPhase.VERIFICATION_REJECTION);
+      }
+      else {
+        // Unsupported operation
+        throw new ApplicationError({
+          message: 'Unsupported verification operation',
+          code: 'UNSUPPORTED_VERIFICATION_OPERATION',
+          data: {
+            currentStep: currentState.currentStep,
+            documentData
+          }
+        });
+      }
+      
+      // Send the action to the workflow engine
+      const actionResult = await workflowEngine.sendAction(workflowId, action, {
+        transactionId,
+        userId
+      });
+      
+      if (actionResult.isFailure()) {
+        throw new Error(`Failed to process verification action: ${actionResult.error.message}`);
+      }
+      
+      // Update progress halfway
+      progressCallback(70, ProcessingPhase.VERIFICATION);
+      
+      // For verification initialization, we need to prepare it too
+      if (action.type === 'INITIATE_VERIFICATION') {
+        // Prepare verification with another action
+        const prepareAction: WorkflowAction = {
+          type: 'PREPARE_VERIFICATION',
+          payload: {
+            summary: typeof documentData === 'string'
+              ? documentData
+              : documentData.content || JSON.stringify(documentData),
+            structuredData: typeof documentData === 'object' ? documentData : undefined
+          },
+          meta: {
+            transactionId,
+            userId
+          }
+        };
+        
+        // Send the prepare action
+        const prepareResult = await workflowEngine.sendAction(workflowId, prepareAction, {
+          transactionId,
+          userId
+        });
+        
+        if (prepareResult.isFailure()) {
+          throw new Error(`Failed to prepare verification: ${prepareResult.error.message}`);
+        }
+        
+        // Use the updated instance after prepare
+        workflowInstance = prepareResult.value;
+      } else {
+        // For other actions, use the result from the first action
+        workflowInstance = actionResult.value;
+      }
+      
+      // Final progress update
+      progressCallback(100, ProcessingPhase.VERIFICATION);
+      
+      // Extract data from workflow state
+      const verificationId = workflowInstance.context.verificationId;
+      const summaryId = workflowInstance.context.summaryId;
+      const currentSummary = workflowInstance.context.currentSummary;
+      const status = workflowInstance.context.status;
+      const verificationMetadata = workflowInstance.context.verificationMetadata;
+      
+      // Create appropriate result based on action type
+      if (action.type === 'INITIATE_VERIFICATION') {
+        return {
+          verificationId,
+          documentId,
+          summaryId,
+          success: true,
+          data: verificationMetadata || {},
+          metadata: {
+            status,
+            createdAt: workflowInstance.context.startedAt,
+            userId,
+            currentSummary
+          }
+        };
+      }
+      else if (action.type === 'SUBMIT_CORRECTION') {
+        return {
+          verificationId,
+          documentId,
+          summaryId,
+          success: true,
+          data: {
+            correctionCount: workflowInstance.context.correctionCount,
+            correctionHistory: workflowInstance.context.corrections,
+            currentSummary
+          },
+          metadata: {
+            status,
+            lastModifiedAt: new Date().toISOString(),
+            userId,
+            verificationMetadata
+          }
+        };
+      }
+      else if (action.type === 'CONFIRM_VERIFICATION') {
+        return {
+          verificationId,
+          documentId,
+          summaryId,
+          success: true,
+          data: verificationMetadata || {},
+          metadata: {
+            status,
+            completedAt: workflowInstance.context.completedAt,
+            userId,
+            autoGenerateReport
+          }
+        };
+      }
+      else if (action.type === 'REJECT_VERIFICATION') {
+        return {
+          verificationId,
+          documentId,
+          summaryId,
+          success: false,
+          data: {
+            rejectionReason: action.payload.reason
+          },
+          metadata: {
+            status,
+            rejectedAt: workflowInstance.context.completedAt,
+            userId,
+            reason: action.payload.reason
+          }
+        };
+      }
+      
+      // Default response if none of the specific cases apply
+      return {
+        verificationId: verificationId || '',
+        documentId,
+        summaryId,
+        success: true,
+        data: workflowInstance.context,
+        metadata: {
+          status,
+          workflowState: workflowInstance.currentState,
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      // Handle unexpected errors
+      const normalizedError = normalizeError(error);
+      logger.error('Error in verification workflow processing', {
+        workflowId,
+        documentId,
+        error: normalizedError.message
+      });
+      
+      // Create error result (backward compatibility)
+      return {
+        verificationId: '',
+        documentId,
+        success: false,
+        metadata: {
+          error: normalizedError.message,
+          code: normalizedError.code || 'VERIFICATION_ERROR',
+          userId
+        },
+        error: normalizedError.message
+      };
     }
   }
-}
-
-// Export singleton instance
-export const verificationWorkflow = new VerificationWorkflow();

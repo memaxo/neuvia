@@ -12,10 +12,12 @@ import logger from '@/lib/logger'
 import { workflowRepository } from '../infrastructure/workflow-repository'
 import { workflowStateManager } from '../infrastructure/workflow-state-manager'
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
-import { workflowTransactionManager } from '../workflow-transaction-manager'
+import { BaseWorkflowProcessor } from '../base/base-workflow-processor'
 import { DomainOnlyWorkflowStep } from '@/lib/types/workflow'
+import { Result } from '../error/result'
 
-import type { WorkflowStep, ProcessingPhase } from '@/lib/types/workflow'
+import type { WorkflowStep, ProcessingPhase, WorkflowState } from '@/lib/types/workflow'
+import type { WorkflowProcessOptions } from '../base/base-workflow-processor'
 
 /**
  * Research result interface
@@ -68,155 +70,54 @@ export interface ResearchOptions {
 /**
  * Research workflow processor
  */
-export class ResearchWorkflow {
-  private readonly logger = logger.withMetadata({ module: 'ResearchWorkflow' });
+export class ResearchWorkflow extends BaseWorkflowProcessor<ResearchOptions, ResearchResult> {
+  constructor() {
+    super('Research', 'error');
+  }
   
   /**
    * Execute research query
+   * @returns A Result containing ResearchResult if successful, or error details if failed
    */
   async executeResearch(
     workflowId: string,
     options: ResearchOptions
-  ): Promise<ResearchResult> {
+  ): Promise<Result<ResearchResult>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'workflowId' }
+      );
+    }
+    
+    if (!options || !options.query || !options.userId) {
+      return Result.failure(
+        'Research query and user ID are required', 
+        'RESEARCH_INVALID_INPUT',
+        { 
+          missingQuery: !options?.query, 
+          missingUserId: !options?.userId
+        }
+      );
+    }
+    
     try {
-      // Start transaction for research
-      return await workflowTransactionManager.executeTransaction(
+      // Wrap the process call with Result pattern
+      const researchResult = await this.process(
         workflowId,
-        async (progressCallback, transactionId) => {
-          // Get current state
-          const currentState = await workflowRepository.getWorkflowState(workflowId);
-          if (!currentState) {
-            throw new Error('Workflow state not found');
-          }
-          
-          // Determine appropriate source step
-          const fromStep: WorkflowStep = currentState.currentStep;
-          
-          // Generate research ID
-          const researchId = `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-          
-          // Initial progress update
-          progressCallback(10, ProcessingPhase.RESEARCH);
-          
-          // Update workflow state to research
-          await workflowStateManager.transitionState(
-            workflowId,
-            fromStep,
-            DomainOnlyWorkflowStep.RESEARCH,
-            {
-              researchId,
-              researchStartedAt: new Date().toISOString(),
-              query: options.query,
-              userId: options.userId,
-              patientId: options.patientId,
-              documentId: options.documentId,
-              model: options.model,
-              includeCitations: options.includeCitations,
-              transactionId
-            }
-          );
-          
-          // Update progress during "processing"
-          progressCallback(20, ProcessingPhase.RESEARCH);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          progressCallback(40, ProcessingPhase.RESEARCH);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          progressCallback(60, ProcessingPhase.RESEARCH);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          progressCallback(80, ProcessingPhase.RESEARCH);
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Simulate research results
-          const researchContent = this.simulateResearchResults(options.query);
-          
-          // Generate citation sources if requested
-          const sources = options.includeCitations 
-            ? this.simulateCitationSources() 
-            : undefined;
-          
-          // Log research completion event
-          await workflowEventSourcing.appendEvent(
-            workflowId,
-            'research_completed',
-            {
-              researchId,
-              query: options.query,
-              timestamp: new Date().toISOString(),
-              userId: options.userId,
-              patientId: options.patientId,
-              documentId: options.documentId,
-              contentLength: researchContent.length,
-              sourcesCount: sources?.length || 0,
-              transactionId
-            }
-          );
-          
-          // Final progress update
-          progressCallback(100, ProcessingPhase.RESEARCH);
-          
-          // Auto-generate report if requested
-          if (options.autoGenerateReport) {
-            // Transition to report_generation
-            await workflowStateManager.transitionState(
-              workflowId,
-              DomainOnlyWorkflowStep.RESEARCH,
-              'report_generation',
-              {
-                researchId,
-                researchCompletedAt: new Date().toISOString(),
-                researchContent,
-                sources,
-                reportGenerationStartedAt: new Date().toISOString(),
-                transactionId
-              }
-            );
-          } else {
-            // Otherwise return to chat_in_progress or idle
-            const targetStep: WorkflowStep = fromStep === 'chat_in_progress' 
-              ? 'chat_in_progress'
-              : 'idle';
-            
-            await workflowStateManager.transitionState(
-              workflowId,
-              DomainOnlyWorkflowStep.RESEARCH,
-              targetStep,
-              {
-                researchId,
-                researchCompletedAt: new Date().toISOString(),
-                researchContent,
-                sources,
-                transactionId
-              }
-            );
-          }
-          
-          // Return result
-          return {
-            researchId,
-            query: options.query,
-            success: true,
-            content: researchContent,
-            sources,
-            metadata: {
-              completedAt: new Date().toISOString(),
-              userId: options.userId,
-              patientId: options.patientId,
-              documentId: options.documentId,
-              model: options.model,
-              autoGenerateReport: options.autoGenerateReport
-            }
-          };
-        },
+        options,
         {
-          step: DomainOnlyWorkflowStep.RESEARCH,
+          targetStep: DomainOnlyWorkflowStep.RESEARCH,
           metadata: {
             query: options.query,
             userId: options.userId,
             patientId: options.patientId,
-            documentId: options.documentId
+            documentId: options.documentId,
+            model: options.model,
+            includeCitations: options.includeCitations,
+            autoGenerateReport: options.autoGenerateReport
           },
           onProgress: options.onProgress,
           transactionId: options.transactionId,
@@ -226,64 +127,127 @@ export class ResearchWorkflow {
           }
         }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Research execution failed', {
+      
+      return Result.success(researchResult);
+    } catch (error) {
+      const normalizedError = normalizeError(error);
+      logger.error('Research execution failed', {
         workflowId,
         query: options.query,
+        userId: options.userId,
         error: normalizedError.message
       });
       
-      // Return error result
-      return {
-        researchId: '',
-        query: options.query,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'RESEARCH_EXECUTION_FAILED',
+        {
+          workflowId,
+          query: options.query,
+          userId: options.userId,
+          patientId: options.patientId,
+          documentId: options.documentId,
+          originalError: error
+        }
+      );
     }
   }
   
   /**
-   * Get research results
+   * Get research results - read-only operation
+   * @returns A Result containing ResearchResult if successful, or error details if failed
    */
   async getResearchResults(
     workflowId: string,
     researchId: string
-  ): Promise<ResearchResult | null> {
+  ): Promise<Result<ResearchResult | null>> {
+    // Validate inputs
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'workflowId' }
+      );
+    }
+    
+    if (!researchId) {
+      return Result.failure(
+        'Research ID is required',
+        'RESEARCH_INVALID_INPUT',
+        { parameter: 'researchId' }
+      );
+    }
+  
     try {
-      // Get workflow state
-      const state = await workflowRepository.getWorkflowState(workflowId);
+      // Get workflow state using Result.fromPromise for error handling
+      const stateResult = await Result.fromPromise(
+        workflowRepository.getWorkflowState(workflowId)
+      );
+      
+      if (stateResult.isFailure()) {
+        return Result.failure(
+          `Failed to retrieve workflow state: ${stateResult.error.message}`,
+          stateResult.error.code || 'RESEARCH_STATE_RETRIEVAL_FAILED',
+          stateResult.error.details
+        );
+      }
+      
+      const state = stateResult.value;
       if (!state) {
-        return null;
+        return Result.success(null);
       }
       
       // Check if research ID matches
       if (state.metadata?.researchId !== researchId) {
-        // Try to find in event history
-        const events = await workflowEventSourcing.getEventHistory(workflowId, {
-          eventType: ['research_completed']
-        });
-        
-        // Find event with this research ID
-        for (const event of events) {
-          if (event.event_data?.researchId === researchId) {
-            // Return basic info from event
-            return {
-              researchId,
-              query: event.event_data.query,
-              success: true,
-              metadata: {
-                timestamp: event.occurred_at,
-                eventType: event.event_type,
-                ...event.event_data
-              }
-            };
+        try {
+          // Try to find in event history
+          const eventsResult = await Result.fromPromise(
+            workflowEventSourcing.getEventHistory(workflowId, {
+              eventType: ['research_completed']
+            })
+          );
+          
+          if (eventsResult.isFailure()) {
+            return Result.failure(
+              `Failed to retrieve event history: ${eventsResult.error.message}`,
+              eventsResult.error.code || 'RESEARCH_EVENT_RETRIEVAL_FAILED',
+              eventsResult.error.details
+            );
           }
+          
+          // Find event with this research ID
+          for (const event of eventsResult.value) {
+            if (event.event_data?.researchId === researchId) {
+              // Return basic info from event
+              const researchResult = {
+                researchId,
+                query: event.event_data.query,
+                success: true,
+                metadata: {
+                  timestamp: event.occurred_at,
+                  eventType: event.event_type,
+                  ...event.event_data
+                }
+              };
+              return Result.success(researchResult);
+            }
+          }
+          
+          // Research ID not found
+          return Result.success(null);
+        } catch (eventError) {
+          logger.error('Error retrieving research event history', {
+            workflowId,
+            researchId,
+            error: eventError instanceof Error ? eventError.message : String(eventError)
+          });
+          
+          return Result.failure(
+            'Failed to search event history for research',
+            'RESEARCH_EVENT_SEARCH_FAILED',
+            { workflowId, researchId, originalError: eventError }
+          );
         }
-        
-        return null;
       }
       
       // Get research content and metadata
@@ -291,7 +255,7 @@ export class ResearchWorkflow {
       const sources = state.metadata?.sources;
       
       // Return research data
-      return {
+      const researchResult = {
         researchId,
         query: state.metadata?.query as string,
         success: true,
@@ -305,15 +269,169 @@ export class ResearchWorkflow {
           ...state.metadata
         }
       };
+      
+      return Result.success(researchResult);
     } catch (err) {
       const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get research results', {
+      logger.error('Failed to get research results', {
         workflowId,
         researchId,
         error: normalizedError.message
       });
-      return null;
+      
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'RESEARCH_RETRIEVAL_FAILED',
+        {
+          workflowId,
+          researchId,
+          originalError: err
+        }
+      );
     }
+  }
+  
+  /**
+   * Implementation of required abstract method for domain-specific processing
+   */
+  protected async doProcess(
+    workflowId: string,
+    input: ResearchOptions,
+    currentState: WorkflowState,
+    options: WorkflowProcessOptions & {
+      progressCallback?: (progress: number, phase: ProcessingPhase) => void;
+    }
+  ): Promise<ResearchResult> {
+    const { userId, query, patientId, documentId, model, includeCitations, autoGenerateReport } = input;
+    const progressCallback = options.progressCallback || (() => {});
+    
+    // Generate research ID
+    const researchId = `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    
+    // Initial progress update
+    progressCallback(10, ProcessingPhase.RESEARCH);
+    
+    // Update progress during "processing"
+    progressCallback(20, ProcessingPhase.RESEARCH);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    progressCallback(40, ProcessingPhase.RESEARCH);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    progressCallback(60, ProcessingPhase.RESEARCH);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    progressCallback(80, ProcessingPhase.RESEARCH);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Simulate research results
+    const researchContent = this.simulateResearchResults(query);
+    
+    // Generate citation sources if requested
+    const sources = includeCitations
+      ? this.simulateCitationSources()
+      : undefined;
+    
+    // Log research completion event
+    await this.logEvent(
+      workflowId,
+      'research_completed',
+      {
+        researchId,
+        query,
+        timestamp: new Date().toISOString(),
+        userId,
+        patientId,
+        documentId,
+        contentLength: researchContent.length,
+        sourcesCount: sources?.length || 0,
+        transactionId: options.transactionId
+      }
+    );
+    
+    // Auto-generate report if requested
+    if (autoGenerateReport) {
+      // Transition to report_generation
+      await workflowStateManager.transitionState(
+        workflowId,
+        DomainOnlyWorkflowStep.RESEARCH,
+        'report_generation',
+        {
+          researchId,
+          researchCompletedAt: new Date().toISOString(),
+          researchContent,
+          sources,
+          reportGenerationStartedAt: new Date().toISOString(),
+          transactionId: options.transactionId
+        }
+      );
+    } else {
+      // Otherwise return to chat_in_progress or idle
+      const targetStep: WorkflowStep = currentState.currentStep === 'chat_in_progress'
+        ? 'chat_in_progress'
+        : 'idle';
+      
+      await workflowStateManager.transitionState(
+        workflowId,
+        DomainOnlyWorkflowStep.RESEARCH,
+        targetStep,
+        {
+          researchId,
+          researchCompletedAt: new Date().toISOString(),
+          researchContent,
+          sources,
+          transactionId: options.transactionId
+        }
+      );
+    }
+    
+    // Final progress update
+    progressCallback(100, ProcessingPhase.RESEARCH);
+    
+    // Return result
+    return {
+      researchId,
+      query,
+      success: true,
+      content: researchContent,
+      sources,
+      metadata: {
+        completedAt: new Date().toISOString(),
+        userId,
+        patientId,
+        documentId,
+        model,
+        autoGenerateReport
+      }
+    };
+  }
+  
+  /**
+   * Implementation of required abstract method for domain-specific error handling
+   * @deprecated Use Result pattern instead with Result.failure()
+   */
+  protected createErrorResult(
+    error: ApplicationError,
+    input: ResearchOptions
+  ): ResearchResult {
+    logger.warn(
+      'createErrorResult is deprecated. Use Result.failure() instead.',
+      { method: 'ResearchWorkflow.createErrorResult' }
+    );
+    
+    return {
+      researchId: '',
+      query: input.query,
+      success: false,
+      metadata: {
+        error: error.message,
+        code: error.code || 'RESEARCH_ERROR',
+        userId: input.userId,
+        patientId: input.patientId,
+        documentId: input.documentId
+      },
+      error: error.message
+    };
   }
   
   /**

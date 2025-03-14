@@ -1,10 +1,11 @@
-import { workflowMediator } from '@/lib/services/workflow/workflow-mediator';
+import { workflowCoordinator } from '@/lib/services/workflow/coordination/workflow-coordinator';
 import { workflowService } from '@/lib/services/workflow/workflow-service';
 import { eventService } from '@/lib/services/event-service';
 import { chatService } from '@/lib/services/chat/chat-service';
 import { EVENT_TYPES } from '@/lib/types/events';
 import { normalizeError } from '@/lib/errors';
 import logger from '@/lib/logger';
+import { ProcessingPhase } from '@/lib/types/workflow';
 
 import type {
   ChatMessage,
@@ -132,13 +133,18 @@ export class ChatWorkflowIntegration {
         currentSummary
       } as VerificationCorrectionEventPayload);
       
-      // Process the correction through the workflow mediator
-      const result = await workflowMediator.processCorrection(
+      // Process the correction through the workflow coordinator
+      const result = await workflowCoordinator.processVerificationCorrection({
         workflowId,
-        message.content,
+        chatId,
+        correctionText: message.content,
         currentSummary,
-        message.id
-      );
+        messageId: message.id,
+        onProgress: (progress, phase) => {
+          // Optionally handle progress updates here if needed
+          this.logger.debug('Correction processing progress', { progress, phase });
+        }
+      });
       
       // Add the updated summary as a message
       await chatService.saveMessage({
@@ -166,9 +172,28 @@ export class ChatWorkflowIntegration {
       const normalizedError = normalizeError(error);
       this.logger.error('Error handling correction message', {
         chatId,
+        workflowId,
         messageId: message.id,
-        error: normalizedError
+        errorCode: normalizedError.code,
+        error: normalizedError.message,
+        stack: normalizedError.stack
       });
+      
+      // Set workflow to error state
+      try {
+        await workflowService.updateWorkflowState(
+          workflowId,
+          'verification_in_progress',
+          {
+            error: normalizedError.message,
+            errorCode: normalizedError.code,
+            errorTimestamp: new Date().toISOString(),
+            correctionFailed: true
+          }
+        );
+      } catch (stateError) {
+        this.logger.warn('Failed to update workflow error state', { workflowId }, stateError);
+      }
       
       // Add error message to chat
       await chatService.saveMessage({
@@ -178,7 +203,8 @@ export class ChatWorkflowIntegration {
         createdAt: new Date(),
         metadata: {
           type: ChatMessageType.ERROR,
-          errorCode: normalizedError.code
+          errorCode: normalizedError.code,
+          errorDetails: normalizedError.data
         }
       }, chatId);
     }
@@ -218,8 +244,19 @@ export class ChatWorkflowIntegration {
         }
       }, chatId);
       
-      // Complete verification
-      const result = await workflowMediator.completeVerification(workflowId, true);
+      // Complete verification through workflow coordinator
+      const result = await workflowCoordinator.completeVerification(
+        workflowId,
+        {
+          isApproved: true,
+          chatId,
+          messageId: message.id,
+          onProgress: (progress, phase) => {
+            // Update processing message with progress
+            void chatService.updateMessageProgress(processingMessageId, progress, phase);
+          }
+        }
+      );
       
       // Add success message to chat
       await chatService.saveMessage({
@@ -237,9 +274,28 @@ export class ChatWorkflowIntegration {
       const normalizedError = normalizeError(error);
       this.logger.error('Error handling verification confirmation', {
         chatId,
+        workflowId,
         messageId: message.id,
-        error: normalizedError
+        errorCode: normalizedError.code,
+        error: normalizedError.message,
+        stack: normalizedError.stack
       });
+      
+      // Set workflow to error state
+      try {
+        await workflowService.updateWorkflowState(
+          workflowId,
+          'verification_failed',
+          {
+            error: normalizedError.message,
+            errorCode: normalizedError.code,
+            errorTimestamp: new Date().toISOString(),
+            verificationFailed: true
+          }
+        );
+      } catch (stateError) {
+        this.logger.warn('Failed to update workflow error state', { workflowId }, stateError);
+      }
       
       // Add error message to chat
       await chatService.saveMessage({
@@ -249,7 +305,8 @@ export class ChatWorkflowIntegration {
         createdAt: new Date(),
         metadata: {
           type: ChatMessageType.ERROR,
-          errorCode: normalizedError.code
+          errorCode: normalizedError.code,
+          errorDetails: normalizedError.data
         }
       }, chatId);
     }

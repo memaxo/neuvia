@@ -103,96 +103,134 @@ export class DocumentService {
   private readonly extractionService = new DocumentExtractionService()
   private readonly analysisService = new DocumentAnalysisService()
   private readonly storageService = new DocumentStorageService()
-
-  private readonly defaultExtractionOptions: EnhancedExtractionOptions = {
-    splitPages: true,
-    extractTables: true,
-    detectSections: true,
-    ocrImages: true,
-    preserveLayout: true,
-    maxPageLength: 5000,
+/**
+ * Process a document by extracting text, analyzing content, and saving if desired.
+ * Now integrates with the workflow system for better state management.
+ */
+public async processDocument(
+  file: File,
+  options?: DocumentProcessingOptions
+): Promise<ExtractedDocument> {
+  if (file === null || file === undefined) {
+    throw new ValidationError({
+      message: 'File is required',
+      code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
+    })
   }
 
-  private readonly maxFileSize = 20 * 1024 * 1024
+  const onStatusUpdate = options?.onStatusUpdate ?? (() => {})
+  // Start status
+  onStatusUpdate({
+    status: 'processing',
+    progress: 0,
+    currentStep: 'Starting document processing',
+    phase: ProcessingPhase.INITIALIZATION
+  })
 
-  /**
-   * Process a document by extracting text, analyzing content, and saving if desired.
-   */
-  public async processDocument(
-    file: File,
-    options?: DocumentProcessingOptions
-  ): Promise<ExtractedDocument> {
-    if (file === null || file === undefined) {
+  const moduleLogger = logger.withMetadata({
+    module: 'DocumentService',
+    method: 'processDocument',
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    patientId: options?.patientId ?? 'none'
+  })
+
+  // Create a workflow ID for this document processing task
+  const workflowId = randomUUID()
+  
+  try {
+    moduleLogger.info('Starting document processing using workflow', { workflowId })
+
+    // Validate file type
+    const isValidType = await this.validateFileType(file)
+    if (!isValidType) {
       throw new ValidationError({
-        message: 'File is required',
-        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT
+        message: `Unsupported file type: ${file.type}`,
+        code: DOCUMENT_ERROR_CODES.INVALID_FORMAT,
+        data: { fileType: file.type }
       })
     }
 
-    const onStatusUpdate = options?.onStatusUpdate ?? (() => {})
-    // Start status
-    onStatusUpdate({
-      status: 'processing',
-      progress: 0,
-      currentStep: 'Starting document processing', // Confirm currentStep is recognized
-      phase: ProcessingPhase.INITIALIZATION
-    })
-
-    const moduleLogger = logger.withMetadata({
-      module: 'DocumentService',
-      method: 'processDocument',
-      fileName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
-      patientId: options?.patientId ?? 'none'
-    })
-
-    try {
-      moduleLogger.info('Starting document processing')
-
-      // Validate file type
-      const isValidType = await this.validateFileType(file)
-      if (!isValidType) {
-        throw new ValidationError({
-          message: `Unsupported file type: ${file.type}`,
-          code: DOCUMENT_ERROR_CODES.INVALID_FORMAT,
-          data: { fileType: file.type }
-        })
-      }
-
-      // Validate file size
-      const isValidSize = await this.validateFileSize(file)
-      if (!isValidSize) {
-        throw new ValidationError({
-          message: `File size exceeds max of ${this.maxFileSize / (1024 * 1024)}MB`,
-          code: DOCUMENT_ERROR_CODES.SIZE_TOO_LARGE,
-          data: { fileSize: file.size, maxSize: this.maxFileSize }
-        })
-      }
-
-      // Extraction status
-      onStatusUpdate({
-        status: 'processing',
-        progress: 10,
-        currentStep: 'Extracting text from document',
-        phase: ProcessingPhase.EXTRACTION
+    // Validate file size
+    const isValidSize = await this.validateFileSize(file)
+    if (!isValidSize) {
+      throw new ValidationError({
+        message: `File size exceeds max of ${this.maxFileSize / (1024 * 1024)}MB`,
+        code: DOCUMENT_ERROR_CODES.SIZE_TOO_LARGE,
+        data: { fileSize: file.size, maxSize: this.maxFileSize }
       })
+    }
 
-      // Decide extraction level
-      const extractionLevel = options?.extractionLevel ?? this.getExtractionLevelForFile(file)
-
-      // Build extraction options
-      const extractionOptions: EnhancedExtractionOptions = {
-        ...this.defaultExtractionOptions,
-        splitPages: extractionLevel !== 'basic',
-        extractTables: extractionLevel !== 'basic',
-        detectSections: extractionLevel !== 'basic',
-        ocrImages: extractionLevel === 'comprehensive',
-        preserveLayout: extractionLevel === 'comprehensive',
+    // Import workflow domain service dynamically to avoid circular dependencies
+    const { documentWorkflow } = await import('../workflow/domain/document-workflow')
+    
+    // Process document through workflow
+    const processingResult = await documentWorkflow.processUpload(
+      workflowId,
+      file,
+      {
+        userId: options?.metadata?.uploadedBy as string || 'system',
+        patientId: options?.patientId,
+        documentType: options?.documentType || {
+          category: DocumentCategory.CLINICAL,
+          type: 'unknown'
+        },
+        autoExtract: true,
+        onProgress: (progress, phase) => {
+          onStatusUpdate({
+            status: 'processing',
+            progress,
+            currentStep: this.getStepDescription(phase),
+            phase
+          })
+        },
+        transactionId: options?.metadata?.transactionId as string
       }
+    )
+    
+    if (processingResult.isFailure()) {
+      throw new ApplicationError({
+        message: processingResult.error.message,
+        code: processingResult.error.code || DOCUMENT_ERROR_CODES.PROCESSING_ERROR,
+        data: processingResult.error.details
+      })
+    }
 
-      // Extract text with retry logic
-      const extractedData = await withRetry(
+    const result = processingResult.value
+    moduleLogger.info('Document successfully processed through workflow', {
+      documentId: result.documentId,
+      workflowId
+    })
+
+    // Decide extraction level
+    const extractionLevel = options?.extractionLevel ?? this.getExtractionLevelForFile(file)
+
+    // Build extraction options
+    const extractionOptions: EnhancedExtractionOptions = {
+      ...this.defaultExtractionOptions,
+      splitPages: extractionLevel !== 'basic',
+      extractTables: extractionLevel !== 'basic',
+      detectSections: extractionLevel !== 'basic',
+      ocrImages: extractionLevel === 'comprehensive',
+      preserveLayout: extractionLevel === 'comprehensive',
+    }
+
+    // Extract text with retry logic if not already done by workflow
+    // This is a fallback in case the workflow didn't perform the extraction
+    let extractedData: ExtractedData
+    if (result.content) {
+      extractedData = {
+        rawText: result.content,
+        metadata: {
+          ...result.metadata,
+          extractionMethod: 'workflow',
+          extractedAt: new Date().toISOString()
+        },
+        chunks: []
+      }
+    } else {
+      extractedData = await withRetry(
         async () => this.extractionService.extractText(file, extractionOptions),
         {
           maxRetries: 3,
@@ -212,118 +250,195 @@ export class DocumentService {
           }
         }
       )
+    }
 
-      // analyzing content
+    // Document type detection
+    let detectionResult: DetectionResultUnion
+    if (options?.documentType) {
+      detectionResult = { type: options.documentType, confidence: 1.0 }
+    } else if (result.metadata.documentType) {
+      detectionResult = {
+        type: result.metadata.documentType as DocumentType,
+        confidence: result.metadata.documentTypeConfidence as number || 0.9
+      }
+    } else {
       onStatusUpdate({
         status: 'processing',
         progress: 50,
         currentStep: 'Analyzing document content',
         phase: ProcessingPhase.ANALYSIS
       })
-
-      // Document type detection with retry logic
-      let detectionResult: DetectionResultUnion
-      if (options?.documentType) {
-        detectionResult = { type: options.documentType, confidence: 1.0 }
-      } else {
-        detectionResult = await withRetry(
-          async () => this.analysisService.detectDocumentType(extractedData.rawText),
-          {
-            maxRetries: 2,
-            baseDelay: 1000,
-            retryCondition: (error) => {
-              // Retry detection errors except validation errors
-              if (error instanceof ValidationError) {
-                return false;
-              }
-              
-              moduleLogger.warn('Document type detection error, retrying', {
-                error: error instanceof Error ? error.message : String(error)
-              });
-              
-              return true;
+      
+      detectionResult = await withRetry(
+        async () => this.analysisService.detectDocumentType(extractedData.rawText),
+        {
+          maxRetries: 2,
+          baseDelay: 1000,
+          retryCondition: (error) => {
+            // Retry detection errors except validation errors
+            if (error instanceof ValidationError) {
+              return false;
             }
+            
+            moduleLogger.warn('Document type detection error, retrying', {
+              error: error instanceof Error ? error.message : String(error)
+            });
+            
+            return true;
           }
-        )
-      }
-
-      if ('detectedSections' in detectionResult && detectionResult.detectedSections && detectionResult.detectedSections.length > 0) {
-        extractedData.metadata.detectedSections = detectionResult.detectedSections
-      }
-      extractedData.metadata.documentTypeConfidence = detectionResult.confidence
-
-      const documentId: UUID = randomUUID()
-      const timestamp = new Date().toISOString()
-
-      const finalDocType = detectionResult.type
-
-      const extractedDocument: ExtractedDocument = {
-        id: documentId,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        documentType: finalDocType,
-        patientId: options?.patientId,
-        extractedData,
-        isProcessed: true,
-        processingStatus: DocumentProcessingStatus.COMPLETED,
-        lifecycleStage: DocumentLifecycleStage.EXTRACTED
-      }
-
-      if (options?.patientId !== undefined && options.patientId !== null && options.patientId.trim() !== '') {
-        try {
-          const dbId = await this.saveDocument(extractedDocument, options.departmentId)
-          if (dbId !== documentId) {
-            extractedDocument.id = dbId
-          }
-        } catch (saveError) {
-          moduleLogger.warn('Document extracted but failed to save to DB', {
-            saveError: saveError instanceof Error ? saveError.message : String(saveError)
-          })
         }
+      )
+    }
+
+    if ('detectedSections' in detectionResult && detectionResult.detectedSections && detectionResult.detectedSections.length > 0) {
+      extractedData.metadata.detectedSections = detectionResult.detectedSections
+    }
+    extractedData.metadata.documentTypeConfidence = detectionResult.confidence
+
+    const documentId = result.documentId || randomUUID()
+    const timestamp = new Date().toISOString()
+
+    const finalDocType = detectionResult.type
+
+    const extractedDocument: ExtractedDocument = {
+      id: documentId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      documentType: finalDocType,
+      patientId: options?.patientId,
+      extractedData,
+      isProcessed: true,
+      processingStatus: DocumentProcessingStatus.COMPLETED,
+      lifecycleStage: DocumentLifecycleStage.EXTRACTED,
+      metadata: {
+        ...options?.metadata,
+        workflowId
       }
+    }
 
-      onStatusUpdate({
-        status: 'success',
-        progress: 100,
-        currentStep: 'Document extraction completed',
-        phase: ProcessingPhase.EXTRACTION
+    if (options?.patientId !== undefined && options.patientId !== null && options.patientId.trim() !== '') {
+      try {
+        const dbId = await this.saveDocument(extractedDocument, options.departmentId)
+        if (dbId !== documentId) {
+          extractedDocument.id = dbId
+        }
+      } catch (saveError) {
+        moduleLogger.warn('Document extracted but failed to save to DB', {
+          saveError: saveError instanceof Error ? saveError.message : String(saveError)
+        })
+      }
+    }
+
+    onStatusUpdate({
+      status: 'success',
+      progress: 100,
+      currentStep: 'Document extraction completed',
+      phase: ProcessingPhase.COMPLETION
+    })
+
+    return extractedDocument
+  } catch (error) {
+    const normError = normalizeError(error)
+    moduleLogger.error('Error processing document', {
+      errorCode: normError.code,
+      errorMessage: normError.message,
+      workflowId
+    }, normError)
+
+    onStatusUpdate({
+      status: 'error',
+      progress: 0,
+      error: normError.message,
+      phase: ProcessingPhase.ERROR
+    })
+
+    // Try to update the workflow state to reflect the error
+    try {
+      const { workflowEngine } = await import('../workflow/coordination/workflow-engine')
+      await workflowEngine.sendAction(workflowId, {
+        type: 'PROCESS_ERROR',
+        payload: {
+          error: normError.message,
+          errorCode: normError.code,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        }
       })
-
-      return extractedDocument
-    } catch (error) {
-      const normError = normalizeError(error)
-      moduleLogger.error('Error processing document', {
-        errorCode: normError.code,
-        errorMessage: normError.message
-      }, normError)
-
-      onStatusUpdate({
-        status: 'error',
-        progress: 0,
-        error: normError.message,
-        phase: ProcessingPhase.EXTRACTION
+    } catch (workflowError) {
+      // Just log if workflow update fails - this is not critical
+      moduleLogger.warn('Failed to update workflow error state', {
+        error: workflowError instanceof Error ? workflowError.message : String(workflowError)
       })
+    }
 
-      const errorId: UUID = randomUUID()
-      const ts = new Date().toISOString()
+    const errorId: UUID = randomUUID()
+    const ts = new Date().toISOString()
 
-      return {
-        id: errorId,
-        createdAt: ts,
-        updatedAt: ts,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        documentType: options?.documentType ?? {
-          category: DocumentCategory.CLINICAL,
-          type: 'unknown'
-        },
-        patientId: options?.patientId,
-        extractedData: {
-          rawText: '',
+    return {
+      id: errorId,
+      createdAt: ts,
+      updatedAt: ts,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      documentType: options?.documentType ?? {
+        category: DocumentCategory.CLINICAL,
+        type: 'unknown'
+      },
+      patientId: options?.patientId,
+      extractedData: {
+        rawText: '',
+        metadata: {
+          error: normError.message,
+          errorCode: normError.code,
+          workflowId
+        }
+      },
+      isProcessed: false,
+      processingError: normError.message,
+      processingStatus: DocumentProcessingStatus.FAILED,
+      lifecycleStage: DocumentLifecycleStage.FAILED,
+      metadata: {
+        workflowId,
+        errorDetails: normError.data
+      }
+    }
+  }
+}
+
+/**
+ * Get descriptive step name for UI display based on processing phase
+ */
+private getStepDescription(phase: ProcessingPhase): string {
+  switch (phase) {
+    case ProcessingPhase.INITIALIZATION:
+      return 'Starting document processing';
+    case ProcessingPhase.UPLOADING:
+      return 'Uploading document';
+    case ProcessingPhase.EXTRACTION:
+      return 'Extracting text from document';
+    case ProcessingPhase.EXTRACTION_COMPLETED:
+      return 'Text extraction completed';
+    case ProcessingPhase.ANALYSIS:
+      return 'Analyzing document content';
+    case ProcessingPhase.VERIFICATION:
+      return 'Verifying document data';
+    case ProcessingPhase.VERIFICATION_PENDING:
+      return 'Awaiting verification';
+    case ProcessingPhase.REPORT_GENERATION:
+      return 'Generating report';
+    case ProcessingPhase.COMPLETION:
+      return 'Processing completed';
+    case ProcessingPhase.ERROR:
+      return 'Processing error';
+    default:
+      return 'Processing document';
+  }
+}
           metadata: {
             error: normError.message,
             errorCode: normError.code

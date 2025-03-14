@@ -27,9 +27,29 @@ export type DbWorkflowStep = Database['public']['Enums']['workflow_step']
  * Use these for app-level logic that doesn't map directly to the DB step enum.
  */
 export enum DomainOnlyWorkflowStep {
+  // Report presentation step
   REPORT_PRESENTATION = 'report_presentation',
+  
+  // Research-related steps
   RESEARCH = 'research',
+  RESEARCH_ANALYSIS = 'research_analysis',
+  RESEARCH_QUERY = 'research_query',
+  RESEARCH_SUMMARIZATION = 'research_summarization',
+  
+  // Document-specific steps
+  DOCUMENT_ANALYSIS = 'document_analysis',
+  DOCUMENT_FORMATTING = 'document_formatting',
+  DOCUMENT_INDEXING = 'document_indexing',
+  DOCUMENT_PREVIEW = 'document_preview',
+  
+  // Additional verification steps
+  VERIFICATION_CORRECTION = 'verification_correction',
+  VERIFICATION_REVIEW = 'verification_review',
+  
+  // Error states
   ERROR = 'error',
+  RECOVERABLE_ERROR = 'recoverable_error',
+  PERMANENT_ERROR = 'permanent_error',
 }
 
 /**
@@ -42,36 +62,25 @@ export type WorkflowStep = DbWorkflowStep | DomainOnlyWorkflowStep
 /**
  * Convert a domain WorkflowStep to the corresponding database enum if possible.
  * For domain-only steps, return a suitable fallback.
+ * 
+ * @deprecated Use WorkflowStepMapper.toDatabaseStep instead for consistency
  */
 export function toDbWorkflowStep(step: WorkflowStep): DbWorkflowStep {
-  switch (step) {
-    case DomainOnlyWorkflowStep.REPORT_PRESENTATION:
-      // No direct DB equivalent; fallback to 'complete' or your choice:
-      return 'complete'
-    case DomainOnlyWorkflowStep.RESEARCH:
-      // Not in DB enum, pick a fallback:
-      return 'chat_in_progress'
-    case DomainOnlyWorkflowStep.ERROR:
-      // DB has 'chat_error', which might serve as an "error" fallback:
-      return 'chat_error'
-    default:
-      // Step is already a valid DbWorkflowStep
-      return step
-  }
+  // Import at function level to avoid circular dependency
+  const { WorkflowStepMapper } = require('@/lib/services/workflow/utils/step-mapper');
+  return WorkflowStepMapper.toDatabaseStep(step);
 }
 
 /**
  * Convert a DB workflow step to the domain WorkflowStep union.
  * If you have domain-only logic, interpret as needed.
- * For now, we directly return the DB step unless we want to map 'chat_error' => DomainOnlyWorkflowStep.ERROR, etc.
+ * 
+ * @deprecated Use WorkflowStepMapper.toDomainStep instead for consistency
  */
 export function fromDbWorkflowStep(dbStep: DbWorkflowStep): WorkflowStep {
-  switch (dbStep) {
-    case 'chat_error':
-      return DomainOnlyWorkflowStep.ERROR
-    default:
-      return dbStep
-  }
+  // Import at function level to avoid circular dependency
+  const { WorkflowStepMapper } = require('@/lib/services/workflow/utils/step-mapper');
+  return WorkflowStepMapper.toDomainStep(dbStep);
 }
 
 // ==========================================================================
@@ -89,10 +98,13 @@ export enum ProcessingPhase {
   EXTRACTION_COMPLETED = 'extraction_completed',
   ANALYSIS = 'analysis',
   VERIFICATION = 'verification',
+  VERIFICATION_PENDING = 'verification_pending',
+  VERIFICATION_COMPLETION = 'verification_completion',
   CORRECTION = 'correction',
   RESEARCH = 'research',
   REPORT_GENERATION = 'report_generation',
   REPORT_FORMATTING = 'report_formatting',
+  REPORT_PREVIEW = 'report_preview',
   COMPLETION = 'completion',
   ERROR = 'error',
 }
@@ -315,6 +327,12 @@ export const ALLOWED_TRANSITIONS: WorkflowTransition[] = [
     description: 'Document uploaded, starting extraction',
   },
   {
+    from: 'uploading',
+    to: DomainOnlyWorkflowStep.ERROR,
+    allowData: true,
+    description: 'Upload failed',
+  },
+  {
     from: 'extracting',
     to: 'verification',
     allowData: true,
@@ -325,6 +343,30 @@ export const ALLOWED_TRANSITIONS: WorkflowTransition[] = [
     to: 'verification_pending',
     allowData: true,
     description: 'Extraction complete, waiting for verification',
+  },
+  {
+    from: 'extracting',
+    to: 'complete',
+    allowData: true,
+    description: 'Extraction complete, skipping verification',
+  },
+  {
+    from: 'extracting',
+    to: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
+    allowData: true,
+    description: 'Analyzing extracted document content',
+  },
+  {
+    from: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
+    to: 'verification_pending',
+    allowData: true,
+    description: 'Analysis complete, ready for verification',
+  },
+  {
+    from: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
+    to: 'complete',
+    allowData: true,
+    description: 'Analysis complete, skipping verification',
   },
 
   // Verification flow

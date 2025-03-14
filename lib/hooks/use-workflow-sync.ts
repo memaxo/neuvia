@@ -5,8 +5,11 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 /**
  * This file originally contained references to:
  * - '@/lib/workflow/types'
- * - useChatStore, validateWorkflowTransition, WorkflowStateError, etc.
+ * - useChatStore, WorkflowStateError, etc.
  * - Complex subscription logic with partial code
+ * 
+ * Note: validateWorkflowTransition has been moved to workflowStateManager.validateTransition
+ * as the canonical validation method for all workflow transitions.
  * 
  * We'll provide a minimal version that compiles and doesn't produce errors.
  */

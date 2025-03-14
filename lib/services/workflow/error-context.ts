@@ -1,6 +1,7 @@
 import { normalizeError } from '@/lib/errors';
 import type { WorkflowStep } from '@/lib/types/workflow';
 import type { ApplicationError } from '@/lib/errors';
+import { WorkflowStepMapper } from './utils/step-mapper';
 
 export interface ErrorContextOptions {
   error: string;
@@ -47,6 +48,17 @@ export class WorkflowErrorContextBuilder {
     // Normalize the error type to a known value
     const normalizedType = this.normalizeErrorType(errorType);
     
+    // Determine domain from current step if available
+    const domain = WorkflowStepMapper.getDomainFromStep(currentStep);
+    
+    // Enhance details with domain-specific information
+    const enhancedDetails = {
+      ...details,
+      domain,
+      domainErrorStep: domain ? WorkflowStepMapper.getDomainErrorStep(domain) : undefined,
+      isStepInDomain: domain ? true : false
+    };
+    
     return {
       errorMessage: error,
       errorCode,
@@ -59,7 +71,7 @@ export class WorkflowErrorContextBuilder {
       clientId: typeof localStorage !== 'undefined'
         ? localStorage.getItem('neuvia_client_id') ?? undefined
         : undefined,
-      details
+      details: enhancedDetails
     };
   }
   

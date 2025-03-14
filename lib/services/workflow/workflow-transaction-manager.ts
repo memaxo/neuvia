@@ -3,19 +3,26 @@
  *
  * Provides reliable transaction management for complex workflow operations
  * that require coordination between multiple services and atomic updates.
- *
+ * 
  * Features:
  * - Atomic operation execution with proper error handling
  * - Automatic progress tracking and notifications
  * - Transaction logging for audit trails
  * - Built-in recovery mechanisms
+ * 
+ * This is a simplified version that delegates responsibilities to specialized components:
+ * - TransactionExecutor: Handles core transaction execution and retry logic
+ * - ProgressTracker: Manages progress updates and notifications
+ * - ConcurrencyStrategy: Handles concurrency control and conflict resolution
  */
 
-import { workflowService } from './core/workflow-service';
-import { eventService } from '@/lib/services/event-service';
 import { ApplicationError, normalizeError } from '@/lib/errors';
-import { EVENT_TYPES } from '@/lib/types/events';
 import logger from '@/lib/logger';
+import { workflowService } from './core/workflow-service';
+import { simpleTransactionManager, SimpleTransactionOptions, SimpleTransactionResult } from './transaction/simple-transaction-manager';
+import { transactionExecutor } from './transaction/transaction-executor';
+import { createProgressTracker } from './transaction/progress-tracker';
+import { concurrencyStrategy } from './transaction/concurrency-strategy';
 
 import type { WorkflowStep, ProcessingPhase, WorkflowState } from '@/lib/types/workflow';
 import { DomainOnlyWorkflowStep } from '@/lib/types/workflow';
@@ -90,12 +97,54 @@ export interface TransactionResult<T> {
 
 /**
  * Class for managing workflow transactions with atomicity and recovery
+ * Delegates to specialized components for specific responsibilities
  */
 export class WorkflowTransactionManager {
   private readonly logger = logger.withMetadata({ module: 'WorkflowTransactionManager' });
   
   /**
+   * Execute a simple transaction with minimal configuration
+   * Delegates to SimpleTransactionManager for streamlined processing
+   */
+  async executeSimpleTransaction<T>(
+    workflowId: string,
+    operation: () => Promise<T>,
+    options: SimpleTransactionOptions = {}
+  ): Promise<SimpleTransactionResult<T>> {
+    return simpleTransactionManager.executeTransaction(
+      workflowId,
+      operation,
+      options
+    );
+  }
+  
+  /**
+   * Execute a read-only transaction (no state changes)
+   */
+  async executeReadTransaction<T>(
+    workflowId: string,
+    operation: () => Promise<T>
+  ): Promise<SimpleTransactionResult<T>> {
+    return simpleTransactionManager.executeReadTransaction(
+      workflowId,
+      operation
+    );
+  }
+  
+  /**
+   * Check if a transaction can be simplified
+   */
+  private isSimpleTransaction(options: TransactionOptions): boolean {
+    // Simple transactions don't need complex features
+    return !options.maxRetries &&
+           !options.isRecoverableError &&
+           !options.withNotifications &&
+           options.onProgress === undefined;
+  }
+  
+  /**
    * Execute a workflow operation with proper transaction handling
+   * This simplified implementation delegates to specialized components
    *
    * @param workflowId Workflow ID
    * @param operation Function that performs the operation
@@ -110,40 +159,18 @@ export class WorkflowTransactionManager {
     ) => Promise<T>,
     options: TransactionOptions
   ): Promise<TransactionResult<T>> {
+    // Auto-detect and delegate simple transactions
+    if (this.isSimpleTransaction(options)) {
+      return this.handleSimpleTransaction(workflowId, operation, options);
+    }
+    
+    // For complex transactions, delegate to specialized components
     const transactionId = options.transactionId || crypto.randomUUID();
     const startTime = Date.now();
     let retryCount = 0;
     
-    // Initialize transaction log
-    const transactionLogs: Array<{
-      timestamp: string;
-      level: 'info' | 'warn' | 'error';
-      message: string;
-      data?: Record<string, unknown>;
-    }> = [];
-    
-    // Helper to add log entries
-    const logTransaction = (
-      level: 'info' | 'warn' | 'error',
-      message: string,
-      data?: Record<string, unknown>
-    ) => {
-      const entry = {
-        timestamp: new Date().toISOString(),
-        level,
-        message,
-        data
-      };
-      transactionLogs.push(entry);
-      
-      if (level === 'info') {
-        this.logger.info(message, data);
-      } else if (level === 'warn') {
-        this.logger.warn(message, data);
-      } else {
-        this.logger.error(message, data || {});
-      }
-    };
+    // Initialize transaction logger
+    const { log: logTransaction, getLogs } = transactionExecutor.createTransactionLogger(transactionId);
     
     // Create transaction metadata
     const transactionMetadata = {
@@ -173,87 +200,36 @@ export class WorkflowTransactionManager {
       );
       
       // Update workflow step with transaction info
-      await workflowService.updateWorkflowState(
+      await concurrencyStrategy.updateStateWithConcurrencyControl(
         workflowId,
         options.step,
         transactionMetadata,
         {
           skipValidation: options.skipValidation,
-          conflictStrategy: options.conflictStrategy as any
+          strategy: options.conflictStrategy
         }
       );
       
-      // Create progress tracking function
-      let lastProgress = 0;
-      let lastPhase: ProcessingPhase | undefined;
-      
-      const progressCallback = async (progress: number, phase: ProcessingPhase) => {
-        // Skip duplicate updates
-        if (progress === lastProgress && phase === lastPhase) {
-          return;
-        }
-        
-        lastProgress = progress;
-        lastPhase = phase;
-        
-        // Log significant progress changes
-        if (progress % 20 === 0 || progress === 100) {
-          logTransaction('info', `Transaction progress: ${progress}%`, {
-            transactionId,
-            progress,
-            phase: phase.toString()
-          });
-        }
-        
-        // Update workflow progress
-        try {
-          if (options.withNotifications && options.chatId) {
-            // With notification message
-            await workflowService.updateWithChatMessage(
-              workflowId,
-              options.step,
-              {
-                transactionId,
-                progress,
-                phase: phase.toString(),
-                timestamp: new Date().toISOString()
-              },
-              `Operation progress: ${progress}% (${phase})`,
-              'system',
-              {
-                type: 'progress_update',
-                transactionId,
-                progress,
-                phase: phase.toString()
-              }
-            );
-          } else {
-            // Without notification
-            await workflowService.updateProgress(
-              workflowId,
-              progress,
-              phase,
-              options.step
-            );
-          }
-        } catch (progressError) {
-          logTransaction('warn', 'Failed to update progress', {
-            error: progressError instanceof Error ? progressError.message : String(progressError)
-          });
-        }
-        
-        // Call external progress handler if provided
-        if (options.onProgress) {
-          options.onProgress(progress, phase);
-        }
-      };
+      // Create progress tracker
+      const progressTracker = createProgressTracker({
+        workflowId,
+        transactionId,
+        step: options.step,
+        withNotifications: options.withNotifications,
+        chatId: options.chatId,
+        onProgress: options.onProgress,
+        logger: logTransaction
+      });
       
       // Set initial progress
-      await progressCallback(5, ProcessingPhase.INITIALIZATION);
+      await progressTracker.updateProgress(5, ProcessingPhase.INITIALIZATION);
       
-      // Execute the operation
-      const result = await this.executeWithRetry(
-        async () => operation(progressCallback, transactionId),
+      // Execute the operation with retry
+      const result = await transactionExecutor.executeWithRetry(
+        async () => operation(
+          progressTracker.createProgressCallback(), 
+          transactionId
+        ),
         {
           maxRetries: options.maxRetries || 0,
           isRecoverable: options.isRecoverableError,
@@ -268,57 +244,10 @@ export class WorkflowTransactionManager {
       );
       
       // Set final progress
-      await progressCallback(100, ProcessingPhase.COMPLETION);
+      await progressTracker.updateProgress(100, ProcessingPhase.COMPLETION);
       
-      // Update workflow step to mark completion
-      const finalMetadata = {
-        transactionId,
-        completedAt: new Date().toISOString(),
-        startedAt: new Date(startTime).toISOString(),
-        duration: Date.now() - startTime,
-        success: true,
-        ...(options.metadata || {})
-      };
-      
-      if (options.withNotifications && options.chatId) {
-        await workflowService.updateWithChatMessage(
-          workflowId,
-          options.step,
-          finalMetadata,
-          `Operation completed successfully`,
-          'system',
-          {
-            type: 'transaction_completed',
-            transactionId,
-            success: true
-          }
-        );
-      } else {
-        await workflowService.updateWorkflowState(
-          workflowId,
-          options.step,
-          finalMetadata
-        );
-      }
-      
-      // Log transaction completion
-      logTransaction('info', 'Transaction completed successfully', {
-        transactionId,
-        duration: Date.now() - startTime
-      });
-      
-      // Log completion event
-      await workflowService.logWorkflowEvent(
-        workflowId,
-        'transaction_completed',
-        {
-          transactionId,
-          step: options.step,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - startTime,
-          success: true
-        }
-      );
+      // Update workflow state for completion
+      await progressTracker.updateCompletion(true);
       
       // Fetch final workflow state
       const finalState = await workflowService.getWorkflowState(workflowId);
@@ -327,126 +256,40 @@ export class WorkflowTransactionManager {
       return {
         data: result,
         transactionId,
-        workflowState: finalState ? {
-          currentStep: finalState.currentStep,
-          progress: finalState.progress,
-          phase: finalState.phase as ProcessingPhase | undefined,
-          error: finalState.error || null,
-          metadata: finalState.metadata || {},
-          timestamp: finalState.timestamp
-        } : undefined,
+        workflowState: finalState,
         metrics: {
           startTime,
           endTime: Date.now(),
           duration: Date.now() - startTime,
           retryCount
         },
-        logs: transactionLogs
+        logs: getLogs()
       };
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      // Log transaction failure
-      logTransaction('error', 'Transaction failed', {
-        transactionId,
-        error: errorMessage,
-        duration: Date.now() - startTime
-      });
-      
-      // Log failure event
-      await workflowService.logWorkflowEvent(
+      // Handle transaction failure
+      await transactionExecutor.handleTransactionFailure(
         workflowId,
-        'transaction_failed',
+        transactionId,
+        error,
         {
-          transactionId,
           step: options.step,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - startTime,
-          error: errorMessage
+          recoveryStep: options.recoveryStep,
+          startTime,
+          withNotifications: options.withNotifications,
+          chatId: options.chatId,
+          logger: { log: logTransaction, getLogs }
         }
       );
       
-      // Try to recover using specified recovery step
-      const recoveryStep = options.recoveryStep || DomainOnlyWorkflowStep.ERROR;
-      let recovered = false;
-      
-      try {
-        recovered = await workflowService.recoverWorkflowState(
-          workflowId,
-          recoveryStep,
-          {
-            transactionId,
-            error: errorMessage,
-            errorTimestamp: new Date().toISOString(),
-            originalStep: options.step
-          }
-        );
-        
-        if (recovered) {
-          logTransaction('info', 'Successfully recovered workflow state', {
-            transactionId,
-            recoveryStep
-          });
-        }
-      } catch (recoveryError) {
-        logTransaction('error', 'Recovery failed', {
-          transactionId,
-          error: recoveryError instanceof Error ? recoveryError.message : String(recoveryError)
-        });
-      }
-      
-      // If recovery failed or not requested, update to error state
-      if (!recovered) {
-        try {
-          if (options.withNotifications && options.chatId) {
-            await workflowService.updateWithChatMessage(
-              workflowId,
-              DomainOnlyWorkflowStep.ERROR,
-              {
-                transactionId,
-                error: errorMessage,
-                errorTimestamp: new Date().toISOString(),
-                originalStep: options.step
-              },
-              `Operation failed: ${errorMessage}`,
-              'system',
-              {
-                type: 'transaction_error',
-                transactionId,
-                error: errorMessage
-              }
-            );
-          } else {
-            await workflowService.updateWorkflowState(
-              workflowId,
-              DomainOnlyWorkflowStep.ERROR,
-              {
-                transactionId,
-                error: errorMessage,
-                errorTimestamp: new Date().toISOString(),
-                originalStep: options.step
-              },
-              { forceUpdate: true }
-            );
-          }
-        } catch (updateError) {
-          logTransaction('error', 'Failed to update error state', {
-            transactionId,
-            error: updateError instanceof Error ? updateError.message : String(updateError)
-          });
-        }
-      }
-      
-      // Rethrow with transaction details
-      const enhancedError = new ApplicationError({
-        message: errorMessage,
-        code: 'TRANSACTION_FAILED',
-        data: {
+      // Create enhanced error with transaction details
+      const enhancedError = transactionExecutor.createEnhancedError(
+        error,
+        {
           transactionId,
           workflowId,
           step: options.step,
-          logs: transactionLogs,
+          logs: getLogs(),
           metrics: {
             startTime,
             endTime: Date.now(),
@@ -454,71 +297,61 @@ export class WorkflowTransactionManager {
             retryCount
           }
         }
-      });
+      );
       
       throw enhancedError;
     }
   }
   
   /**
-   * Execute an operation with automatic retries for recoverable errors
+   * Handle simple transaction (delegated to SimpleTransactionManager)
    */
-  private async executeWithRetry<T>(
-    operation: () => Promise<T>,
-    options: {
-      maxRetries: number;
-      isRecoverable?: (error: unknown) => boolean;
-      onRetry?: (error: unknown, attemptNumber: number) => void;
-      backoffFactor?: number;
-      initialDelay?: number;
-    }
-  ): Promise<T> {
-    const {
-      maxRetries,
-      isRecoverable = (error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        // Default recoverable errors are network or timeout errors
-        return message.toLowerCase().includes('network') ||
-               message.toLowerCase().includes('timeout') ||
-               message.toLowerCase().includes('connection');
-      },
-      onRetry,
-      backoffFactor = 2,
-      initialDelay = 1000
-    } = options;
-    
-    let attemptNumber = 0;
-    let lastError: unknown;
-    
-    while (attemptNumber <= maxRetries) {
-      try {
-        return await operation();
-      } catch (error) {
-        lastError = error;
-        
-        // Check if we should retry
-        if (attemptNumber < maxRetries && isRecoverable(error)) {
-          attemptNumber++;
-          
-          // Notify about retry
-          if (onRetry) {
-            onRetry(error, attemptNumber);
+  private async handleSimpleTransaction<T>(
+    workflowId: string,
+    operation: (
+      progressCallback: (progress: number, phase: ProcessingPhase) => void,
+      transactionId: string
+    ) => Promise<T>,
+    options: TransactionOptions
+  ): Promise<TransactionResult<T>> {
+    const simpleResult = await this.executeSimpleTransaction(
+      workflowId,
+      async () => {
+        // Simple progress callback
+        const progressCallback = (progress: number, phase: ProcessingPhase) => {
+          if (options.onProgress) {
+            options.onProgress(progress, phase);
           }
-          
-          // Calculate backoff delay
-          const delay = initialDelay * Math.pow(backoffFactor, attemptNumber - 1);
-          
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          // Don't retry, just throw
-          throw error;
-        }
+        };
+        
+        // Execute operation with simplified interface
+        return operation(progressCallback, options.transactionId || crypto.randomUUID());
+      },
+      {
+        step: options.step,
+        errorStep: options.recoveryStep || DomainOnlyWorkflowStep.ERROR,
+        metadata: options.metadata,
+        transactionId: options.transactionId
       }
-    }
+    );
     
-    // Should never reach here, but TypeScript requires a return
-    throw lastError;
+    // Convert to full transaction result format
+    if (simpleResult.success) {
+      return {
+        data: simpleResult.data,
+        transactionId: simpleResult.transactionId,
+        workflowState: await workflowService.getWorkflowState(workflowId),
+        metrics: {
+          startTime: Date.now() - 1000, // Approximate
+          endTime: Date.now(),
+          duration: 1000, // Approximate
+          retryCount: 0
+        },
+        logs: []
+      };
+    } else {
+      throw new Error(simpleResult.error);
+    }
   }
 }
 

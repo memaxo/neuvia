@@ -11,6 +11,7 @@ import { workflowEventSourcing } from './workflow-event-source'
 import { ApplicationError, normalizeError } from '@/lib/errors'
 import logger from '@/lib/logger'
 import { ALLOWED_TRANSITIONS, DomainOnlyWorkflowStep } from '@/lib/types/workflow'
+import { getDomainConcurrencyConfig } from '../domain/domain-concurrency-config'
 
 import type { 
   WorkflowStep, 
@@ -30,7 +31,7 @@ export interface TransitionOptions {
   forceUpdate?: boolean;
   
   /** Strategy for handling conflicts */
-  conflictStrategy?: 'fail' | 'force' | 'merge';
+  conflictStrategy?: 'fail' | 'force' | 'merge' | 'append' | 'field-specific';
   
   /** Expected timestamp for optimistic concurrency control */
   expectedTimestamp?: string;
@@ -40,6 +41,9 @@ export interface TransitionOptions {
   
   /** Transaction ID for tracking operations */
   transactionId?: string;
+  
+  /** Domain name for domain-specific conflict resolution */
+  domain?: string;
 }
 
 /**
@@ -76,11 +80,28 @@ export class WorkflowStateManager {
       const {
         skipValidation = false,
         forceUpdate = false,
-        conflictStrategy = 'pessimistic',
+        domain,
         expectedTimestamp,
         logEvent = true,
         transactionId = crypto.randomUUID()
       } = options;
+      
+      // Get domain-specific conflict strategy if domain is provided
+      let conflictStrategy = options.conflictStrategy;
+      if (domain && !conflictStrategy) {
+        const domainConfig = getDomainConcurrencyConfig(domain);
+        conflictStrategy = domainConfig.defaultStrategy;
+      } else if (!conflictStrategy) {
+        conflictStrategy = 'fail'; // Default to fail-safe if no domain or explicit strategy
+      }
+      
+      // Log domain-specific strategy being used
+      this.logger.debug('Using conflict strategy for state transition', {
+        domain,
+        conflictStrategy,
+        fromStep,
+        toStep
+      });
       
       // Validate transition if not skipped
       if (!skipValidation && !forceUpdate) {
@@ -106,7 +127,8 @@ export class WorkflowStateManager {
         transitionTimestamp: new Date().toISOString(),
         transactionId,
         fromStep,
-        toStep
+        toStep,
+        domain // Include domain in metadata for traceability
       };
       
       // Log transition event if requested
@@ -119,9 +141,20 @@ export class WorkflowStateManager {
             toStep,
             reason: metadata.reason,
             timestamp: transitionMetadata.transitionTimestamp,
-            transactionId
+            transactionId,
+            domain // Include domain in event data
           }
         );
+      }
+      
+      // Map domain-specific strategies to repository strategies
+      let repoStrategy: 'fail' | 'force' | 'merge';
+      if (conflictStrategy === 'field-specific' || conflictStrategy === 'append') {
+        repoStrategy = 'merge'; // Both field-specific and append use merge at the repo level
+      } else if (conflictStrategy === 'pessimistic' || conflictStrategy === 'optimistic') {
+        repoStrategy = 'fail'; // Pessimistic and optimistic use fail at the repo level (with expectedTimestamp)
+      } else {
+        repoStrategy = conflictStrategy as any;
       }
       
       // Update state with concurrency control
@@ -131,7 +164,7 @@ export class WorkflowStateManager {
         transitionMetadata,
         {
           expectedTimestamp,
-          conflictStrategy: conflictStrategy as any,
+          conflictStrategy: repoStrategy,
           skipValidation,
           forceUpdate
         }
@@ -228,12 +261,13 @@ export class WorkflowStateManager {
   }
   
   /**
-   * Handle workflow error with proper state transition
+   * Handle workflow error with domain-specific error states
+   * Maps errors to the appropriate domain-specific error step based on the current context
    */
   async handleError(
     workflowId: string,
     error: unknown,
-    currentStep: WorkflowStep,
+    fallbackErrorStep: WorkflowStep,
     errorDetails: Record<string, unknown> = {}
   ): Promise<WorkflowState> {
     try {
@@ -241,29 +275,117 @@ export class WorkflowStateManager {
       const errorTimestamp = new Date().toISOString();
       const transactionId = crypto.randomUUID();
       
-      // Log error event
+      // Get current workflow state to determine context
+      let currentState;
+      try {
+        currentState = await workflowRepository.getWorkflowState(workflowId);
+      } catch (stateError) {
+        // If we can't get the state, continue with fallback error step
+        this.logger.warn('Unable to get workflow state during error handling', { 
+          workflowId, 
+          error: stateError instanceof Error ? stateError.message : String(stateError) 
+        });
+      }
+      
+      const currentStep = currentState?.currentStep || fallbackErrorStep;
+      
+      // Check if the error is related to concurrency issues
+      const isConcurrencyError = 
+        errorMessage.includes('conflict') || 
+        errorMessage.includes('concurrency') || 
+        errorMessage.includes('optimistic lock') ||
+        errorDetails.reason === 'concurrency_conflict';
+      
+      // Use domain from error details, metadata, or infer from step name
+      const domainName = errorDetails.domain as string || 
+                       currentState?.metadata?.domain as string || 
+                       this.getDomainFromStep(currentStep);
+      
+      // Get appropriate error step for the domain
+      let targetErrorStep: WorkflowStep;
+      
+      if (domainName) {
+        // Get domain-specific configuration for error handling
+        const domainConfig = getDomainConcurrencyConfig(domainName);
+        
+        this.logger.debug('Using domain-specific error handling', { 
+          workflowId, 
+          domain: domainName,
+          currentStep
+        });
+        
+        // Domain-specific error mapping
+        if (domainName === 'Chat') {
+          targetErrorStep = 'chat_error';
+        } else if (domainName === 'Verification') {
+          targetErrorStep = 'verification_failed';
+        } else if (domainName === 'Document') {
+          targetErrorStep = 'document_error';
+        } else if (domainName === 'Report') {
+          targetErrorStep = 'report_generation_error';
+        } else if (domainName === 'Research') {
+          targetErrorStep = 'research_error';
+        } else {
+          // Use fallback if domain doesn't have a specific error step
+          targetErrorStep = fallbackErrorStep;
+        }
+      } else if (isConcurrencyError) {
+        // For concurrency errors without domain context, use generic error
+        targetErrorStep = DomainOnlyWorkflowStep.ERROR;
+        errorDetails = {
+          ...errorDetails,
+          errorType: 'concurrency_conflict',
+          conflictTimestamp: errorTimestamp
+        };
+      } else {
+        // Use fallback error step if no domain context available
+        targetErrorStep = fallbackErrorStep;
+      }
+      
+      // Enhance error details with domain information if available
+      if (domainName) {
+        errorDetails = {
+          ...errorDetails,
+          domain: domainName
+        };
+      }
+      
+      // Log error with enhanced context
+      this.logger.error('Handling workflow error with domain context', {
+        workflowId,
+        error: errorMessage,
+        domain: domainName,
+        currentStep,
+        targetErrorStep
+      });
+      
+      // Log error event with enhanced domain context
       await workflowEventSourcing.appendEvent(
         workflowId,
         'error_occurred',
         {
           error: errorMessage,
           step: currentStep,
+          targetErrorStep,
           details: errorDetails,
           timestamp: errorTimestamp,
-          transactionId
+          transactionId,
+          domain: domainName
         }
       );
       
-      // Try to recover to error state
+      // Try to recover to the appropriate error state
       const recovered = await workflowRepository.recoverState(
         workflowId,
-        DomainOnlyWorkflowStep.ERROR,
+        targetErrorStep,
         {
           error: errorMessage,
           errorDetails,
           errorTimestamp,
           previousStep: currentStep,
-          transactionId
+          transactionId,
+          errorType: errorDetails.errorType || 'domain_error',
+          domain: domainName
         }
       );
       
@@ -271,13 +393,15 @@ export class WorkflowStateManager {
         // Fall back to direct update if recovery failed
         await workflowRepository.updateWorkflowState(
           workflowId,
-          DomainOnlyWorkflowStep.ERROR,
+          targetErrorStep,
           {
             error: errorMessage,
             errorDetails,
             errorTimestamp,
             previousStep: currentStep,
-            transactionId
+            transactionId,
+            errorType: errorDetails.errorType || 'domain_error',
+            domain: domainName
           },
           { forceUpdate: true }
         );
@@ -299,15 +423,23 @@ export class WorkflowStateManager {
         handlerError: normalizedError.message
       });
       
-      // Return minimal state with error
+      // Determine fallback error state based on current step context if we can
+      let fallbackErrorStep: WorkflowStep = DomainOnlyWorkflowStep.ERROR;
+      if (errorDetails.domain === 'Chat' || errorDetails.domain === 'chat') {
+        fallbackErrorStep = 'chat_error';
+      } else if (errorDetails.domain === 'Verification' || errorDetails.domain === 'verification') {
+        fallbackErrorStep = 'verification_failed';
+      }
+      
+      // Return minimal state with appropriate error step
       return {
-        currentStep: DomainOnlyWorkflowStep.ERROR,
+        currentStep: fallbackErrorStep,
         progress: 0,
         error: error instanceof Error ? error.message : String(error),
         metadata: {
           errorDetails,
           errorTimestamp: new Date().toISOString(),
-          previousStep: currentStep
+          previousStep: errorDetails.currentStep as string || 'unknown'
         },
         timestamp: new Date().toISOString()
       };
@@ -364,7 +496,11 @@ export class WorkflowStateManager {
   }
   
   /**
-   * Validate if a transition is allowed according to the state machine rules
+   * validateTransition is the single canonical method for checking transitions.
+   * Do not replicate or introduce separate validation in workflow-service.ts.
+   * 
+   * This is the authoritative source of validation logic for workflow state transitions.
+   * Any changes to transition rules should happen here and only here.
    */
   validateTransition(
     fromStep: WorkflowStep,
@@ -415,20 +551,28 @@ export class WorkflowStateManager {
       };
     }
 
-    // If transition is to ERROR, ensure there's some error info in metadata if required
-    if (toStep === 'error' && transition.requireData === true) {
-      const maybeHasError = metadata?.error;
-      if (typeof maybeHasError !== 'string') {
-        return {
-          isValid: false,
-          error: 'Error transitions require an error message in metadata',
-          transition,
-          details: { reason: 'missing_error_info' },
-        };
-      }
+    return {
+      isValid: true,
+      transition,
+    };
+  }
+  
+  /**
+   * Infer domain from workflow step name
+   */
+  private getDomainFromStep(step: WorkflowStep): string | undefined {
+    if (step.startsWith('chat_')) {
+      return 'Chat';
+    } else if (step.startsWith('verification_')) {
+      return 'Verification';
+    } else if (step.startsWith('document_') || step === 'uploading' || step === 'extracting') {
+      return 'Document';
+    } else if (step.startsWith('report_') || step === 'report_generation') {
+      return 'Report';
+    } else if (step.startsWith('research_')) {
+      return 'Research';
     }
-
-    return { isValid: true, transition, details: {} };
+    return undefined;
   }
 }
 

@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react'
 import { ProcessingPhase, DomainOnlyWorkflowStep } from '@/lib/types/workflow'
-import { useWorkflow } from '../use-workflow'
+import { createWorkflowHook } from './create-workflow-hook'
 import { workflowService } from '@/lib/services/workflow/core/workflow-service'
-import { useWorkflowErrorHandler } from '../workflow-error-handler'
 import { normalizeError } from '@/lib/errors'
 
 export interface UseReportWorkflowOptions {
@@ -23,24 +22,212 @@ export interface ReportData {
   error?: string
 }
 
+// Input type for report workflow actions
+interface ReportInput {
+  action: 'generate' | 'format' | 'info' | 'reset'
+  patientId?: string
+  documentIds?: string[]
+  generateType?: string
+  reportId?: string
+  format?: string
+  additionalNotes?: string
+}
+
+// Result type for report workflow actions
+interface ReportResult {
+  success: boolean
+  reportId?: string
+  title?: string
+  content?: string
+  format?: string
+  generatedAt?: string
+  documentIds?: string[]
+  patientId?: string
+  error?: string
+}
+
+// State type for report workflow
+interface ReportState extends ReportData {}
+
+/**
+ * Domain actions for report workflow
+ */
+const reportWorkflowActions = {
+  domainName: 'Report',
+  initialStep: 'idle' as const,
+  
+  /**
+   * Get initial report state
+   */
+  getInitialState: (): ReportState => ({
+    status: 'idle'
+  }),
+  
+  /**
+   * Process report workflow action
+   */
+  processAction: async (
+    input: ReportInput,
+    options: {
+      workflowId: string
+      userId?: string
+      onProgress?: (progress: number, phase: ProcessingPhase) => void
+    }
+  ): Promise<ReportResult> => {
+    const { action } = input
+    const { workflowId, userId, onProgress } = options
+    
+    if (!workflowId) {
+      throw new Error('Workflow not initialized. Make sure userId is provided.')
+    }
+    
+    if (action === 'generate') {
+      if (!input.patientId) {
+        throw new Error('Patient ID is required for report generation')
+      }
+      
+      // Use the report workflow to generate the report
+      const result = await workflowService.generateReport(
+        workflowId,
+        {
+          patientId: input.patientId,
+          documentIds: input.documentIds,
+          generateType: input.generateType,
+          userId: userId,
+          progressCallback: onProgress
+        }
+      )
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate report')
+      }
+      
+      return {
+        success: true,
+        reportId: result.reportId,
+        content: result.content,
+        title: result.title,
+        format: input.format || 'markdown',
+        generatedAt: new Date().toISOString(),
+        documentIds: input.documentIds,
+        patientId: input.patientId
+      }
+    }
+    else if (action === 'format' && input.reportId && input.format) {
+      // Format the report
+      const result = await workflowService.formatReport(
+        workflowId,
+        input.reportId,
+        { format: input.format }
+      )
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to format report')
+      }
+      
+      return {
+        success: true,
+        reportId: input.reportId,
+        format: input.format,
+        content: result.content,
+        title: result.title
+      }
+    }
+    else if (action === 'info' && input.reportId) {
+      // Get the report
+      const result = await workflowService.getReport(
+        workflowId,
+        input.reportId
+      )
+      
+      if (!result || !result.success) {
+        throw new Error('Failed to get report')
+      }
+      
+      return {
+        success: true,
+        reportId: input.reportId,
+        title: result.title,
+        content: result.content,
+        format: result.format,
+        generatedAt: result.generatedAt,
+        documentIds: result.documentIds,
+        patientId: result.patientId
+      }
+    }
+    else if (action === 'reset') {
+      return {
+        success: true,
+        status: 'idle'
+      } as any
+    }
+    
+    throw new Error('Invalid report action')
+  },
+  
+  /**
+   * Create error result for failed operations
+   */
+  createErrorResult: (error: Error, input: ReportInput): ReportResult => {
+    return {
+      success: false,
+      patientId: input.patientId,
+      documentIds: input.documentIds,
+      error: error.message
+    }
+  },
+  
+  /**
+   * Process result to update state
+   */
+  processResult: (
+    result: ReportResult,
+    currentState: ReportState
+  ): ReportState => {
+    if (!result.success) {
+      return {
+        ...currentState,
+        error: result.error,
+        status: 'error'
+      }
+    }
+    
+    return {
+      ...currentState,
+      reportId: result.reportId || currentState.reportId,
+      title: result.title || currentState.title,
+      content: result.content || currentState.content,
+      format: result.format || currentState.format,
+      generatedAt: result.generatedAt || currentState.generatedAt,
+      documentIds: result.documentIds || currentState.documentIds,
+      patientId: result.patientId || currentState.patientId,
+      status: result.reportId ? 'complete' : 'idle',
+      error: undefined
+    }
+  }
+}
+
+// Create the report domain workflow hook
+const useReportDomainWorkflow = createWorkflowHook<ReportInput, ReportResult, ReportState>(
+  reportWorkflowActions
+)
+
 /**
  * Specialized hook for report generation workflows.
  * Provides an intuitive API for generating and formatting reports.
  */
 export function useReportWorkflow(options: UseReportWorkflowOptions = {}) {
   const { userId, chatId } = options
-  const errorHandler = useWorkflowErrorHandler()
-  const [reportData, setReportData] = useState<ReportData>({
-    status: 'idle'
-  })
   
-  // Use base workflow hook
-  const workflow = useWorkflow({
+  // Use the domain workflow hook
+  const domainWorkflow = useReportDomainWorkflow({
     userId,
     chatId,
     initialStep: 'idle'
   })
-
+  
+  // Maintain backward compatibility with existing API
+  
   /**
    * Generate a new report
    */
@@ -53,112 +240,37 @@ export function useReportWorkflow(options: UseReportWorkflowOptions = {}) {
     }
   ) => {
     try {
-      if (!workflow.workflowId) {
-        throw new Error('Workflow not initialized. Make sure userId is provided.')
-      }
-      
-      const { patientId, documentIds, generateType = 'comprehensive' } = options
+      const { patientId, documentIds, generateType = 'comprehensive', onProgress } = options
       
       if (!patientId) {
         throw new Error('Patient ID is required for report generation')
       }
       
-      // Update report status
-      setReportData({
-        patientId,
-        documentIds,
-        generateType,
-        status: 'generating'
-      })
-      
-      // Update workflow state
-      await workflow.updateStep('report_generation', {
-        patientId,
-        documentIds,
-        generateType,
-        generationStartedAt: new Date().toISOString()
-      })
-      
-      // Progress callback
-      const progressCallback = (progress: number, phase: ProcessingPhase) => {
-        workflow.updateProgress(progress, phase)
-        if (options.onProgress) {
-          options.onProgress(progress, phase)
-        }
-      }
-      
-      // Use report workflow processor
-      const result = await workflowService.generateReport(
-        workflow.workflowId,
+      return domainWorkflow.process(
         {
+          action: 'generate',
           patientId,
           documentIds,
-          generateType,
-          userId: userId ?? undefined,
-          progressCallback
-        }
-      )
-      
-      if (result.success) {
-        // Update report data
-        setReportData({
-          reportId: result.reportId,
-          title: result.title,
-          content: result.content,
-          format: result.format,
-          generateType,
-          generatedAt: new Date().toISOString(),
-          documentIds,
-          patientId,
-          status: 'complete'
-        })
-        
-        // Update workflow state
-        await workflow.updateStep('complete', {
-          reportId: result.reportId,
-          title: result.title,
-          generatedAt: new Date().toISOString(),
-          patientId,
-          documentIds
-        })
-      } else {
-        throw new Error(result.error || 'Failed to generate report')
-      }
-      
-      return result
-    } catch (err) {
-      const error = normalizeError(err)
-      
-      // Update error states
-      setReportData(prev => ({
-        ...prev,
-        error: error.message,
-        status: 'error'
-      }))
-      
-      await workflow.updateStep(DomainOnlyWorkflowStep.ERROR, {
-        error: error.message,
-        errorTimestamp: new Date().toISOString(),
-      })
-      
-      await errorHandler.handleError(
-        err,
-        'report_generation',
+          generateType
+        },
         {
-          previousStep: workflow.state.currentStep,
-          details: {
-            patientId: options.patientId,
-            documentIds: options.documentIds,
-            generateType: options.generateType
-          },
-          showToast: true,
-          workflowId: workflow.workflowId ?? undefined
+          step: 'report_generation',
+          successStep: 'complete',
+          onProgress,
+          metadata: {
+            patientId,
+            documentIds,
+            generateType,
+            generationStartedAt: new Date().toISOString()
+          }
         }
       )
+    } catch (error) {
+      const normalizedError = normalizeError(error)
       
-      throw error
+      throw normalizedError
     }
-  }, [workflow, userId, errorHandler])
+  }, [domainWorkflow])
   
   /**
    * Format a report in a different output format
@@ -168,114 +280,70 @@ export function useReportWorkflow(options: UseReportWorkflowOptions = {}) {
     format: string
   ) => {
     try {
-      if (!workflow.workflowId) {
-        throw new Error('Workflow not initialized')
-      }
-      
-      // Update report data status
-      setReportData(prev => ({
-        ...prev,
-        status: 'generating'
-      }))
-      
-      // Use report workflow processor
-      const result = await workflowService.formatReport(
-        workflow.workflowId,
-        reportId,
-        { format }
+      return domainWorkflow.process(
+        {
+          action: 'format',
+          reportId,
+          format
+        },
+        {
+          metadata: {
+            reportId,
+            format
+          }
+        }
       )
-      
-      if (result.success) {
-        // Update report data
-        setReportData(prev => ({
-          ...prev,
-          format: result.format,
-          content: result.content,
-          status: 'complete'
-        }))
-      } else {
-        throw new Error(result.error || 'Failed to format report')
-      }
-      
-      return result
-    } catch (err) {
-      const error = normalizeError(err)
-      
-      // Update error states
-      setReportData(prev => ({
-        ...prev,
-        error: error.message,
-        status: 'error'
-      }))
-      
-      console.error('Error formatting report:', error.message)
-      throw error
+    } catch (error) {
+      const normalizedError = normalizeError(error)
+      console.error('Error formatting report:', normalizedError.message)
+      throw normalizedError
     }
-  }, [workflow.workflowId])
+  }, [domainWorkflow])
   
   /**
    * Get a report by ID
    */
   const getReport = useCallback(async (reportId: string) => {
     try {
-      if (!workflow.workflowId) {
-        throw new Error('Workflow not initialized')
-      }
-      
-      // Use report workflow to get report
-      const result = await workflowService.getReport(
-        workflow.workflowId,
-        reportId
+      return domainWorkflow.process(
+        {
+          action: 'info',
+          reportId
+        },
+        {
+          metadata: {
+            reportId
+          }
+        }
       )
-      
-      if (result && result.success) {
-        // Update report data
-        setReportData({
-          reportId,
-          title: result.title,
-          content: result.content,
-          format: result.format,
-          generateType: result.generateType,
-          generatedAt: result.generatedAt,
-          documentIds: result.documentIds,
-          patientId: result.patientId,
-          status: 'complete'
-        })
-      }
-      
-      return result
-    } catch (err) {
-      console.error('Error getting report:', err)
+    } catch (error) {
+      console.error('Error getting report:', error)
       return null
     }
-  }, [workflow.workflowId])
+  }, [domainWorkflow])
   
   /**
    * Reset the report workflow to idle state
    */
   const resetReportWorkflow = useCallback(async () => {
-    // Reset report data
-    setReportData({
-      status: 'idle'
-    })
-    
-    // Reset workflow state
-    await workflow.updateStep('idle', {
-      resetAt: new Date().toISOString()
-    })
-    
-    return { success: true }
-  }, [workflow])
+    return domainWorkflow.reset()
+  }, [domainWorkflow])
   
+  // Compute derived states for backward compatibility
+  const isGeneratingReport = domainWorkflow.state.currentStep === 'report_generation'
+  const isReportComplete = domainWorkflow.state.currentStep === 'complete' && domainWorkflow.status === 'complete'
+  const reportId = domainWorkflow.reportId || domainWorkflow.state.metadata?.reportId as string
+  
+  // Return the same API shape as before
   return {
-    ...workflow,
+    ...domainWorkflow,
     generateReport,
     formatReport,
     getReport,
     resetReportWorkflow,
-    reportData,
-    isGeneratingReport: workflow.state.currentStep === 'report_generation',
-    isReportComplete: workflow.state.currentStep === 'complete' && reportData.status === 'complete',
-    reportId: reportData.reportId || workflow.state.metadata?.reportId as string
+    reportData: domainWorkflow,
+    isGeneratingReport,
+    isReportComplete,
+    reportId
   }
 }

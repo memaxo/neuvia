@@ -151,45 +151,28 @@ export class DocumentExtractionService {
   }
 
   /**
-   * Default enhanced extraction options
-   */
-  private readonly defaultExtractionOptions: EnhancedExtractionOptions = {
-    splitPages: true,
-    extractTables: true,
-    detectSections: true,
-    ocrImages: true,
-    preserveLayout: true,
-    maxPageLength: 5000,
-  }
-
-  /**
-   * Default chunking options
-   */
-  private readonly defaultChunkingOptions: ChunkingOptions = {
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    preserveMetadata: true,
-    strategy: 'semantic',
-  }
-
-  // The medical section patterns are now defined in SectionDetector utility
-
   /**
    * Main method to extract text from a document file
+   * Aligned with workflow events for better integration
    * 
    * @param file File to extract text from
    * @param options Extraction options
+   * @param workflowId Optional workflow ID for event tracking
+   * @param onProgress Optional progress callback
    * @returns Extracted text data
    */
   async extractText(
     file: File,
-    options: EnhancedExtractionOptions = this.defaultExtractionOptions
+    options: EnhancedExtractionOptions = this.defaultExtractionOptions,
+    workflowId?: string,
+    onProgress?: (progress: number, phase: ProcessingPhase) => void
   ): Promise<ExtractedData> {
     const moduleLogger = this.logger.withMetadata({
       module: 'DocumentExtractionService',
       method: 'extractText',
       fileType: file.type,
       fileName: file.name,
+      workflowId
     });
 
     try {
@@ -197,6 +180,11 @@ export class DocumentExtractionService {
         fileType: file.type,
         fileSize: file.size
       });
+      
+      // Report initial progress
+      if (onProgress) {
+        onProgress(5, ProcessingPhase.EXTRACTION);
+      }
 
       // Import extractors dynamically to avoid circular dependencies
       const { ExtractorFactory } = await import('./extractors/extractor-factory');
@@ -206,6 +194,221 @@ export class DocumentExtractionService {
       
       // Get appropriate extractor for the file type
       const extractor = extractorFactory.getExtractorForFileType(file.type);
+      
+      // Report progress before extraction
+      if (onProgress) {
+        onProgress(20, ProcessingPhase.EXTRACTION);
+      }
+      
+      // Emit extraction start event if workflow ID is provided
+      if (workflowId) {
+        await this.emitExtractionEvent(workflowId, 'extraction_started', {
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          extractionOptions: {
+            splitPages: options.splitPages,
+            extractTables: options.extractTables,
+            detectSections: options.detectSections
+          }
+        });
+      }
+      
+      // Use monitorable extraction with progress reporting
+      const extractStartTime = Date.now();
+      let lastProgressReported = Date.now();
+      const progressInterval = 1000; // Report progress at most once per second
+      
+      // Wrap extractor with progress monitoring
+      const extractionPromise = extractor.extract(file, options);
+      
+      // For longer extractions, generate some intermediate progress updates
+      const progressTimer = setInterval(() => {
+        const elapsed = Date.now() - extractStartTime;
+        
+        // After 3 seconds, if we're still extracting, provide progress updates
+        if (elapsed > 3000 && onProgress) {
+          const progress = Math.min(80, 20 + Math.floor(elapsed / 250)); // Cap at 80%
+          onProgress(progress, ProcessingPhase.EXTRACTION);
+          
+          // Also emit progress event to workflow if appropriate
+          if (workflowId && (Date.now() - lastProgressReported) > progressInterval) {
+            this.emitExtractionEvent(workflowId, 'extraction_progress', {
+              progress,
+              phase: ProcessingPhase.EXTRACTION
+            }).catch(e => {
+              // Just log if workflow update fails - non-critical
+              moduleLogger.warn('Failed to emit extraction progress event', {
+                error: e instanceof Error ? e.message : String(e)
+              });
+            });
+            lastProgressReported = Date.now();
+          }
+        }
+      }, 500);
+      
+      // Wait for extraction to complete
+      const extractedData = await extractionPromise;
+      clearInterval(progressTimer);
+      
+      // Calculate extraction time
+      const extractionTime = Date.now() - extractStartTime;
+      
+      // Report progress after extraction
+      if (onProgress) {
+        onProgress(90, ProcessingPhase.EXTRACTION_COMPLETED);
+      }
+      
+      // Add extraction metadata
+      extractedData.metadata = {
+        ...extractedData.metadata,
+        extractionMethod: 'enhanced',
+        processingTime: extractionTime,
+        processingComplete: true,
+        extractedAt: new Date(),
+        chunkCount: extractedData.chunks?.length
+      };
+      
+      moduleLogger.info('Document extraction completed successfully', {
+        textLength: extractedData.rawText.length,
+        chunkCount: extractedData.chunks?.length || 0,
+        processingTimeMs: extractionTime
+      });
+      
+      // Emit extraction completed event if workflow ID is provided
+      if (workflowId) {
+        await this.emitExtractionEvent(workflowId, 'extraction_completed', {
+          processingTimeMs: extractionTime,
+          textLength: extractedData.rawText.length,
+          chunkCount: extractedData.chunks?.length || 0,
+          detectedSections: extractedData.metadata.detectedSections,
+          hasStructuredData: !!extractedData.metadata.hasStructuredData
+        });
+        
+        // If workflow engine is available, also send action
+        try {
+          const { workflowEngine } = await import('../workflow/coordination/workflow-engine');
+          await workflowEngine.sendAction(workflowId, {
+            type: 'EXTRACTION_PROGRESS',
+            payload: {
+              progress: 100,
+              phase: ProcessingPhase.EXTRACTION_COMPLETED
+            }
+          });
+        } catch (error) {
+          // Non-critical if this fails - just log
+          moduleLogger.warn('Failed to update workflow engine', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+      
+      // Final progress update
+      if (onProgress) {
+        onProgress(100, ProcessingPhase.EXTRACTION_COMPLETED);
+      }
+      
+      return extractedData;
+    } catch (error) {
+      moduleLogger.error('Failed to extract text from document', {}, error);
+
+      // Create a unified error result structure
+      const normError = normalizeError(error);
+      const errorExtractedData: ExtractedData = {
+        rawText: '',
+        metadata: {
+          filename: file.name,
+          fileFormat: file.type,
+          fileSize: file.size,
+          extractedAt: new Date(),
+          extractionMethod: 'failed',
+          documentStructure: 'unknown',
+          hasStructuredData: false,
+          processingComplete: false,
+          error: normError.message,
+          errorCode: normError.code,
+          errorTimestamp: new Date().toISOString()
+        } as ExtractedMetadata,
+        chunks: [] // Empty chunks array for consistency
+      };
+      
+      // Emit extraction failed event if workflow ID is provided
+      if (workflowId) {
+        try {
+          await this.emitExtractionEvent(workflowId, 'extraction_failed', {
+            error: normError.message,
+            errorCode: normError.code,
+            errorDetails: normError.data
+          });
+          
+          // If workflow engine is available, also send failure action
+          const { workflowEngine } = await import('../workflow/coordination/workflow-engine');
+          await workflowEngine.sendAction(workflowId, {
+            type: 'EXTRACTION_FAILED',
+            payload: {
+              error: normError.message,
+              errorCode: normError.code || 'EXTRACTION_PROCESSING_ERROR',
+              details: {
+                fileName: file.name,
+                fileType: file.type,
+                fileSize: file.size
+              }
+            }
+          });
+        } catch (eventError) {
+          // Just log if this fails - not critical
+          moduleLogger.warn('Failed to emit extraction failure event', {
+            error: eventError instanceof Error ? eventError.message : String(eventError)
+          });
+        }
+      }
+      
+      return errorExtractedData;
+    }
+  }
+  
+  /**
+   * Helper method to emit extraction events to the workflow system
+   *
+   * @param workflowId Workflow ID to update
+   * @param eventType Type of event to emit
+   * @param payload Event data payload
+   */
+  private async emitExtractionEvent(
+    workflowId: string,
+    eventType: string,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      // First try to log event using workflowEventSourcing if available
+      try {
+        const { workflowEventSourcing } = await import('../workflow/infrastructure/workflow-event-source');
+        await workflowEventSourcing.appendEvent(
+          workflowId,
+          eventType,
+          payload
+        );
+        return;
+      } catch (moduleError) {
+        // If module import fails, fall back to direct logging
+        // This happens when we can't dynamically import the module due to circular dependencies
+      }
+      
+      // If direct workflow event sourcing is not available, log the event
+      // In a production system, this could publish to an event bus or other messaging system
+      logger.info(`[Extraction Event] ${eventType}`, {
+        workflowId,
+        eventType,
+        ...payload
+      });
+    } catch (error) {
+      logger.warn('Failed to emit extraction event', {
+        workflowId,
+        eventType,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
       
       // Extract text using the specialized extractor
       const extractedData = await extractor.extract(file, options);
