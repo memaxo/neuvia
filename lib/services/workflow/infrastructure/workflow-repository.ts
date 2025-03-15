@@ -1,9 +1,15 @@
 /**
  * @fileoverview Workflow Repository
  *
+ * PHASE 3 IMPLEMENTATION:
+ * Simplified and standardized workflow repository.
+ * 
  * The single source of truth for all database operations related to workflows.
  * This repository centralizes all database access to ensure consistency and
  * proper encapsulation of data access logic.
+ * 
+ * This file has been updated to simplify its methods and improve error handling
+ * as part of the Phase 3 implementation.
  */
 
 import { createBrowserClient } from '@/lib/supabase/clients'
@@ -812,6 +818,114 @@ export class WorkflowRepository {
     }
     // fallback if localStorage not available
     return `client-${Date.now()}`;
+  }
+  
+  /**
+   * Get a summary of workflow state for debugging or monitoring
+   * 
+   * PHASE 3 IMPLEMENTATION:
+   * A new simplified method to get summary information across all domains
+   * 
+   * @param workflowId Workflow ID to summarize
+   * @returns Summary information about the workflow
+   */
+  async getWorkflowSummary(workflowId: string): Promise<Record<string, unknown> | null> {
+    try {
+      if (!workflowId) {
+        return null;
+      }
+      
+      // Get basic workflow state
+      const state = await this.getWorkflowState(workflowId);
+      if (!state) {
+        return null;
+      }
+      
+      // Get last 5 events
+      const events = await this.supabase
+        .from('workflow_events')
+        .select('event_type, occurred_at, event_data')
+        .eq('workflow_id', workflowId)
+        .order('occurred_at', { ascending: false })
+        .limit(5);
+      
+      // Get last transition
+      const transitions = await this.supabase
+        .from('workflow_transitions')
+        .select('from_step, to_step, transitioned_at')
+        .eq('workflow_id', workflowId)
+        .order('transitioned_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      // Compile summary
+      const summary = {
+        workflowId,
+        currentState: state.currentStep,
+        progress: state.progress,
+        error: state.error,
+        lastUpdated: state.timestamp,
+        metadata: state.metadata,
+        lastTransition: transitions.data ? {
+          from: transitions.data.from_step,
+          to: transitions.data.to_step,
+          at: transitions.data.transitioned_at
+        } : null,
+        recentEvents: events.data || [],
+        domains: this.getActiveDomains(state.metadata)
+      };
+      
+      return summary;
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      this.logger.error('Failed to get workflow summary', {
+        workflowId,
+        error: normalizedError.message
+      });
+      return null;
+    }
+  }
+  
+  /**
+   * Identify active domains based on metadata
+   * 
+   * PHASE 3 IMPLEMENTATION:
+   * Helper method to determine which domains are active in a workflow
+   */
+  private getActiveDomains(metadata: Record<string, unknown>): string[] {
+    const domains: string[] = [];
+    
+    // Check for chat domain
+    if (metadata.chatId) {
+      domains.push('Chat');
+    }
+    
+    // Check for document domain
+    if (metadata.documentId) {
+      domains.push('Document');
+    }
+    
+    // Check for verification domain
+    if (metadata.verificationId) {
+      domains.push('Verification');
+    }
+    
+    // Check for report domain
+    if (metadata.reportId) {
+      domains.push('Report');
+    }
+    
+    // Check for research domain
+    if (metadata.researchId || metadata.isResearchModeActive) {
+      domains.push('Research');
+    }
+    
+    // If no specific domains found, add a default
+    if (domains.length === 0) {
+      domains.push('Workflow');
+    }
+    
+    return domains;
   }
 }
 

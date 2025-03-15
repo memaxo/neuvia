@@ -1,8 +1,24 @@
-import { useState, useCallback } from 'react'
-import { ProcessingPhase, DomainOnlyWorkflowStep } from '@/lib/types/workflow'
+/**
+ * @fileoverview Document Workflow Hook
+ * 
+ * Phase 4 Implementation: Uses the Result pattern and functional composition
+ * pattern to implement a document processing workflow with improved error
+ * handling and transaction management.
+ */
+
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { ProcessingPhase, DomainOnlyWorkflowStep, WorkflowStep } from '@/lib/types/workflow'
 import { createWorkflowHook } from './create-workflow-hook'
-import { workflowService } from '@/lib/services/workflow/core/workflow-service'
 import { normalizeError } from '@/lib/errors'
+import { transactionManager } from '@/lib/services/workflow/transaction/transaction-manager'
+import { workflowDocumentService } from '@/lib/services/workflow/domain/document-workflow'
+import { workflowRepository } from '@/lib/services/workflow/infrastructure/workflow-repository'
+import { processWorkflow, getDomainMetadata, updateMetadataSafely, createDomainLogger } from '@/lib/services/workflow/infrastructure/workflow-processor-helpers'
+import { Result } from '@/lib/services/workflow/error/result'
+import { UnifiedErrorHandler } from '@/lib/services/workflow/error/unified-error-handler'
+
+// Domain-specific logger
+const domainLogger = createDomainLogger('Document')
 
 export interface UseDocumentWorkflowOptions {
   userId?: string
@@ -45,7 +61,7 @@ interface DocumentState {
 }
 
 /**
- * Domain actions for document workflow
+ * Domain actions for document workflow with Result pattern
  */
 const documentWorkflowActions = {
   domainName: 'Document',
@@ -59,7 +75,7 @@ const documentWorkflowActions = {
   }),
   
   /**
-   * Process document workflow action
+   * Process document workflow action using Result pattern
    */
   processAction: async (
     input: DocumentInput,
@@ -68,97 +84,153 @@ const documentWorkflowActions = {
       userId?: string
       onProgress?: (progress: number, phase: ProcessingPhase) => void
     }
-  ): Promise<DocumentWorkflowResult> => {
+  ): Promise<Result<DocumentWorkflowResult>> => {
     const { action, file, documentId, options: inputOptions = {} } = input
     const { workflowId, userId, onProgress } = options
     
-    // Create progress callback
-    const progressCallback = (progress: number, phase: ProcessingPhase) => {
-      if (onProgress) {
-        onProgress(progress, phase)
-      }
-    }
-
-    try {
-      // Handle different actions
-      if (action === 'process' && file) {
-        // Process document upload
-        const result = await workflowService.processDocumentUpload(
-          workflowId,
-          file,
-          {
-            userId: userId,
-            patientId: inputOptions.patientId,
-            skipExtraction: inputOptions.skipExtraction,
-            progressCallback
+    // Handle different actions using the new Result pattern
+    if (action === 'process' && file) {
+      // Use transaction manager for document upload
+      return await transactionManager.executeTransaction(
+        workflowId,
+        async (transactionId, progressCallback) => {
+          // Process document upload with the workflowDocumentService
+          const result = await workflowDocumentService.processDocument(
+            workflowId,
+            file,
+            {
+              userId,
+              patientId: inputOptions.patientId,
+              skipExtraction: inputOptions.skipExtraction,
+              transactionId
+            },
+            progressCallback || onProgress
+          )
+          
+          if (result.isSuccess()) {
+            const data = result.value
+            return {
+              documentId: data.documentId,
+              fileName: data.fileName || file.name,
+              fileSize: file.size,
+              text: data.text,
+              extractedData: data.extractedData,
+              processed: true
+            }
+          } else {
+            // Transform Result failure to DocumentWorkflowResult
+            return {
+              fileName: file.name,
+              fileSize: file.size,
+              processed: false,
+              error: result.error.message
+            }
           }
-        )
-        
-        if (result.success) {
-          return {
-            documentId: result.documentId,
-            fileName: result.fileName,
+        },
+        {
+          step: 'uploading',
+          errorStep: DomainOnlyWorkflowStep.ERROR,
+          metadata: {
+            fileName: file.name,
             fileSize: file.size,
-            text: result.text,
-            extractedData: result.data,
-            processed: true
-          }
-        } else {
-          throw new Error(result.error || 'Failed to process document')
+            patientId: inputOptions.patientId
+          },
+          onProgress,
+          domainName: 'Document',
+          retryCount: 1,
+          conflictStrategy: 'merge'
         }
-      }
-      else if (action === 'extract' && documentId) {
-        // Extract document content
-        const result = await workflowService.extractDocumentContent(
-          workflowId,
-          documentId,
-          { progressCallback }
-        )
-        
-        if (result.success) {
-          return {
-            documentId,
-            text: result.text,
-            extractedData: result.data,
-            processed: true
-          }
+      )
+      .then(result => {
+        if (result.isSuccess()) {
+          return Result.success(result.value.data)
         } else {
-          throw new Error(result.error || 'Failed to extract document')
+          return Result.failure<DocumentWorkflowResult>(
+            result.error.message,
+            result.error.code,
+            {
+              fileName: file.name,
+              fileSize: file.size,
+              processed: false
+            }
+          )
         }
-      }
-      else if (action === 'info' && documentId) {
-        // Get document info
-        const result = await workflowService.getDocumentInfo(
-          workflowId,
-          documentId
-        )
-        
-        if (result) {
-          return {
-            documentId,
-            fileName: result.fileName as string,
-            fileSize: result.fileSize as number,
-            text: result.text as string,
-            extractedData: result.extractedData as Record<string, unknown>,
-            processed: true
-          }
-        } else {
-          return {
-            documentId,
-            processed: false,
-            error: 'Document not found'
-          }
-        }
-      }
-      
-      // Default error case
-      return {
-        processed: false,
-        error: 'Invalid document action'
-      }
-    } catch (error) {
-      throw normalizeError(error)
+      })
     }
+    else if (action === 'extract' && documentId) {
+      // Use processWorkflow helper for document extraction
+      return await processWorkflow<string, DocumentWorkflowResult>(
+        workflowId,
+        documentId,
+        {
+          targetStep: 'extracting',
+          onProgress,
+          metadata: { documentId },
+          recoveryStep: DomainOnlyWorkflowStep.ERROR
+        },
+        'Document',
+        DomainOnlyWorkflowStep.ERROR,
+        async (wfId, docId, currentState, opts) => {
+          // Extract document with workflowDocumentService
+          const extractResult = await workflowDocumentService.extractDocument(
+            wfId,
+            docId,
+            opts.progressCallback
+          )
+          
+          if (extractResult.isSuccess()) {
+            const data = extractResult.value
+            return {
+              documentId: docId,
+              text: data.text,
+              extractedData: data.extractedData,
+              processed: true
+            }
+          } else {
+            return {
+              documentId: docId,
+              processed: false,
+              error: extractResult.error.message
+            }
+          }
+        }
+      )
+    }
+    else if (action === 'info' && documentId) {
+      // Use executeReadTransaction for read-only operations
+      return await transactionManager.executeReadTransaction<DocumentWorkflowResult>(
+        workflowId,
+        async () => {
+          // Get document info using workflowDocumentService
+          const infoResult = await workflowDocumentService.getDocumentInfo(documentId)
+          
+          if (infoResult.isSuccess()) {
+            const data = infoResult.value
+            return {
+              documentId,
+              fileName: data.fileName,
+              fileSize: data.fileSize,
+              text: data.text,
+              extractedData: data.extractedData,
+              processed: true
+            }
+          } else {
+            return {
+              documentId,
+              processed: false,
+              error: infoResult.error.message || 'Document not found'
+            }
+          }
+        }
+      )
+    }
+    
+    // Default error case using Result pattern
+    return Result.failure(
+      'Invalid document action',
+      'INVALID_ACTION',
+      { action }
+    )
   },
   
   /**
@@ -194,17 +266,22 @@ const documentWorkflowActions = {
   }
 }
 
-// Create the document domain workflow hook
+// Create the document domain workflow hook with updated Result handling
 const useDocumentDomainWorkflow = createWorkflowHook<DocumentInput, DocumentWorkflowResult, DocumentState>(
   documentWorkflowActions
 )
 
 /**
  * Specialized hook for document processing workflows.
- * Provides an intuitive API for document upload, extraction, and analysis.
+ * Phase 4 implementation: Uses Result pattern and unified error handling.
  */
 export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
   const { userId, chatId, autoProcess = false } = options
+  
+  // Unified error handler for document domain
+  const errorHandler = useMemo(() => {
+    return new UnifiedErrorHandler('Document')
+  }, [])
   
   // Use the domain workflow hook
   const domainWorkflow = useDocumentDomainWorkflow({
@@ -213,10 +290,8 @@ export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
     initialStep: 'idle'
   })
   
-  // Maintain backward compatibility with existing API
-  
   /**
-   * Process a document through the entire pipeline: upload, extract, analyze
+   * Process a document through the entire pipeline with improved error handling
    */
   const processDocument = useCallback(async (
     file: File,
@@ -225,25 +300,62 @@ export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
       skipExtraction?: boolean,
       onProgress?: (progress: number, phase: ProcessingPhase) => void
     } = {}
-  ) => {
-    return domainWorkflow.process(
-      {
-        action: 'process',
-        file,
-        options
-      },
-      {
-        step: 'uploading',
-        successStep: 'complete',
-        onProgress: options.onProgress,
-        metadata: {
-          fileName: file.name,
-          fileSize: file.size,
-          patientId: options.patientId
+  ): Promise<DocumentWorkflowResult> => {
+    try {
+      const result = await domainWorkflow.process(
+        {
+          action: 'process',
+          file,
+          options
+        },
+        {
+          step: 'uploading',
+          successStep: 'complete',
+          onProgress: options.onProgress,
+          metadata: {
+            fileName: file.name,
+            fileSize: file.size,
+            patientId: options.patientId
+          }
         }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'DOCUMENT_PROCESSING_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: {
+            fileName: file.name,
+            fileSize: file.size
+          }
+        })
       }
-    )
-  }, [domainWorkflow])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: {
+          fileName: file.name,
+          fileSize: file.size
+        }
+      })
+      
+      return {
+        fileName: file.name,
+        fileSize: file.size,
+        processed: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, errorHandler])
   
   /**
    * Extract content from an already uploaded document
@@ -253,28 +365,58 @@ export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
     options: {
       onProgress?: (progress: number, phase: ProcessingPhase) => void
     } = {}
-  ) => {
-    return domainWorkflow.process(
-      {
-        action: 'extract',
-        documentId,
-        options
-      },
-      {
-        step: 'extracting',
-        successStep: 'complete',
-        onProgress: options.onProgress,
-        metadata: {
-          documentId
+  ): Promise<DocumentWorkflowResult> => {
+    try {
+      const result = await domainWorkflow.process(
+        {
+          action: 'extract',
+          documentId,
+          options
+        },
+        {
+          step: 'extracting',
+          successStep: 'complete',
+          onProgress: options.onProgress,
+          metadata: {
+            documentId
+          }
         }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'DOCUMENT_EXTRACTION_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: { documentId }
+        })
       }
-    )
-  }, [domainWorkflow])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: { documentId }
+      })
+      
+      return {
+        documentId,
+        processed: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, errorHandler])
   
   /**
-   * Get document information 
+   * Get document information with improved error handling
    */
-  const getDocumentInfo = useCallback(async (documentId: string) => {
+  const getDocumentInfo = useCallback(async (documentId: string): Promise<DocumentWorkflowResult | null> => {
     try {
       return await domainWorkflow.process(
         {
@@ -288,17 +430,56 @@ export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
         }
       )
     } catch (error) {
-      console.error('Error getting document info:', error)
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: 'DOCUMENT_INFO_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: { documentId }
+      })
+      
+      domainLogger.error('Error getting document info:', {
+        documentId,
+        error: normalizedError.message,
+        workflowId: domainWorkflow.workflowId
+      })
+      
       return null
     }
-  }, [domainWorkflow])
+  }, [domainWorkflow, errorHandler])
   
   /**
    * Reset the document workflow to idle state
    */
-  const resetDocumentWorkflow = useCallback(async () => {
-    return domainWorkflow.reset()
-  }, [domainWorkflow])
+  const resetDocumentWorkflow = useCallback(async (): Promise<void> => {
+    try {
+      await domainWorkflow.reset()
+      
+      // Update metadata to reflect reset
+      if (domainWorkflow.workflowId) {
+        await updateMetadataSafely(
+          domainWorkflow.workflowId,
+          {
+            resetAt: new Date().toISOString(),
+            resetBy: userId || 'system'
+          },
+          {
+            transactionId: crypto.randomUUID(),
+            conflictStrategy: 'merge'
+          },
+          'Document'
+        )
+      }
+    } catch (error) {
+      const normalizedError = normalizeError(error)
+      domainLogger.error('Error resetting document workflow:', {
+        error: normalizedError.message,
+        workflowId: domainWorkflow.workflowId
+      })
+    }
+  }, [domainWorkflow, userId])
   
   // Compute derived states for backward compatibility
   const isProcessingDocument =
@@ -307,11 +488,36 @@ export function useDocumentWorkflow(options: UseDocumentWorkflowOptions = {}) {
   
   const isDocumentComplete = domainWorkflow.state.currentStep === 'complete'
   
-  const documentId =
-    domainWorkflow.documentId ||
+  // Get documentId from state using getDomainMetadata helper or fall back to legacy pattern
+  const [documentId, setDocumentId] = useState<string | undefined>(
     domainWorkflow.state.metadata?.documentId as string
+  )
   
-  // Return the same API shape as before
+  // Fetch document ID from metadata when workflowId changes
+  useEffect(() => {
+    if (domainWorkflow.workflowId) {
+      getDomainMetadata<string>(
+        domainWorkflow.workflowId,
+        'documentId',
+        undefined,
+        'Document'
+      ).then(result => {
+        if (result.isSuccess() && result.value) {
+          setDocumentId(result.value)
+        } else {
+          // Fall back to legacy pattern
+          setDocumentId(domainWorkflow.state.metadata?.documentId as string)
+        }
+      }).catch(error => {
+        domainLogger.warn('Error fetching document ID from metadata', {
+          error: error instanceof Error ? error.message : String(error),
+          workflowId: domainWorkflow.workflowId
+        })
+      })
+    }
+  }, [domainWorkflow.workflowId, domainWorkflow.state.metadata])
+  
+  // Return the same API shape as before with new implementation
   return {
     ...domainWorkflow,
     processDocument,

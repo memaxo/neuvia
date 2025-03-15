@@ -6,12 +6,12 @@ import { EVENT_TYPES } from '@/lib/types/events';
 import { Result } from '../error/result';
 import logger from '@/lib/logger';
 
-import { documentWorkflow } from '../domain/document-workflow';
-import { verificationWorkflow } from '../domain/verification-workflow';
-import { reportWorkflow } from '../domain/report-workflow';
-import { researchWorkflow } from '../domain/research-workflow';
-import { chatWorkflow } from '../domain/chat-workflow';
-import { chatIntentParser, ChatIntentType } from './chat-intent-parser';
+import { documentService } from '@/lib/services/document/document-service';
+import { verificationService } from '@/lib/services/verification/verification-service';
+import { reportService } from '@/lib/services/report/report-service';
+import { researchService } from '@/lib/services/research/research-service';
+import { chatService } from '@/lib/services/chat/chat-service';
+import { chatIntentParser, ChatIntentType } from '@/lib/services/chat/chat-intent-parser';
 import { workflowEngine } from './workflow-engine';
 import { WorkflowAction } from './workflow-definition';
 
@@ -109,7 +109,23 @@ export interface DocumentToReportOptions {
 
 /**
  * Workflow coordinator for orchestrating cross-domain workflows
- * Combines functionality from mediator and orchestrator patterns
+ * 
+ * This coordinator is responsible for:
+ * 1. Registering and managing workflow definitions
+ * 2. Coordinating state transitions between domain services
+ * 3. Managing event subscriptions for cross-domain coordination
+ * 4. Orchestrating the flow of data between domain services
+ * 
+ * IMPORTANT: This coordinator should NOT implement domain-specific business logic.
+ * All business logic should be delegated to specialized domain services.
+ * 
+ * PHASE 1 ANALYSIS NOTES:
+ * - This file contains significant domain logic that should be moved to appropriate service files
+ * - Methods like processDocumentFlow, processChatIntent, uploadDocument, etc. contain business logic
+ *   that would be better placed in domain-specific services
+ * - The file should focus only on coordination and state transitions, not business operations
+ * - Event handlers like handleDocumentProcessed and handleVerificationCompleted contain
+ *   business decisions that should be delegated to services
  */
 export class WorkflowCoordinator {
   private readonly logger = logger.withMetadata({ module: 'WorkflowCoordinator' });
@@ -249,6 +265,8 @@ export class WorkflowCoordinator {
   
   /**
    * Process document through the complete flow using the declarative workflow engine
+   * This method orchestrates the workflow state transitions between domain services
+   * but delegates all business logic to the appropriate domain services.
    */
   async processDocumentFlow(
     workflowId: string,
@@ -259,7 +277,7 @@ export class WorkflowCoordinator {
     const progressCallback = options.onProgress || (() => {});
     
     try {
-      // Step 1: Create or get workflow instance
+      // Step 1: Create or get workflow instance - this is coordination logic
       let workflowResult = await workflowEngine.getWorkflow(workflowId);
       
       if (workflowResult.isFailure() && workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
@@ -279,13 +297,14 @@ export class WorkflowCoordinator {
         throw new Error(`Failed to initialize workflow: ${workflowResult.error.message}`);
       }
       
-      // Step 2: Upload document
+      // Step 2: Upload document - Coordinate state transitions
       progressCallback(10, ProcessingPhase.UPLOAD, 'Uploading document');
       
+      // Update workflow state to uploading
       const uploadAction: WorkflowAction = {
         type: 'UPLOAD_DOCUMENT',
         payload: {
-          file,
+          file: { name: file.name, size: file.size, type: file.type },
           fileName: file.name,
           fileSize: file.size,
           userId: options.userId,
@@ -298,44 +317,35 @@ export class WorkflowCoordinator {
         }
       };
       
-      const uploadResult = await workflowEngine.sendAction(workflowId, uploadAction, {
+      await workflowEngine.sendAction(workflowId, uploadAction, {
         transactionId,
         userId: options.userId
       });
       
-      if (uploadResult.isFailure()) {
-        throw new Error(`Document upload failed: ${uploadResult.error.message}`);
-      }
-      
-      // The actual file upload still needs to be handled
-      // As the engine only handles state transitions, not actual business logic
-      const uploadBusinessResult = await documentWorkflow.processUpload(
+      // Delegate document upload to document service
+      const uploadResult = await documentService.uploadDocument(file, {
+        userId: options.userId,
+        patientId: options.patientId,
+        documentType: options.documentType,
         workflowId,
-        file,
-        {
-          userId: options.userId,
-          patientId: options.patientId,
-          documentType: options.documentType,
-          autoExtract: false,
-          onProgress: (progress) => progressCallback(progress, ProcessingPhase.UPLOAD, 'Uploading document'),
-          transactionId
-        }
-      );
+        onProgress: (progress) => progressCallback(progress, ProcessingPhase.UPLOAD, 'Uploading document'),
+        transactionId
+      });
       
-      if (!uploadBusinessResult.success) {
+      if (!uploadResult.success) {
         // Handle upload failure
         await workflowEngine.sendAction(workflowId, {
           type: 'UPLOAD_FAILED',
           payload: {
-            error: uploadBusinessResult.error
+            error: uploadResult.error
           },
           meta: { transactionId, userId: options.userId }
         });
-        throw new Error(`Document upload failed: ${uploadBusinessResult.error}`);
+        throw new Error(`Document upload failed: ${uploadResult.error}`);
       }
       
       // Notify engine that upload was successful
-      const documentId = uploadBusinessResult.documentId;
+      const documentId = uploadResult.documentId;
       await workflowEngine.sendAction(workflowId, {
         type: 'UPLOAD_COMPLETED',
         payload: {
@@ -344,9 +354,10 @@ export class WorkflowCoordinator {
         meta: { transactionId, userId: options.userId }
       });
       
-      // Step 3: Extract document content
-      progressCallback(20, ProcessingPhase.EXTRACTION, 'Extracting document content');
+      // Step 3: Extract document content - Coordinate state transitions
+      progressCallback(30, ProcessingPhase.EXTRACTION, 'Extracting document content');
       
+      // Update workflow state to extracting
       const extractAction: WorkflowAction = {
         type: 'EXTRACT_DOCUMENT',
         payload: {
@@ -363,42 +374,39 @@ export class WorkflowCoordinator {
         userId: options.userId
       });
       
-      // Perform the actual extraction
-      const extractBusinessResult = await documentWorkflow.extractContent(
+      // Delegate extraction to document service
+      const extractResult = await documentService.extractContent(documentId, {
+        userId: options.userId,
         workflowId,
-        documentId,
-        {
-          autoVerify: false,
-          onProgress: (progress) => progressCallback(20 + progress * 0.2, ProcessingPhase.EXTRACTION, 'Extracting document content'),
-          transactionId
-        }
-      );
+        onProgress: (progress) => progressCallback(30 + progress * 0.15, ProcessingPhase.EXTRACTION, 'Extracting document content'),
+        transactionId
+      });
       
-      if (!extractBusinessResult.success) {
+      if (!extractResult.success) {
         // Handle extraction failure
         await workflowEngine.sendAction(workflowId, {
           type: 'EXTRACTION_FAILED',
           payload: {
-            error: extractBusinessResult.error
+            error: extractResult.error
           },
           meta: { transactionId, userId: options.userId }
         });
-        throw new Error(`Document extraction failed: ${extractBusinessResult.error}`);
+        throw new Error(`Document extraction failed: ${extractResult.error}`);
       }
       
       // Notify engine that extraction was successful
       await workflowEngine.sendAction(workflowId, {
         type: 'EXTRACTION_COMPLETED',
         payload: {
-          content: extractBusinessResult.content,
-          extractedData: extractBusinessResult.metadata
+          extractedMetadata: extractResult.metadata
         },
         meta: { transactionId, userId: options.userId }
       });
       
-      // Step 4: Initiate verification
-      progressCallback(35, ProcessingPhase.VERIFICATION_PENDING, 'Initiating verification');
+      // Step 4: Initiate verification - Coordinate state transitions
+      progressCallback(45, ProcessingPhase.VERIFICATION_PENDING, 'Initiating verification');
       
+      // Update workflow state to verification_pending
       const verifyAction: WorkflowAction = {
         type: 'START_VERIFICATION',
         payload: {
@@ -417,43 +425,34 @@ export class WorkflowCoordinator {
         userId: options.userId
       });
       
-      // Get document data from workflow state for verification
-      const state = await workflowRepository.getWorkflowState(workflowId);
-      
-      // Perform the actual verification
-      const verifyBusinessResult = await verificationWorkflow.initiateVerification(
+      // Delegate verification to verification service
+      const verifyResult = await verificationService.initiateVerification({
+        userId: options.userId,
+        documentId,
         workflowId,
-        {
-          userId: options.userId,
-          documentId,
-          documentData: state?.metadata || {},
-          autoGenerateReport: false,
-          onProgress: (progress) => progressCallback(35 + progress * 0.3, ProcessingPhase.VERIFICATION_PENDING, 'Initiating verification'),
-          transactionId
-        }
-      );
+        metadata: extractResult.metadata,
+        onProgress: (progress) => progressCallback(45 + progress * 0.15, ProcessingPhase.VERIFICATION_PENDING, 'Initiating verification'),
+        transactionId
+      });
       
-      if (!verifyBusinessResult.success) {
+      if (!verifyResult.success) {
         // Handle verification failure
         await workflowEngine.sendAction(workflowId, {
           type: 'VERIFICATION_FAILED',
           payload: {
-            error: verifyBusinessResult.error
+            error: verifyResult.error?.message
           },
           meta: { transactionId, userId: options.userId }
         });
-        throw new Error(`Document verification failed: ${verifyBusinessResult.error}`);
+        throw new Error(`Document verification failed: ${verifyResult.error?.message}`);
       }
       
-      const verificationId = verifyBusinessResult.verificationId;
+      const verificationId = verifyResult.data?.verificationId;
       
-      // Verification is now pending user confirmation
-      // In real implementation, we would wait for user input here
-      // This is just simulating completion for flow demonstration
-      
+      // Step 5: Complete verification - Coordinate state transitions
       progressCallback(60, ProcessingPhase.VERIFICATION_COMPLETION, 'Completing verification');
       
-      // User confirms verification (simulated)
+      // For flow demonstration, we'll simulate user confirmation
       await workflowEngine.sendAction(workflowId, {
         type: 'VERIFY_CONFIRM',
         payload: {
@@ -462,17 +461,24 @@ export class WorkflowCoordinator {
         meta: { transactionId, userId: options.userId }
       });
       
-      // Complete the verification in the actual backend
-      const completeVerificationResult = await verificationWorkflow.completeVerification(
+      // Delegate completion to verification service
+      const completeVerificationResult = await verificationService.completeVerification(
         workflowId,
-        verificationId,
-        options.userId,
-        false
+        true, // isApproved
+        {
+          userId: options.userId,
+          verificationId
+        }
       );
       
-      // Step 5: Generate report
-      progressCallback(70, ProcessingPhase.REPORT_GENERATION, 'Generating report');
+      if (!completeVerificationResult.success) {
+        throw new Error(`Verification completion failed: ${completeVerificationResult.error?.message}`);
+      }
       
+      // Step 6: Generate report - Coordinate state transitions
+      progressCallback(75, ProcessingPhase.REPORT_GENERATION, 'Generating report');
+      
+      // Update workflow state to report_generation
       const reportAction: WorkflowAction = {
         type: 'GENERATE_REPORT',
         payload: {
@@ -492,33 +498,30 @@ export class WorkflowCoordinator {
         userId: options.userId
       });
       
-      // Generate the actual report
-      const reportBusinessResult = await reportWorkflow.generateReport(
+      // Delegate report generation to report service
+      const reportResult = await reportService.generateReport({
+        userId: options.userId,
+        documentId,
+        patientId: options.patientId,
+        verificationId,
         workflowId,
-        {
-          userId: options.userId,
-          documentId,
-          patientId: options.patientId,
-          verificationId,
-          autoComplete: false,
-          onProgress: (progress) => progressCallback(70 + progress * 0.25, ProcessingPhase.REPORT_GENERATION, 'Generating report'),
-          transactionId
-        }
-      );
+        onProgress: (progress) => progressCallback(75 + progress * 0.20, ProcessingPhase.REPORT_GENERATION, 'Generating report'),
+        transactionId
+      });
       
-      if (!reportBusinessResult.success) {
+      if (!reportResult.success) {
         // Handle report generation failure
         await workflowEngine.sendAction(workflowId, {
           type: 'REPORT_FAILED',
           payload: {
-            error: reportBusinessResult.error
+            error: reportResult.error?.message
           },
           meta: { transactionId, userId: options.userId }
         });
-        throw new Error(`Report generation failed: ${reportBusinessResult.error}`);
+        throw new Error(`Report generation failed: ${reportResult.error?.message}`);
       }
       
-      const reportId = reportBusinessResult.reportId;
+      const reportId = reportResult.data?.reportId;
       
       // Notify engine that report generation was successful
       await workflowEngine.sendAction(workflowId, {
@@ -529,7 +532,7 @@ export class WorkflowCoordinator {
         meta: { transactionId, userId: options.userId }
       });
       
-      // Step 6: Complete workflow
+      // Step 7: Complete workflow - Coordinate state transitions
       progressCallback(95, ProcessingPhase.COMPLETION, 'Completing workflow');
       
       await workflowEngine.sendAction(workflowId, {
@@ -542,7 +545,7 @@ export class WorkflowCoordinator {
         meta: { transactionId, userId: options.userId }
       });
       
-      // Update the actual workflow completion state
+      // Update workflow completion state
       await workflowStateManager.completeWorkflow(
         workflowId,
         {
@@ -620,6 +623,14 @@ export class WorkflowCoordinator {
   
   /**
    * Process chat intent using the declarative workflow engine
+   * 
+   * This method orchestrates the intent detection and workflow state transitions,
+   * delegating all chat UI/message generation to the chatService.
+   * It focuses on:
+   * 1. Determining the user intent
+   * 2. Creating the appropriate workflow action
+   * 3. Updating workflow state
+   * 4. Delegating business logic to domain services
    */
   async processChatIntent(
     workflowId: string,
@@ -638,7 +649,7 @@ export class WorkflowCoordinator {
       if (workflowResult.isFailure() && workflowResult.error.code === 'WORKFLOW_NOT_FOUND') {
         // Create new chat workflow
         workflowResult = await workflowEngine.createWorkflow(
-          'chat-workflow', // This would be defined in a separate file
+          'chat-workflow',
           workflowId,
           {
             userId: options.userId,
@@ -659,7 +670,7 @@ export class WorkflowCoordinator {
       
       const currentState = workflowResult.value.currentState;
       
-      // Step 2: Parse intent from message
+      // Step 2: Parse intent from message - delegate to chat intent parser service
       const parsedIntent = chatIntentParser.parseIntent(message, currentState);
       
       // Log the detected intent
@@ -672,8 +683,8 @@ export class WorkflowCoordinator {
         currentStep: currentState
       });
       
-      // Step 3: Create action based on intent
-      const action: WorkflowAction = this.createActionFromIntent(
+      // Step 3: Create action based on intent - this is coordinator's job
+      const action = this.createActionFromIntent(
         parsedIntent,
         {
           chatId,
@@ -684,7 +695,7 @@ export class WorkflowCoordinator {
         }
       );
       
-      // Step 4: Send action to workflow engine
+      // Step 4: Send action to workflow engine - for state transitions only
       const actionResult = await workflowEngine.sendAction(workflowId, action, {
         userId: options.userId
       });
@@ -698,8 +709,8 @@ export class WorkflowCoordinator {
         };
       }
       
-      // Step 5: Execute business logic based on intent type
-      await this.executeIntentBusinessLogic(
+      // Step 5: Execute business logic based on intent type - delegate to appropriate service
+      await this.delegateIntentProcessing(
         parsedIntent.intentType,
         actionResult.value,
         {
@@ -712,7 +723,7 @@ export class WorkflowCoordinator {
         }
       );
       
-      // Step 6: Map current state to next action
+      // Step 6: Map current state to next action - coordination function
       const nextAction = this.mapStateToNextAction(
         actionResult.value.currentState,
         actionResult.value.context
@@ -753,6 +764,10 @@ export class WorkflowCoordinator {
   
   /**
    * Create action from intent
+   * 
+   * This method translates chat intents into workflow actions.
+   * It only concerns itself with the workflow state transitions,
+   * not with message generation or UI aspects.
    */
   private createActionFromIntent(
     parsedIntent: ReturnType<typeof chatIntentParser.parseIntent>,
@@ -860,9 +875,13 @@ export class WorkflowCoordinator {
   }
   
   /**
-   * Execute business logic based on intent type
+   * Delegate business logic based on intent type
+   * 
+   * PHASE 3 IMPLEMENTATION:
+   * This method has been refactored to delegate all business logic to the chat service,
+   * making the coordinator focus solely on workflow coordination.
    */
-  private async executeIntentBusinessLogic(
+  private async delegateIntentProcessing(
     intentType: ChatIntentType,
     workflow: any,
     context: {
@@ -874,58 +893,16 @@ export class WorkflowCoordinator {
       documentId?: string;
     }
   ): Promise<void> {
-    // Based on the intent type, execute the appropriate business logic
-    switch (intentType) {
-      case ChatIntentType.VERIFY_CONFIRM:
-        if (workflow.context.verificationId) {
-          await verificationWorkflow.completeVerification(
-            context.workflowId,
-            workflow.context.verificationId,
-            context.userId,
-            false
-          );
-        }
-        break;
-        
-      case ChatIntentType.VERIFY_CORRECT:
-        if (workflow.context.verificationId && workflow.context.corrections) {
-          await verificationWorkflow.processCorrection(
-            context.workflowId,
-            workflow.context.verificationId,
-            {
-              userId: context.userId,
-              correctedFields: workflow.context.corrections,
-              userComments: context.message
-            }
-          );
-        }
-        break;
-        
-      case ChatIntentType.RESEARCH_REQUEST:
-        await researchWorkflow.executeResearch(
-          context.workflowId,
-          {
-            userId: context.userId,
-            query: workflow.context.query || context.message,
-            patientId: context.patientId,
-            includeCitations: true
-          }
-        );
-        break;
-        
-      case ChatIntentType.REGULAR_MESSAGE:
-      default:
-        await chatWorkflow.processMessage(
-          context.workflowId,
-          context.chatId,
-          context.message,
-          {
-            userId: context.userId,
-            patientId: context.patientId
-          }
-        );
-        break;
-    }
+    // PHASE 3 IMPLEMENTATION: Delegate all processing to chat service
+    // instead of handling each intent type directly
+    await chatService.processIntent(
+      intentType,
+      workflow.context,
+      context
+    );
+    
+    // No additional processing needed here - all business logic
+    // is now encapsulated in the appropriate domain service
   }
   
   /**
@@ -960,6 +937,8 @@ export class WorkflowCoordinator {
   
   /**
    * Upload document and return next suggested action
+   * This method coordinates document upload workflow and delegates business logic
+   * to the document service.
    */
   async uploadDocument(
     workflowId: string,
@@ -973,27 +952,69 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome<{documentId: string}>> {
     try {
-      // Process upload but without auto-extract
-      const result = await documentWorkflow.processUpload(
-        workflowId,
-        file,
-        {
+      // Coordinate workflow state transition to uploading
+      const uploadAction: WorkflowAction = {
+        type: 'UPLOAD_DOCUMENT',
+        payload: {
+          file: { name: file.name, size: file.size, type: file.type },
+          fileName: file.name,
+          fileSize: file.size,
           userId: options.userId,
           patientId: options.patientId,
-          documentType: options.documentType,
-          autoExtract: false, // Explicitly disable auto-extract
-          onProgress: options.onProgress,
-          transactionId: options.transactionId
+          documentType: options.documentType
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
         }
-      );
+      };
+      
+      await workflowEngine.sendAction(workflowId, uploadAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      // Delegate upload to document service
+      const result = await documentService.uploadDocument(file, {
+        userId: options.userId,
+        patientId: options.patientId,
+        documentType: options.documentType,
+        workflowId,
+        onProgress: options.onProgress,
+        transactionId: options.transactionId
+      });
       
       if (!result.success) {
+        // Update workflow state to error
+        await workflowEngine.sendAction(workflowId, {
+          type: 'UPLOAD_FAILED',
+          payload: {
+            error: result.error
+          },
+          meta: { 
+            transactionId: options.transactionId, 
+            userId: options.userId 
+          }
+        });
+        
         return {
           success: false,
           error: result.error,
           data: { documentId: '' }
         };
       }
+      
+      // Update workflow state to upload completed
+      await workflowEngine.sendAction(workflowId, {
+        type: 'UPLOAD_COMPLETED',
+        payload: {
+          documentId: result.documentId
+        },
+        meta: { 
+          transactionId: options.transactionId, 
+          userId: options.userId 
+        }
+      });
       
       return {
         success: true,
@@ -1022,6 +1043,8 @@ export class WorkflowCoordinator {
   
   /**
    * Extract document content and return next suggested action
+   * This method coordinates document extraction workflow and delegates business logic
+   * to the document service.
    */
   async extractDocument(
     workflowId: string,
@@ -1033,24 +1056,63 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome> {
     try {
-      // Extract content without auto-verify
-      const result = await documentWorkflow.extractContent(
-        workflowId,
-        documentId,
-        {
-          autoVerify: false, // Explicitly disable auto-verify
-          onProgress: options.onProgress,
-          transactionId: options.transactionId
+      // Coordinate workflow state transition to extracting
+      const extractAction: WorkflowAction = {
+        type: 'EXTRACT_DOCUMENT',
+        payload: {
+          documentId
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
         }
-      );
+      };
+      
+      await workflowEngine.sendAction(workflowId, extractAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      // Delegate extraction to document service
+      const result = await documentService.extractContent(documentId, {
+        userId: options.userId,
+        workflowId,
+        onProgress: options.onProgress,
+        transactionId: options.transactionId
+      });
       
       if (!result.success) {
+        // Update workflow state to error
+        await workflowEngine.sendAction(workflowId, {
+          type: 'EXTRACTION_FAILED',
+          payload: {
+            error: result.error
+          },
+          meta: { 
+            transactionId: options.transactionId, 
+            userId: options.userId 
+          }
+        });
+        
         return {
           success: false,
           error: result.error,
           data: {}
         };
       }
+      
+      // Update workflow state to extraction completed
+      await workflowEngine.sendAction(workflowId, {
+        type: 'EXTRACTION_COMPLETED',
+        payload: {
+          content: result.content,
+          extractedMetadata: result.metadata
+        },
+        meta: { 
+          transactionId: options.transactionId, 
+          userId: options.userId 
+        }
+      });
       
       return {
         success: true,
@@ -1083,6 +1145,8 @@ export class WorkflowCoordinator {
   
   /**
    * Verify document and return next suggested action
+   * This method coordinates document verification workflow and delegates business logic
+   * to the verification service.
    */
   async verifyDocument(
     workflowId: string,
@@ -1095,40 +1159,61 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome<{verificationId: string}>> {
     try {
-      // Get document data from workflow state
-      const state = await workflowRepository.getWorkflowState(workflowId);
-      if (!state || !state.metadata) {
-        throw new Error('Document metadata not found in workflow state');
-      }
-      
-      // Initiate verification without auto-generate report
-      const result = await verificationWorkflow.initiateVerification(
-        workflowId,
-        {
-          userId: options.userId,
+      // Coordinate workflow state transition to verification_pending
+      const verifyAction: WorkflowAction = {
+        type: 'START_VERIFICATION',
+        payload: {
           documentId,
-          documentData: state.metadata,
-          autoGenerateReport: false, // Explicitly disable auto-generate report
-          onProgress: options.onProgress,
-          transactionId: options.transactionId
+          userId: options.userId,
+          patientId: options.patientId
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
         }
-      );
+      };
+      
+      await workflowEngine.sendAction(workflowId, verifyAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      // Delegate verification to verification service
+      const result = await verificationService.initiateVerification({
+        userId: options.userId,
+        documentId,
+        workflowId,
+        onProgress: options.onProgress,
+        transactionId: options.transactionId
+      });
       
       if (!result.success) {
+        // Update workflow state to error
+        await workflowEngine.sendAction(workflowId, {
+          type: 'VERIFICATION_FAILED',
+          payload: {
+            error: result.error?.message
+          },
+          meta: { 
+            transactionId: options.transactionId, 
+            userId: options.userId 
+          }
+        });
+        
         return {
           success: false,
-          error: result.error,
+          error: result.error?.message,
           data: { verificationId: '' }
         };
       }
       
       return {
         success: true,
-        data: { verificationId: result.verificationId },
+        data: { verificationId: result.data?.verificationId || '' },
         nextAction: WorkflowNextAction.REQUEST_USER_INPUT, // Need user to confirm verification
         nextActionContext: {
           documentId,
-          verificationId: result.verificationId,
+          verificationId: result.data?.verificationId,
           userId: options.userId,
           prompt: "Please review the extracted document data and confirm it's correct."
         }
@@ -1151,6 +1236,8 @@ export class WorkflowCoordinator {
   
   /**
    * Complete verification after user confirms
+   * This method coordinates verification completion workflow and delegates business logic
+   * to the verification service.
    */
   async completeVerification(
     workflowId: string,
@@ -1160,18 +1247,35 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome> {
     try {
-      // Complete verification without auto-generate report
-      const result = await verificationWorkflow.completeVerification(
+      // Coordinate workflow state transition to verification_completed
+      const confirmAction: WorkflowAction = {
+        type: 'VERIFY_CONFIRM',
+        payload: {
+          verificationId
+        },
+        meta: {
+          userId: options.userId
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, confirmAction, {
+        userId: options.userId
+      });
+      
+      // Delegate to verification service
+      const result = await verificationService.completeVerification(
         workflowId,
-        verificationId,
-        options.userId,
-        false // Explicitly disable auto-generate report
+        true, // isApproved
+        {
+          userId: options.userId,
+          verificationId
+        }
       );
       
       if (!result.success) {
         return {
           success: false,
-          error: result.error,
+          error: result.error?.message,
           data: {}
         };
       }
@@ -1180,12 +1284,12 @@ export class WorkflowCoordinator {
         success: true,
         data: {
           verificationId,
-          documentId: result.documentId,
-          metadata: result.metadata
+          documentId: result.data?.documentId,
+          metadata: result.data
         },
         nextAction: WorkflowNextAction.GENERATE_REPORT,
         nextActionContext: {
-          documentId: result.documentId,
+          documentId: result.data?.documentId,
           verificationId,
           userId: options.userId
         }
@@ -1208,6 +1312,8 @@ export class WorkflowCoordinator {
   
   /**
    * Process verification correction from user
+   * This method coordinates correction workflow and delegates business logic
+   * to the verification service.
    */
   async processVerificationCorrection(
     workflowId: string,
@@ -1219,21 +1325,36 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome> {
     try {
-      // Apply corrections
-      const result = await verificationWorkflow.processCorrection(
+      // Coordinate workflow state transition for corrections
+      const correctionAction: WorkflowAction = {
+        type: 'VERIFY_CORRECT',
+        payload: {
+          corrections,
+          verificationId,
+          comments: options.userComments
+        },
+        meta: {
+          userId: options.userId
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, correctionAction, {
+        userId: options.userId
+      });
+      
+      // Delegate to verification service
+      const result = await verificationService.processCorrection({
         workflowId,
         verificationId,
-        {
-          userId: options.userId,
-          correctedFields: corrections,
-          userComments: options.userComments
-        }
-      );
+        userId: options.userId,
+        corrections,
+        correctionText: options.userComments
+      });
       
       if (!result.success) {
         return {
           success: false,
-          error: result.error,
+          error: result.error?.message,
           data: {}
         };
       }
@@ -1242,7 +1363,7 @@ export class WorkflowCoordinator {
         success: true,
         data: {
           verificationId,
-          documentId: result.documentId,
+          documentId: result.data?.documentId,
           corrections
         },
         nextAction: WorkflowNextAction.REQUEST_USER_INPUT, // Still need confirmation
@@ -1270,6 +1391,8 @@ export class WorkflowCoordinator {
   
   /**
    * Generate report and return next suggested action
+   * This method coordinates report generation workflow and delegates business logic
+   * to the report service.
    */
   async generateReport(
     workflowId: string,
@@ -1283,34 +1406,75 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome<{reportId: string}>> {
     try {
-      // Generate report
-      const result = await reportWorkflow.generateReport(
-        workflowId,
-        {
-          userId: options.userId,
+      // Coordinate workflow state transition to report_generation
+      const reportAction: WorkflowAction = {
+        type: 'GENERATE_REPORT',
+        payload: {
           documentId: options.documentId,
-          patientId: options.patientId,
           verificationId: options.verificationId,
-          autoComplete: false, // Explicitly disable auto-complete
-          onProgress: options.onProgress,
-          transactionId: options.transactionId
+          userId: options.userId,
+          patientId: options.patientId
+        },
+        meta: {
+          transactionId: options.transactionId,
+          userId: options.userId
         }
-      );
+      };
+      
+      await workflowEngine.sendAction(workflowId, reportAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      // Delegate to report service
+      const result = await reportService.generateReport({
+        userId: options.userId,
+        documentId: options.documentId,
+        patientId: options.patientId,
+        verificationId: options.verificationId,
+        workflowId,
+        onProgress: options.onProgress,
+        transactionId: options.transactionId
+      });
       
       if (!result.success) {
+        // Update workflow state to error
+        await workflowEngine.sendAction(workflowId, {
+          type: 'REPORT_FAILED',
+          payload: {
+            error: result.error?.message
+          },
+          meta: { 
+            transactionId: options.transactionId, 
+            userId: options.userId 
+          }
+        });
+        
         return {
           success: false,
-          error: result.error,
+          error: result.error?.message,
           data: { reportId: '' }
         };
       }
       
+      // Update workflow state to report completed
+      await workflowEngine.sendAction(workflowId, {
+        type: 'REPORT_COMPLETED',
+        payload: {
+          reportId: result.data?.reportId
+        },
+        meta: { 
+          transactionId: options.transactionId, 
+          userId: options.userId 
+        }
+      });
+      
       return {
         success: true,
-        data: { reportId: result.reportId },
+        data: { reportId: result.data?.reportId || '' },
         nextAction: WorkflowNextAction.COMPLETE_WORKFLOW,
         nextActionContext: {
-          reportId: result.reportId,
+          reportId: result.data?.reportId,
           userId: options.userId
         }
       };
@@ -1333,6 +1497,8 @@ export class WorkflowCoordinator {
   
   /**
    * Complete workflow and mark as finished
+   * This method coordinates workflow completion and delegates workflow state management
+   * to the workflow state manager.
    */
   async completeWorkflow(
     workflowId: string,
@@ -1345,7 +1511,26 @@ export class WorkflowCoordinator {
     }
   ): Promise<ProcessingOutcome> {
     try {
-      // Complete workflow
+      // Coordinate workflow state transition to complete
+      const completeAction: WorkflowAction = {
+        type: 'COMPLETE',
+        payload: {
+          reportId: options.reportId,
+          documentId: options.documentId,
+          verificationId: options.verificationId
+        },
+        meta: { 
+          transactionId: options.transactionId, 
+          userId: options.userId 
+        }
+      };
+      
+      await workflowEngine.sendAction(workflowId, completeAction, {
+        transactionId: options.transactionId,
+        userId: options.userId
+      });
+      
+      // Delegate to workflow state manager
       await workflowStateManager.completeWorkflow(
         workflowId,
         {
@@ -1382,393 +1567,9 @@ export class WorkflowCoordinator {
   }
   
   /**
-   * Process document to completion (upload → extract → verify → report)
-   * Combines functionality from mediator and orchestrator
-   * @deprecated Use processDocumentFlow instead which is based on step-by-step outcomes rather than boolean flags
-   */
-  async processDocumentToCompletion(
-    workflowId: string,
-    file: File,
-    options: DocumentToReportOptions
-  ): Promise<EndToEndResult> {
-    // Use new flow-based coordination if explicitly requested
-    if (options.useFlowCoordination) {
-      return this.processDocumentFlow(
-        workflowId,
-        file,
-        {
-          userId: options.userId,
-          patientId: options.patientId,
-          documentType: options.documentType,
-          onProgress: options.onProgress,
-          transactionId: options.transactionId
-        }
-      );
-    }
-    
-    // Legacy approach with boolean flags
-    try {
-      const transactionId = options.transactionId || crypto.randomUUID();
-      
-      // Progress tracking
-      const progressCallback = options.onProgress || (() => {});
-      
-      // Initialize result tracking
-      let documentId: string | undefined;
-      let verificationId: string | undefined;
-      let reportId: string | undefined;
-      
-      // Step 1: Process document upload and extraction
-      progressCallback(10, ProcessingPhase.UPLOAD, 'Uploading document');
-      
-      const documentResult = await documentWorkflow.processUpload(
-        workflowId,
-        file,
-        {
-          userId: options.userId,
-          patientId: options.patientId,
-          documentType: options.documentType,
-          autoExtract: true,
-          onProgress: (progress, phase) => {
-            // Map progress to overall progress (upload+extract = 0-30%)
-            const overallProgress = Math.floor(progress * 0.3);
-            progressCallback(overallProgress, phase, 'Processing document');
-          },
-          transactionId
-        }
-      );
-      
-      if (!documentResult.success) {
-        throw new Error(`Document processing failed: ${documentResult.error}`);
-      }
-      
-      documentId = documentResult.documentId;
-      
-      // Step 2: Verification (if automatic verification is enabled)
-      if (options.autoVerify) {
-        progressCallback(35, ProcessingPhase.VERIFICATION_PENDING, 'Initiating verification');
-        
-        const verificationResult = await verificationWorkflow.initiateVerification(
-          workflowId,
-          {
-            userId: options.userId,
-            documentId: documentResult.documentId,
-            documentData: documentResult.metadata,
-            autoGenerateReport: options.autoGenerateReport,
-            onProgress: (progress, phase) => {
-              // Map progress to overall progress (verification = 30-60%)
-              const overallProgress = 30 + Math.floor(progress * 0.3);
-              progressCallback(overallProgress, phase, 'Verifying document');
-            },
-            transactionId
-          }
-        );
-        
-        if (!verificationResult.success) {
-          throw new Error(`Verification failed: ${verificationResult.error}`);
-        }
-        
-        verificationId = verificationResult.verificationId;
-        
-        // After verification is initiated, complete it (simulating user verification)
-        progressCallback(50, ProcessingPhase.VERIFICATION_COMPLETION, 'Completing verification');
-        
-        const completionResult = await verificationWorkflow.completeVerification(
-          workflowId,
-          verificationResult.verificationId,
-          options.userId,
-          options.autoGenerateReport
-        );
-        
-        if (!completionResult.success) {
-          throw new Error(`Verification completion failed: ${completionResult.error}`);
-        }
-      }
-      
-      // Step 3: Report generation (if automatic report generation is enabled)
-      if (options.autoGenerateReport) {
-        progressCallback(70, ProcessingPhase.REPORT_GENERATION, 'Generating report');
-        
-        const reportResult = await reportWorkflow.generateReport(
-          workflowId,
-          {
-            userId: options.userId,
-            documentId: documentResult.documentId,
-            patientId: options.patientId,
-            verificationId,
-            autoComplete: true,
-            onProgress: (progress, phase) => {
-              // Map progress to overall progress (report = 60-100%)
-              const overallProgress = 60 + Math.floor(progress * 0.4);
-              progressCallback(overallProgress, phase, 'Generating report');
-            },
-            transactionId
-          }
-        );
-        
-        if (!reportResult.success) {
-          throw new Error(`Report generation failed: ${reportResult.error}`);
-        }
-        
-        reportId = reportResult.reportId;
-      }
-      
-      // Final progress update
-      progressCallback(100, ProcessingPhase.COMPLETION, 'Process completed');
-      
-      // Get final workflow state
-      const finalState = await workflowRepository.getWorkflowState(workflowId);
-      
-      // Return end-to-end result
-      return {
-        workflowId,
-        documentId,
-        verificationId,
-        reportId,
-        success: true,
-        currentState: finalState?.currentStep,
-        metadata: {
-          documentMetadata: documentResult.metadata,
-          completedAt: new Date().toISOString(),
-          userId: options.userId,
-          patientId: options.patientId
-        }
-      };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('End-to-end document processing failed', {
-        workflowId,
-        fileName: file.name,
-        error: normalizedError.message
-      });
-      
-      // Handle error by setting workflow to error state
-      await workflowStateManager.handleError(
-        workflowId,
-        normalizedError,
-        DomainOnlyWorkflowStep.ERROR,
-        {
-          fileName: file.name,
-          userId: options.userId,
-          patientId: options.patientId
-        }
-      );
-      
-      // Return error result
-      return {
-        workflowId,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Process patient interactions through chat and research
-   */
-  async processChatAndResearch(
-    workflowId: string,
-    chatId: string,
-    userId: string,
-    patientId: string,
-    initialMessage?: string
-  ): Promise<EndToEndResult> {
-    try {
-      // Step 1: Initialize chat session
-      let chatResult = await chatWorkflow.startChatSession(
-        workflowId,
-        chatId,
-        userId,
-        {
-          patientId,
-          startedAt: new Date().toISOString()
-        }
-      );
-      
-      if (!chatResult.success) {
-        throw new Error(`Failed to start chat session: ${chatResult.error}`);
-      }
-      
-      // Step 2: Process initial message if provided
-      if (initialMessage) {
-        chatResult = await chatWorkflow.processMessage(
-          workflowId,
-          chatId,
-          initialMessage,
-          {
-            userId,
-            patientId,
-            model: 'gpt-4'
-          }
-        );
-        
-        if (!chatResult.success) {
-          throw new Error(`Failed to process initial message: ${chatResult.error}`);
-        }
-      }
-      
-      // Get final workflow state
-      const finalState = await workflowRepository.getWorkflowState(workflowId);
-      
-      // Return result
-      return {
-        workflowId,
-        success: true,
-        currentState: finalState?.currentStep,
-        metadata: {
-          chatId,
-          userId,
-          patientId,
-          messageCount: chatResult.messages?.length || 0,
-          startedAt: new Date().toISOString()
-        }
-      };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Chat and research processing failed', {
-        workflowId,
-        chatId,
-        userId,
-        patientId,
-        error: normalizedError.message
-      });
-      
-      // Handle error in chat session
-      await chatWorkflow.handleChatError(
-        workflowId,
-        chatId,
-        normalizedError,
-        {
-          userId,
-          patientId
-        }
-      );
-      
-      // Return error result
-      return {
-        workflowId,
-        success: false,
-        metadata: {
-          chatId,
-          userId,
-          patientId
-        },
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Handle research request from chat
-   */
-  async handleResearchRequest(
-    workflowId: string,
-    query: string,
-    chatId: string,
-    userId: string,
-    options: {
-      patientId?: string;
-      documentId?: string;
-      includeCitations?: boolean;
-      autoGenerateReport?: boolean;
-    } = {}
-  ): Promise<any> {
-    try {
-      // Get current workflow state using Result.fromPromise
-      const stateResult = await Result.fromPromise(
-        workflowRepository.getWorkflowState(workflowId)
-      );
-      
-      if (stateResult.isFailure()) {
-        this.logger.error('Failed to retrieve workflow state for research', {
-          workflowId,
-          error: stateResult.error.message
-        });
-        throw new Error(`Workflow state retrieval failed: ${stateResult.error.message}`);
-      }
-      
-      const state = stateResult.value;
-      if (!state) {
-        throw new Error('Workflow state not found');
-      }
-      
-      // Execute research query with Result pattern
-      const researchResult = await researchWorkflow.executeResearch(
-        workflowId,
-        {
-          userId,
-          query,
-          patientId: options.patientId,
-          documentId: options.documentId,
-          includeCitations: options.includeCitations,
-          autoGenerateReport: options.autoGenerateReport
-        }
-      );
-      
-      // Handle failure case for Result pattern
-      if (researchResult.isFailure()) {
-        const errorMessage = researchResult.error.message;
-        this.logger.error('Research execution failed', {
-          workflowId,
-          query,
-          errorCode: researchResult.error.code,
-          error: errorMessage
-        });
-        
-        // Handle research error in chat
-        await chatWorkflow.processMessage(
-          workflowId,
-          chatId,
-          `I couldn't complete the research you requested: ${errorMessage}`,
-          {
-            userId,
-            role: 'system',
-            model: 'gpt-4'
-          }
-        );
-        
-        throw new Error(`Research failed: ${errorMessage}`);
-      }
-      
-      // Unwrap the successful result
-      const research = researchResult.value;
-      
-      // Process research result in chat
-      await chatWorkflow.processMessage(
-        workflowId,
-        chatId,
-        `Here are my research findings for "${query}":\n\n${research.content}`,
-        {
-          userId,
-          role: 'assistant',
-          model: 'gpt-4'
-        }
-      );
-      
-      return research;
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Research request handling failed', {
-        workflowId,
-        chatId,
-        query,
-        error: normalizedError.message
-      });
-      
-      // Return error result
-      return {
-        researchId: '',
-        query,
-        success: false,
-        metadata: {},
-        error: normalizedError.message
-      };
-    }
-  }
-
-  /**
    * Handle document processed event
+   * This method orchestrates cross-domain coordination between document processing
+   * and verification based on event triggers.
    */
   private async handleDocumentProcessed(payload: DocumentProcessedEventPayload): Promise<void> {
     try {
@@ -1807,15 +1608,12 @@ export class WorkflowCoordinator {
           return;
         }
         
-        // Initiate verification
-        await verificationWorkflow.initiateVerification(
-          workflowId,
-          {
-            userId: userId as string,
-            documentId,
-            documentData: metadata
-          }
-        );
+        // Delegate to verification service
+        await verificationService.initiateVerification({
+          userId: userId as string,
+          documentId,
+          workflowId
+        });
         
         this.logger.info('Auto-verification initiated', {
           workflowId,
@@ -1833,6 +1631,8 @@ export class WorkflowCoordinator {
   
   /**
    * Handle verification completed event
+   * This method orchestrates cross-domain coordination between verification
+   * and report generation based on event triggers.
    */
   private async handleVerificationCompleted(payload: VerificationCompletedEventPayload): Promise<void> {
     try {
@@ -1860,7 +1660,7 @@ export class WorkflowCoordinator {
       
       // Check if auto-report generation is enabled in metadata
       const autoGenerateReport = metadata.autoGenerateReport === true ||
-                               state.metadata?.autoGenerateReport === true;
+                                state.metadata?.autoGenerateReport === true;
       
       if (autoGenerateReport) {
         // Get user ID and patient ID from metadata or state
@@ -1876,17 +1676,14 @@ export class WorkflowCoordinator {
           return;
         }
         
-        // Generate report
-        await reportWorkflow.generateReport(
-          workflowId,
-          {
-            userId: userId as string,
-            documentId,
-            patientId: patientId as string,
-            verificationId,
-            autoComplete: true
-          }
-        );
+        // Delegate to report service
+        await reportService.generateReport({
+          userId: userId as string,
+          documentId,
+          patientId: patientId as string,
+          verificationId,
+          workflowId
+        });
         
         this.logger.info('Auto-report generation initiated', {
           workflowId,
@@ -1905,12 +1702,14 @@ export class WorkflowCoordinator {
   
   /**
    * Handle research completed event
+   * This method orchestrates cross-domain coordination between research
+   * and report generation based on event triggers.
    */
   private async handleResearchCompleted(payload: ResearchCompletedEventPayload): Promise<void> {
     try {
       const { workflowId, patientId, researchResult } = payload;
       
-      this.logger.info('Research completed, auto-initiating report generation', {
+      this.logger.info('Research completed', {
         workflowId,
         patientId
       });
@@ -1918,30 +1717,39 @@ export class WorkflowCoordinator {
       // Get workflow state to extract context
       const state = await workflowRepository.getWorkflowState(workflowId);
       if (!state) {
-        throw new Error(`Workflow not found: ${workflowId}`);
+        this.logger.warn('Workflow state not found - skipping event handling', {
+          workflowId,
+          patientId
+        });
+        return;
       }
       
       // Extract userId from state
       const userId = state.metadata?.userId as string;
       if (!userId) {
-        throw new Error('No user ID found in workflow state');
+        this.logger.warn('User ID not found - skipping report generation', {
+          workflowId,
+          patientId
+        });
+        return;
       }
-
-      try {
-        // Auto-initiate report generation
-        await reportWorkflow.generateReport(
-          workflowId,
-          {
-            userId,
-            patientId,
-            researchResult: researchResult as unknown as Record<string, unknown>
-          }
-        );
-      } catch (reportError) {
-        this.logger.error('Error automatically initiating report generation after research', {
-          workflowId,
+      
+      // Check if auto-report generation is enabled
+      const autoGenerateReport = state.metadata?.autoGenerateReport === true || 
+                                researchResult?.autoGenerateReport === true;
+      
+      if (autoGenerateReport) {
+        // Delegate to report service
+        await reportService.generateReport({
+          userId,
           patientId,
-          error: reportError instanceof Error ? reportError.message : String(reportError)
+          workflowId,
+          researchData: researchResult
+        });
+        
+        this.logger.info('Auto-report generation initiated after research', {
+          workflowId,
+          patientId
         });
       }
     } catch (err) {
@@ -1955,6 +1763,8 @@ export class WorkflowCoordinator {
   
   /**
    * Handle report generated event
+   * This method orchestrates workflow completion after report generation
+   * based on event triggers.
    */
   private async handleReportGenerated(payload: ReportGeneratedEventPayload): Promise<void> {
     try {
@@ -1982,10 +1792,22 @@ export class WorkflowCoordinator {
       
       // Check if auto-complete is enabled in metadata
       const autoComplete = metadata.autoComplete === true ||
-                         state.metadata?.autoComplete === true;
+                        state.metadata?.autoComplete === true;
       
       if (autoComplete) {
-        // Complete workflow
+        // Coordinate workflow completion
+        await workflowEngine.sendAction(workflowId, {
+          type: 'COMPLETE',
+          payload: {
+            reportId,
+            documentId
+          },
+          meta: {
+            userId: metadata.userId || state.metadata?.userId
+          }
+        });
+        
+        // Delegate to workflow state manager
         await workflowStateManager.completeWorkflow(
           workflowId,
           {

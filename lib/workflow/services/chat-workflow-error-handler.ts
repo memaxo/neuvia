@@ -1,15 +1,29 @@
 /**
  * @fileoverview Chat Workflow Error Handler
  * 
- * A specialized error handler for workflow errors that integrates with the chat UI.
- * This handler provides methods for formatting error messages, recovering from errors,
- * and displaying appropriate UI feedback.
+ * PHASE 4 IMPLEMENTATION:
+ * This file now serves as an adapter between the chat-specific error handling
+ * and the unified error handling system. It delegates core functionality to
+ * the unified error handler while maintaining the same API for backward compatibility.
+ * 
+ * All UI logic has already been moved to ChatService:
+ * - ChatService.handleWorkflowError()
+ * - ChatService.notifyWorkflowRecovery()
+ * - ChatService.handleErrorMessageCreation()
  */
 
-import { ApplicationError, normalizeError } from '@/lib/errors'
-import { DomainOnlyWorkflowStep, ProcessingPhase, WorkflowStep } from '@/lib/types/workflow'
+import { normalizeError } from '@/lib/errors'
+import { DomainOnlyWorkflowStep, WorkflowStep } from '@/lib/types/workflow'
 import { workflowServiceFactory } from './workflow-service-factory'
+import { chatService } from '@/lib/services/chat/chat-service'
+import { 
+  unifiedErrorHandler, 
+  ErrorCategory, 
+  ErrorContext as UnifiedErrorContext,
+  RecoveryStrategy
+} from '@/lib/services/workflow/error/unified-error-handler'
 
+// Legacy error categories (for backward compatibility)
 export enum ErrorCategory {
   NETWORK = 'network',
   PERMISSION = 'permission',
@@ -20,6 +34,7 @@ export enum ErrorCategory {
   GENERAL = 'general',
 }
 
+// Legacy error context (for backward compatibility)
 export interface ErrorContext {
   step?: WorkflowStep
   domain?: 'document' | 'verification' | 'report' | 'general'
@@ -30,6 +45,7 @@ export interface ErrorContext {
   workflowId?: string
 }
 
+// Legacy error metadata (for backward compatibility)
 export interface ErrorMetadata {
   message: string
   category: ErrorCategory
@@ -40,234 +56,90 @@ export interface ErrorMetadata {
   errorId: string
 }
 
+// Legacy function types (for backward compatibility)
 export type ErrorMessageFunction = (error: string, context?: Record<string, unknown>) => string
-
 export type AddSystemMessageFunction = (
   content: string,
   type: string,
   metadata?: Record<string, unknown>
 ) => void
 
-// Map of error patterns to categories
-const ERROR_CATEGORY_PATTERNS: Record<ErrorCategory, RegExp[]> = {
-  [ErrorCategory.NETWORK]: [
-    /network/i,
-    /connection/i,
-    /timeout/i,
-    /offline/i,
-    /unreachable/i,
-  ],
-  [ErrorCategory.PERMISSION]: [
-    /permission/i,
-    /forbidden/i,
-    /unauthorized/i,
-    /access denied/i,
-  ],
-  [ErrorCategory.VALIDATION]: [
-    /validation/i,
-    /invalid/i,
-    /required/i,
-    /missing/i,
-    /schema/i,
-  ],
-  [ErrorCategory.PROCESSING]: [
-    /process/i,
-    /extraction/i,
-    /parse/i,
-    /format/i,
-  ],
-  [ErrorCategory.VERIFICATION]: [
-    /verification/i,
-    /verify/i,
-    /correct/i,
-  ],
-  [ErrorCategory.REPORT]: [
-    /report/i,
-    /generation/i,
-    /format/i,
-  ],
-  [ErrorCategory.GENERAL]: [
-    /.*/,
-  ],
-}
-
 /**
- * Determine the error category based on the error message and context
+ * Map legacy error categories to new unified error categories
  */
-function determineErrorCategory(
-  error: Error | string,
-  context?: ErrorContext
-): ErrorCategory {
-  const errorMessage = typeof error === 'string' ? error : error.message
-  
-  // First check the domain from context
-  if (context?.domain) {
-    switch (context.domain) {
-      case 'document':
-        return ErrorCategory.PROCESSING
-      case 'verification':
-        return ErrorCategory.VERIFICATION
-      case 'report':
-        return ErrorCategory.REPORT
-    }
-  }
-  
-  // Check the step from context
-  if (context?.step) {
-    const step = context.step
-    
-    if (step === 'uploading' || step === 'extracting') {
-      return ErrorCategory.PROCESSING
-    } else if (
-      step === 'verification' ||
-      step === 'verification_pending' ||
-      step === 'verification_in_progress'
-    ) {
-      return ErrorCategory.VERIFICATION
-    } else if (step === 'report_generation') {
-      return ErrorCategory.REPORT
-    }
-  }
-  
-  // Check the error message against patterns
-  for (const [category, patterns] of Object.entries(ERROR_CATEGORY_PATTERNS)) {
-    if (category === ErrorCategory.GENERAL) continue // Skip general category for now
-    
-    for (const pattern of patterns) {
-      if (pattern.test(errorMessage)) {
-        return category as ErrorCategory
-      }
-    }
-  }
-  
-  // Default to general category
-  return ErrorCategory.GENERAL
-}
-
-/**
- * Get appropriate recovery paths based on error and context
- */
-function getRecoveryPaths(
-  error: Error | string,
-  category: ErrorCategory,
-  context?: ErrorContext
-): WorkflowStep[] {
-  // Always include these basic recovery options
-  const basicPaths: WorkflowStep[] = ['idle']
-  
-  // Add context-specific recovery paths
-  if (context?.previousStep) {
-    basicPaths.push(context.previousStep)
-  }
-  
-  // Add category-specific recovery paths
+function mapLegacyToUnifiedCategory(category: ErrorCategory): UnifiedErrorCategory {
   switch (category) {
     case ErrorCategory.NETWORK:
-      // Network errors can usually be retried from the same step
-      if (context?.step && context.step !== 'error') {
-        basicPaths.push(context.step)
-      }
-      break
-      
-    case ErrorCategory.PROCESSING:
-      // For processing errors, we can retry the upload or extraction
-      basicPaths.push('uploading')
-      if (context?.previousStep === 'extracting') {
-        basicPaths.push('extracting')
-      }
-      break
-      
-    case ErrorCategory.VERIFICATION:
-      // For verification errors, we can retry verification
-      basicPaths.push('verification')
-      break
-      
-    case ErrorCategory.REPORT:
-      // For report generation errors, we can retry report generation
-      basicPaths.push('report_generation')
-      break
-  }
-  
-  // Remove duplicates and ensure 'idle' is always an option
-  return [...new Set(['idle', ...basicPaths])] as WorkflowStep[]
-}
-
-/**
- * Format a user-friendly error message based on the error and category
- */
-function formatErrorMessage(
-  error: Error | string,
-  category: ErrorCategory
-): string {
-  const errorMessage = typeof error === 'string' ? error : error.message
-  
-  // Format based on category
-  switch (category) {
-    case ErrorCategory.NETWORK:
-      return `Network error: ${errorMessage}. Please check your connection and try again.`
-      
+      return UnifiedErrorCategory.NETWORK;
     case ErrorCategory.PERMISSION:
-      return `Permission error: ${errorMessage}. You may not have access to this resource.`
-      
+      return UnifiedErrorCategory.PERMISSION;
     case ErrorCategory.VALIDATION:
-      return `Validation error: ${errorMessage}. Please check your input and try again.`
-      
+      return UnifiedErrorCategory.VALIDATION;
     case ErrorCategory.PROCESSING:
-      return `Processing error: ${errorMessage}. There was a problem processing your document.`
-      
+      return UnifiedErrorCategory.DATA;
     case ErrorCategory.VERIFICATION:
-      return `Verification error: ${errorMessage}. There was a problem with the verification process.`
-      
     case ErrorCategory.REPORT:
-      return `Report generation error: ${errorMessage}. There was a problem generating your report.`
-      
+      return UnifiedErrorCategory.WORKFLOW;
+    case ErrorCategory.GENERAL:
     default:
-      return `Error: ${errorMessage}`
+      return UnifiedErrorCategory.UNKNOWN;
   }
 }
 
 /**
- * Determine if an error is retryable
+ * Map unified error categories to legacy error categories
  */
-function isRetryableError(
-  error: Error | string,
-  category: ErrorCategory
-): boolean {
-  // Network errors are usually retryable
-  if (category === ErrorCategory.NETWORK) {
-    return true
+function mapUnifiedToLegacyCategory(category: UnifiedErrorCategory): ErrorCategory {
+  switch (category) {
+    case UnifiedErrorCategory.NETWORK:
+      return ErrorCategory.NETWORK;
+    case UnifiedErrorCategory.PERMISSION:
+      return ErrorCategory.PERMISSION;
+    case UnifiedErrorCategory.VALIDATION:
+      return ErrorCategory.VALIDATION;
+    case UnifiedErrorCategory.DATA:
+      return ErrorCategory.PROCESSING;
+    case UnifiedErrorCategory.WORKFLOW:
+      return ErrorCategory.VERIFICATION;
+    case UnifiedErrorCategory.TRANSACTION:
+    case UnifiedErrorCategory.CONCURRENCY:
+    case UnifiedErrorCategory.SYSTEM:
+      return ErrorCategory.GENERAL;
+    case UnifiedErrorCategory.TIMEOUT:
+      return ErrorCategory.NETWORK;
+    case UnifiedErrorCategory.UNKNOWN:
+    default:
+      return ErrorCategory.GENERAL;
+  }
+}
+
+/**
+ * Convert legacy error context to unified error context
+ */
+function toUnifiedErrorContext(context?: ErrorContext): UnifiedErrorContext {
+  if (!context) {
+    return {
+      timestamp: new Date().toISOString()
+    };
   }
   
-  // Permission errors are not retryable
-  if (category === ErrorCategory.PERMISSION) {
-    return false
-  }
-  
-  // Check error message for indicators
-  const errorMessage = typeof error === 'string' ? error : error.message
-  
-  // Non-retryable patterns
-  const nonRetryablePatterns = [
-    /not found/i,
-    /invalid token/i,
-    /unauthorized/i,
-    /permission denied/i,
-    /unsupported/i,
-    /malformed/i,
-  ]
-  
-  for (const pattern of nonRetryablePatterns) {
-    if (pattern.test(errorMessage)) {
-      return false
-    }
-  }
-  
-  // Default to retryable
-  return true
+  return {
+    domain: context.domain,
+    workflowStep: context.step,
+    previousStep: context.previousStep,
+    workflowId: context.workflowId,
+    userId: context.userId,
+    metadata: {
+      ...context.details,
+      chatId: context.chatId
+    },
+    timestamp: new Date().toISOString()
+  };
 }
 
 /**
  * Chat workflow error handler class
+ * Acts as an adapter to the unified error handling system
  */
 export class ChatWorkflowErrorHandler {
   private readonly errorMessageFunction: ErrorMessageFunction
@@ -283,209 +155,253 @@ export class ChatWorkflowErrorHandler {
   
   /**
    * Handle a workflow error and integrate with chat UI
+   * Delegates to the unified error handler
    */
-  handleError(
+  async handleError(
     error: Error | unknown,
     context?: ErrorContext
-  ): ErrorMetadata {
-    // Normalize the error
-    const normalizedError = normalizeError(error)
+  ): Promise<ErrorMetadata> {
+    // Create unified error context
+    const unifiedContext = toUnifiedErrorContext(context);
     
-    // Determine the error category
-    const category = determineErrorCategory(normalizedError, context)
+    // Get normalized error
+    const normalizedError = normalizeError(error);
+    
+    // Use unified error handler for categorization
+    const category = unifiedErrorHandler.categorize(normalizedError, unifiedContext);
+    const legacyCategory = mapUnifiedToLegacyCategory(category);
     
     // Get recovery paths
-    const recoveryPaths = getRecoveryPaths(normalizedError, category, context)
-    
-    // Format a user-friendly error message
-    const formattedMessage = formatErrorMessage(normalizedError, category)
+    const recoveryPaths = unifiedErrorHandler.recovery.getRecoveryPaths(
+      unifiedContext.workflowStep || 'error',
+      category
+    );
     
     // Check if error is retryable
-    const retryable = isRetryableError(normalizedError, category)
+    const retryable = unifiedErrorHandler.isRetryable(category, normalizedError, unifiedContext);
+    
+    // Format message 
+    const formattedMessage = this.formatErrorMessage(normalizedError, legacyCategory);
     
     // Create error metadata
     const errorMetadata: ErrorMetadata = {
       message: formattedMessage,
-      category,
+      category: legacyCategory,
       timestamp: new Date().toISOString(),
       details: context?.details,
       recoveryPaths,
       retryable,
       errorId: crypto.randomUUID()
+    };
+    
+    // Log the error using unified error handler
+    unifiedErrorHandler.logError(
+      normalizedError,
+      category,
+      unifiedErrorHandler.determineSeverity(category, unifiedContext),
+      unifiedContext
+    );
+    
+    // Update service state
+    await this.updateServiceState(normalizedError.message, context);
+    
+    // Delegate error message creation to chatService
+    if (context?.chatId) {
+      await chatService.handleWorkflowError(
+        context.chatId, 
+        {
+          message: formattedMessage,
+          category: legacyCategory,
+          timestamp: errorMetadata.timestamp,
+          recoveryPaths: recoveryPaths.map(p => p.toString()),
+          retryable,
+          details: context?.details
+        }
+      );
+    } else {
+      // For backward compatibility, use the provided function if no chatId
+      this.addSystemMessageFunction(
+        this.errorMessageFunction(formattedMessage, errorMetadata),
+        'error',
+        {
+          isError: true,
+          errorCategory: legacyCategory,
+          errorTimestamp: errorMetadata.timestamp,
+          errorRetryable: retryable,
+          errorRecoveryPaths: recoveryPaths,
+          errorDetails: context?.details,
+          errorId: errorMetadata.errorId
+        }
+      );
     }
     
-    // Log the error
-    console.error('Workflow error:', {
-      error: normalizedError,
-      category,
-      context,
-    })
+    return errorMetadata;
+  }
+  
+  /**
+   * Format a user-friendly error message based on the error and category
+   */
+  private formatErrorMessage(
+    error: Error | string,
+    category: ErrorCategory
+  ): string {
+    const errorMessage = typeof error === 'string' ? error : error.message;
     
-    // Update service state to reflect error
-    this.updateServiceState(normalizedError.message, context)
-    
-    // Add a system message for the error
-    this.addSystemMessageFunction(
-      this.errorMessageFunction(formattedMessage, errorMetadata),
-      'error',
-      {
-        isError: true,
-        errorCategory: category,
-        errorTimestamp: errorMetadata.timestamp,
-        errorRetryable: retryable,
-        errorRecoveryPaths: recoveryPaths,
-        errorDetails: context?.details,
-        errorId: errorMetadata.errorId
-      }
-    )
-    
-    return errorMetadata
+    // Format based on category
+    switch (category) {
+      case ErrorCategory.NETWORK:
+        return `Network error: ${errorMessage}. Please check your connection and try again.`;
+        
+      case ErrorCategory.PERMISSION:
+        return `Permission error: ${errorMessage}. You may not have access to this resource.`;
+        
+      case ErrorCategory.VALIDATION:
+        return `Validation error: ${errorMessage}. Please check your input and try again.`;
+        
+      case ErrorCategory.PROCESSING:
+        return `Processing error: ${errorMessage}. There was a problem processing your document.`;
+        
+      case ErrorCategory.VERIFICATION:
+        return `Verification error: ${errorMessage}. There was a problem with the verification process.`;
+        
+      case ErrorCategory.REPORT:
+        return `Report generation error: ${errorMessage}. There was a problem generating your report.`;
+        
+      default:
+        return `Error: ${errorMessage}`;
+    }
   }
   
   /**
    * Attempt to recover from an error
+   * Delegates to the unified error handler's recovery system
    */
   async recoverFromError(
     recoveryPath: WorkflowStep,
     context?: ErrorContext
   ): Promise<boolean> {
     if (!context) {
-      console.error('Cannot recover without context')
-      return false
+      console.error('Cannot recover without context');
+      return false;
     }
     
+    // Create unified error context
+    const unifiedContext = toUnifiedErrorContext(context);
+    
     try {
-      // Get the appropriate service based on the recovery path
-      if (
-        recoveryPath === 'uploading' ||
-        recoveryPath === 'extracting' ||
-        recoveryPath === 'idle'
-      ) {
-        // Document domain
-        const documentService = workflowServiceFactory.getDocumentWorkflowService(
-          context.userId,
-          context.chatId
-        )
-        
-        // Update step in document service
-        await documentService.updateStep(recoveryPath, {
-          recoveryAttempt: true,
-          recoveryTimestamp: new Date().toISOString(),
-          error: null // Clear error
-        })
-      } else if (
-        recoveryPath === 'verification' ||
-        recoveryPath === 'verification_pending' ||
-        recoveryPath === 'verification_in_progress'
-      ) {
-        // Verification domain
-        const verificationService = workflowServiceFactory.getVerificationWorkflowService(
-          context.userId,
-          context.chatId
-        )
-        
-        // Update step in verification service
-        await verificationService.updateStep(recoveryPath, {
-          recoveryAttempt: true,
-          recoveryTimestamp: new Date().toISOString(),
-          error: null // Clear error
-        })
-      } else if (
-        recoveryPath === 'report_generation'
-      ) {
-        // Report domain
-        const reportService = workflowServiceFactory.getReportWorkflowService(
-          context.userId,
-          context.chatId
-        )
-        
-        // Update step in report service
-        await reportService.updateStep(recoveryPath, {
-          recoveryAttempt: true,
-          recoveryTimestamp: new Date().toISOString(),
-          error: null // Clear error
-        })
-      } else {
-        // General recovery - reset all services
-        if (context.domain === 'document') {
-          const documentService = workflowServiceFactory.getDocumentWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await documentService.resetDocumentWorkflow()
-        } else if (context.domain === 'verification') {
-          const verificationService = workflowServiceFactory.getVerificationWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await verificationService.resetVerification()
-        } else if (context.domain === 'report') {
-          const reportService = workflowServiceFactory.getReportWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await reportService.resetReportWorkflow()
-        } else {
-          // Reset all services
-          const documentService = workflowServiceFactory.getDocumentWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await documentService.resetDocumentWorkflow()
-          
-          const verificationService = workflowServiceFactory.getVerificationWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await verificationService.resetVerification()
-          
-          const reportService = workflowServiceFactory.getReportWorkflowService(
-            context.userId,
-            context.chatId
-          )
-          await reportService.resetReportWorkflow()
+      // Use the unified error handler's recovery system
+      const result = await unifiedErrorHandler.recovery.attemptRecovery(
+        { message: "Recovery requested", code: "RECOVERY_REQUESTED" },
+        unifiedContext,
+        {
+          targetStep: recoveryPath,
+          strategy: RecoveryStrategy.RESET,
+          fallbackStrategies: [RecoveryStrategy.RETRY, RecoveryStrategy.DELEGATE],
+          workflowId: unifiedContext.workflowId,
+          notify: true
         }
+      );
+      
+      // If recovery succeeded, notify chat service
+      if (result.isSuccess() && result.value.success) {
+        // Notify chat service
+        if (context.chatId) {
+          await chatService.notifyWorkflowRecovery(
+            context.chatId,
+            recoveryPath.toString(),
+            new Date().toISOString()
+          );
+        } else {
+          // For backward compatibility, use the provided function if no chatId
+          this.addSystemMessageFunction(
+            `Recovering workflow to ${recoveryPath.replace(/_/g, ' ')} state.`,
+            'system',
+            {
+              isRecovery: true,
+              recoveryPath,
+              recoveryTimestamp: new Date().toISOString()
+            }
+          );
+        }
+        
+        return true;
+      } else {
+        // Recovery failed
+        const error = result.isSuccess() 
+          ? result.value.error 
+          : { message: result.error.message };
+          
+        // Notify failure
+        if (context.chatId) {
+          await chatService.notifyWorkflowRecoveryFailure(
+            context.chatId,
+            error
+          );
+        } else {
+          // For backward compatibility
+          this.addSystemMessageFunction(
+            `Failed to recover workflow: ${error.message}`,
+            'error',
+            {
+              isError: true,
+              isRecoveryFailure: true
+            }
+          );
+        }
+        
+        return false;
+      }
+    } catch (error) {
+      console.error('Error during recovery:', error);
+      
+      // Notify failure
+      if (context.chatId) {
+        await chatService.notifyWorkflowRecoveryFailure(
+          context.chatId,
+          error
+        );
+      } else {
+        // For backward compatibility
+        this.addSystemMessageFunction(
+          `Failed to recover workflow: ${error instanceof Error ? error.message : String(error)}`,
+          'error',
+          {
+            isError: true,
+            isRecoveryFailure: true
+          }
+        );
       }
       
-      // Add a system message about recovery
-      this.addSystemMessageFunction(
-        `Recovering workflow to ${recoveryPath.replace(/_/g, ' ')} state.`,
-        'system',
-        {
-          isRecovery: true,
-          recoveryPath,
-          recoveryTimestamp: new Date().toISOString()
-        }
-      )
-      
-      return true
-    } catch (error) {
-      console.error('Error during recovery:', error)
-      
-      // Add a system message about recovery failure
-      this.addSystemMessageFunction(
-        `Failed to recover workflow: ${error instanceof Error ? error.message : String(error)}`,
-        'error',
-        {
-          isError: true,
-          isRecoveryFailure: true
-        }
-      )
-      
-      return false
+      return false;
     }
   }
   
   /**
    * Update service state to reflect error
+   * This is kept for backward compatibility but delegates to the unified
+   * error handling system where possible
    */
-  private updateServiceState(
+  private async updateServiceState(
     errorMessage: string,
     context?: ErrorContext
-  ): void {
-    if (!context) return
+  ): Promise<void> {
+    if (!context) return;
     
     try {
+      // Create unified error context
+      const unifiedContext = toUnifiedErrorContext(context);
+      
+      // If we have a workflowId, use unified error handler
+      if (unifiedContext.workflowId) {
+        await unifiedErrorHandler.updateWorkflowErrorState(
+          { message: errorMessage, code: "ERROR" },
+          UnifiedErrorCategory.categorize({ message: errorMessage }),
+          unifiedContext
+        );
+        return;
+      }
+      
+      // Otherwise, fall back to legacy approach
       // Determine which service to update based on context
       if (context.domain === 'document' || (
         context.step && ['uploading', 'extracting'].includes(context.step)
@@ -494,14 +410,14 @@ export class ChatWorkflowErrorHandler {
         const documentService = workflowServiceFactory.getDocumentWorkflowService(
           context.userId,
           context.chatId
-        )
+        );
         
         // Update document service state to error
         documentService.updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
           errorDetails: context.details
-        }).catch(console.error)
+        }).catch(console.error);
       } else if (context.domain === 'verification' || (
         context.step && ['verification', 'verification_pending', 'verification_in_progress'].includes(context.step)
       )) {
@@ -509,14 +425,14 @@ export class ChatWorkflowErrorHandler {
         const verificationService = workflowServiceFactory.getVerificationWorkflowService(
           context.userId,
           context.chatId
-        )
+        );
         
         // Update verification service state to error
         verificationService.updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
           errorDetails: context.details
-        }).catch(console.error)
+        }).catch(console.error);
       } else if (context.domain === 'report' || (
         context.step && ['report_generation'].includes(context.step)
       )) {
@@ -524,35 +440,35 @@ export class ChatWorkflowErrorHandler {
         const reportService = workflowServiceFactory.getReportWorkflowService(
           context.userId,
           context.chatId
-        )
+        );
         
         // Update report service state to error
         reportService.updateStep(DomainOnlyWorkflowStep.ERROR, {
           error: errorMessage,
           errorTimestamp: new Date().toISOString(),
           errorDetails: context.details
-        }).catch(console.error)
+        }).catch(console.error);
       } else {
         // Update all services as a fallback
         ['document', 'verification', 'report'].forEach(domain => {
           try {
-            let service
+            let service;
             
             if (domain === 'document') {
               service = workflowServiceFactory.getDocumentWorkflowService(
                 context.userId,
                 context.chatId
-              )
+              );
             } else if (domain === 'verification') {
               service = workflowServiceFactory.getVerificationWorkflowService(
                 context.userId,
                 context.chatId
-              )
+              );
             } else if (domain === 'report') {
               service = workflowServiceFactory.getReportWorkflowService(
                 context.userId,
                 context.chatId
-              )
+              );
             }
             
             if (service) {
@@ -560,15 +476,15 @@ export class ChatWorkflowErrorHandler {
                 error: errorMessage,
                 errorTimestamp: new Date().toISOString(),
                 errorDetails: context.details
-              }).catch(console.error)
+              }).catch(console.error);
             }
           } catch (err) {
-            console.error(`Error updating ${domain} service:`, err)
+            console.error(`Error updating ${domain} service:`, err);
           }
-        })
+        });
       }
     } catch (err) {
-      console.error('Error updating service state:', err)
+      console.error('Error updating service state:', err);
     }
   }
 }

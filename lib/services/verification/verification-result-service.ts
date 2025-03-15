@@ -15,6 +15,127 @@ import { verificationStatusMapper } from '@/lib/types/verification-mapper'
  */
 export class VerificationResultService {
   /**
+   * Generate a unique ID
+   * @returns A unique ID for the verification
+   */
+  private generateId(): string {
+    return crypto.randomUUID();
+  }
+  
+  /**
+   * Prepare completion metadata for workflow processing
+   * This method extracts the domain logic from the workflow file
+   * 
+   * @param options The completion options
+   * @returns Processed completion metadata with timestamps and status
+   */
+  async prepareCompletionMetadata(options: {
+    workflowId: string;
+    verificationId: string;
+    userId: string;
+    autoGenerateReport: boolean;
+    isApproved: boolean;
+  }): Promise<Record<string, any>> {
+    const moduleLogger = logger.withMetadata({
+      module: 'VerificationResultService',
+      method: 'prepareCompletionMetadata',
+      workflowId: options.workflowId,
+      verificationId: options.verificationId
+    });
+    
+    try {
+      // Build completion metadata
+      const completionTime = new Date().toISOString();
+      
+      const metadata = {
+        status: options.isApproved ? VerificationStatus.completed : VerificationStatus.failed,
+        completedAt: completionTime,
+        completedBy: options.userId,
+        autoGenerateReport: options.autoGenerateReport,
+        verification_status: options.isApproved 
+          ? VerificationStatus.completed 
+          : VerificationStatus.failed,
+        lastUpdated: completionTime
+      };
+      
+      moduleLogger.info('Completion metadata prepared for workflow', {
+        workflowId: options.workflowId,
+        verificationId: options.verificationId,
+        isApproved: options.isApproved
+      });
+      
+      return metadata;
+    } catch (error) {
+      moduleLogger.error('Failed to prepare completion metadata', {
+        error: normalizeError(error)
+      });
+      
+      // Provide fallback data in case of error
+      return {
+        status: options.isApproved ? VerificationStatus.completed : VerificationStatus.failed,
+        completedAt: new Date().toISOString(),
+        completedBy: options.userId,
+        lastUpdated: new Date().toISOString()
+      };
+    }
+  }
+  
+  /**
+   * Prepare rejection metadata for workflow processing
+   * This method extracts the domain logic from the workflow file
+   * 
+   * @param options The rejection options
+   * @returns Processed rejection metadata with timestamps and status
+   */
+  async prepareRejectionMetadata(options: {
+    workflowId: string;
+    verificationId: string;
+    userId: string;
+    reason: string;
+  }): Promise<Record<string, any>> {
+    const moduleLogger = logger.withMetadata({
+      module: 'VerificationResultService',
+      method: 'prepareRejectionMetadata',
+      workflowId: options.workflowId,
+      verificationId: options.verificationId
+    });
+    
+    try {
+      // Build rejection metadata
+      const rejectionTime = new Date().toISOString();
+      
+      const metadata = {
+        status: VerificationStatus.failed,
+        rejectedAt: rejectionTime,
+        rejectedBy: options.userId,
+        rejectionReason: options.reason,
+        verification_status: VerificationStatus.failed,
+        lastUpdated: rejectionTime
+      };
+      
+      moduleLogger.info('Rejection metadata prepared for workflow', {
+        workflowId: options.workflowId,
+        verificationId: options.verificationId,
+        reason: options.reason
+      });
+      
+      return metadata;
+    } catch (error) {
+      moduleLogger.error('Failed to prepare rejection metadata', {
+        error: normalizeError(error)
+      });
+      
+      // Provide fallback data in case of error
+      return {
+        status: VerificationStatus.failed,
+        rejectedAt: new Date().toISOString(),
+        rejectedBy: options.userId,
+        rejectionReason: options.reason,
+        lastUpdated: new Date().toISOString()
+      };
+    }
+  }
+  /**
    * Complete the verification process.
    */
   async completeVerification(options: CompleteVerificationOptions): Promise<VerificationServiceResult<VerificationResult>> {

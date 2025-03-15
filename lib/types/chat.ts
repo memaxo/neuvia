@@ -4,6 +4,8 @@
  * This file serves as the single source of truth for chat and message related types.
  * It defines the core message structure, metadata, and state management interfaces
  * used throughout the chat system.
+ *
+ * Enhanced with additional types to support better workflow integration
  */
 
 import type { UUID, Timestamp } from './base';
@@ -43,7 +45,45 @@ export enum ChatMessageType {
   REPORT = 'report',
 
   /** Correction message */
-  CORRECTION = 'correction'
+  CORRECTION = 'correction',
+  
+  /** Intent detection message */
+  INTENT = 'intent',
+  
+  /** Workflow transition message */
+  WORKFLOW = 'workflow'
+}
+
+/**
+ * Chat intent types for intent detection
+ */
+export enum ChatIntentType {
+  /** Confirm verification */
+  VERIFY_CONFIRM = 'verify_confirm',
+  
+  /** Correct verification data */
+  VERIFY_CORRECT = 'verify_correct',
+  
+  /** Reject verification */
+  VERIFY_REJECT = 'verify_reject',
+  
+  /** Generate report */
+  GENERATE_REPORT = 'generate_report',
+  
+  /** View report */
+  VIEW_REPORT = 'view_report',
+  
+  /** Research request */
+  RESEARCH_REQUEST = 'research_request',
+  
+  /** Regular chat message */
+  REGULAR_MESSAGE = 'regular_message',
+  
+  /** Help request */
+  HELP_REQUEST = 'help_request',
+  
+  /** Cancel operation */
+  CANCEL_OPERATION = 'cancel_operation'
 }
 
 /**

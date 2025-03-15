@@ -1,15 +1,22 @@
 /**
  * @fileoverview Workflow Event Sourcing Service
  *
+ * PHASE 3 IMPLEMENTATION:
+ * Centralized event handling for all workflow domains.
+ * 
  * Implements the event sourcing pattern for workflow state management.
  * Allows storing all workflow state changes as events and reconstructing
  * the state from the event history.
+ *
+ * This file has been updated to be the central point for all event-related
+ * operations across all workflow domains, unifying the event handling approach.
  *
  * Features:
  * - Event storage and retrieval
  * - State reconstruction from events
  * - Event replay and analysis
  * - Audit trail generation
+ * - Cross-domain event coordination
  */
 
 import { createBrowserClient } from '@/lib/supabase/clients'
@@ -22,22 +29,52 @@ import logger from '@/lib/logger'
 
 /**
  * Event types that can be stored in the event sourcing system
+ * PHASE 3 IMPLEMENTATION: Centralized event types for all domains
  */
 export enum WorkflowEventType {
+  // Common workflow events
   WORKFLOW_CREATED = 'workflow_created',
   STEP_CHANGED = 'step_changed',
   METADATA_UPDATED = 'metadata_updated',
   PROGRESS_UPDATED = 'progress_updated',
-  VERIFICATION_STARTED = 'verification_started',
-  VERIFICATION_UPDATED = 'verification_updated',
-  VERIFICATION_COMPLETED = 'verification_completed',
-  REPORT_GENERATED = 'report_generated',
+  ERROR_OCCURRED = 'error_occurred',
+  RECOVERY_ATTEMPTED = 'recovery_attempted',
+  WORKFLOW_COMPLETED = 'workflow_completed',
+  
+  // Transaction tracking events
   TRANSACTION_STARTED = 'transaction_started',
   TRANSACTION_COMPLETED = 'transaction_completed',
   TRANSACTION_FAILED = 'transaction_failed',
-  ERROR_OCCURRED = 'error_occurred',
-  RECOVERY_ATTEMPTED = 'recovery_attempted',
-  WORKFLOW_COMPLETED = 'workflow_completed'
+  
+  // Document domain events
+  DOCUMENT_UPLOADED = 'document_uploaded',
+  DOCUMENT_EXTRACTION_STARTED = 'document_extraction_started',
+  DOCUMENT_EXTRACTION_COMPLETED = 'document_extraction_completed',
+  DOCUMENT_PROCESSING_FAILED = 'document_processing_failed',
+  
+  // Verification domain events
+  VERIFICATION_STARTED = 'verification_started',
+  VERIFICATION_UPDATED = 'verification_updated',
+  VERIFICATION_COMPLETED = 'verification_completed',
+  VERIFICATION_FAILED = 'verification_failed',
+  CORRECTION_SUBMITTED = 'correction_submitted',
+  CORRECTION_APPLIED = 'correction_applied',
+  
+  // Report domain events
+  REPORT_GENERATION_STARTED = 'report_generation_started',
+  REPORT_GENERATED = 'report_generated',
+  REPORT_FAILED = 'report_failed',
+  
+  // Research domain events
+  RESEARCH_STARTED = 'research_started',
+  RESEARCH_COMPLETED = 'research_completed',
+  RESEARCH_FAILED = 'research_failed',
+  
+  // Chat domain events
+  CHAT_MESSAGE_PROCESSED = 'chat_message_processed',
+  CHAT_INTENT_DETECTED = 'chat_intent_detected',
+  CHAT_RESPONSE_GENERATED = 'chat_response_generated',
+  CHAT_ERROR = 'chat_error'
 }
 
 /**
@@ -112,28 +149,165 @@ export interface EventQueryOptions {
 /**
  * Service for implementing event sourcing pattern with workflows
  */
+/**
+ * Cross-domain event handler mapping
+ * Maps event types to list of handlers from other domains
+ */
+type CrossDomainEventHandlers = Record<string, Array<(event: any) => Promise<void>>>;
+
 export class WorkflowEventSourcingService {
   private readonly supabase: SupabaseClient<Database>;
   private readonly logger = logger.withMetadata({ module: 'WorkflowEventSourcing' });
+  private crossDomainHandlers: CrossDomainEventHandlers = {};
   
   constructor() {
     this.supabase = createBrowserClient();
+    this.initializeCrossDomainHandlers();
   }
   
   /**
-   * Store a new event in the event log
+   * PHASE 3 IMPLEMENTATION:
+   * Initialize cross-domain event handlers
+   * Centralized cross-domain event coordination
+   */
+  private initializeCrossDomainHandlers() {
+    // Document → Verification domain coordination
+    this.registerCrossDomainHandler(
+      WorkflowEventType.DOCUMENT_EXTRACTION_COMPLETED,
+      async (event) => {
+        // When document extraction completes, notify verification domain
+        if (event.workflowId && event.documentId && event.autoVerify) {
+          await this.appendEvent(
+            event.workflowId,
+            WorkflowEventType.VERIFICATION_STARTED,
+            {
+              documentId: event.documentId,
+              userId: event.userId || event.actorId,
+              timestamp: new Date().toISOString(),
+              source: 'document_domain',
+              autoTriggered: true
+            }
+          );
+          this.logger.info('Cross-domain event: Document extraction triggered verification', {
+            workflowId: event.workflowId,
+            documentId: event.documentId
+          });
+        }
+      }
+    );
+    
+    // Verification → Report domain coordination
+    this.registerCrossDomainHandler(
+      WorkflowEventType.VERIFICATION_COMPLETED,
+      async (event) => {
+        // When verification completes, notify report domain if auto-generate is enabled
+        if (event.workflowId && event.documentId && event.autoGenerateReport) {
+          await this.appendEvent(
+            event.workflowId,
+            WorkflowEventType.REPORT_GENERATION_STARTED,
+            {
+              documentId: event.documentId,
+              verificationId: event.verificationId,
+              userId: event.userId || event.actorId,
+              timestamp: new Date().toISOString(),
+              source: 'verification_domain',
+              autoTriggered: true
+            }
+          );
+          this.logger.info('Cross-domain event: Verification completion triggered report generation', {
+            workflowId: event.workflowId,
+            documentId: event.documentId,
+            verificationId: event.verificationId
+          });
+        }
+      }
+    );
+    
+    // Research → Chat domain coordination
+    this.registerCrossDomainHandler(
+      WorkflowEventType.RESEARCH_COMPLETED,
+      async (event) => {
+        // When research completes, notify chat domain
+        if (event.workflowId && event.chatId) {
+          await this.appendEvent(
+            event.workflowId,
+            WorkflowEventType.CHAT_RESPONSE_GENERATED,
+            {
+              chatId: event.chatId,
+              researchId: event.researchId,
+              findings: event.findings,
+              timestamp: new Date().toISOString(),
+              source: 'research_domain'
+            }
+          );
+          this.logger.info('Cross-domain event: Research completion triggered chat response', {
+            workflowId: event.workflowId,
+            chatId: event.chatId,
+            researchId: event.researchId
+          });
+        }
+      }
+    );
+    
+    // Report → Chat domain coordination
+    this.registerCrossDomainHandler(
+      WorkflowEventType.REPORT_GENERATED,
+      async (event) => {
+        // When report is generated, notify chat domain if chat context exists
+        if (event.workflowId && event.chatId) {
+          await this.appendEvent(
+            event.workflowId,
+            WorkflowEventType.CHAT_RESPONSE_GENERATED,
+            {
+              chatId: event.chatId,
+              reportId: event.reportId,
+              summary: event.summary,
+              timestamp: new Date().toISOString(),
+              source: 'report_domain'
+            }
+          );
+          this.logger.info('Cross-domain event: Report generation triggered chat response', {
+            workflowId: event.workflowId,
+            chatId: event.chatId,
+            reportId: event.reportId
+          });
+        }
+      }
+    );
+  }
+  
+  /**
+   * Register a cross-domain event handler
+   */
+  registerCrossDomainHandler(
+    eventType: WorkflowEventType | string,
+    handler: (event: any) => Promise<void>
+  ): void {
+    if (!this.crossDomainHandlers[eventType]) {
+      this.crossDomainHandlers[eventType] = [];
+    }
+    this.crossDomainHandlers[eventType].push(handler);
+  }
+  
+  /**
+   * Store a new event in the event log and trigger cross-domain handlers
+   *
+   * PHASE 3 IMPLEMENTATION: 
+   * Enhanced with cross-domain event coordination
    *
    * @param workflowId Workflow ID
    * @param eventType Type of event
    * @param eventData Event data
    * @param actorId User who triggered the event (optional)
+   * @param skipCrossDomainHandlers Whether to skip cross-domain handlers (internal use)
    * @returns Event ID if successful
    */
   async appendEvent(
     workflowId: string,
     eventType: string,
     eventData: Record<string, unknown>,
-    actorId?: string
+    actorId?: string,
+    skipCrossDomainHandlers: boolean = false
   ): Promise<string | null> {
     try {
       if (!workflowId) {
@@ -143,7 +317,8 @@ export class WorkflowEventSourcingService {
       // Add timestamp if not present
       const enhancedEventData = {
         ...eventData,
-        timestamp: eventData.timestamp || new Date().toISOString()
+        timestamp: eventData.timestamp || new Date().toISOString(),
+        workflowId // Include workflowId in event data for cross-domain handlers
       };
       
       // Use the database function for event logging
@@ -158,7 +333,24 @@ export class WorkflowEventSourcingService {
       );
       
       if (error) throw error;
-      return data?.event_id || null;
+      
+      const eventId = data?.event_id || null;
+      
+      // Process cross-domain handlers if enabled and handlers exist
+      if (!skipCrossDomainHandlers && this.crossDomainHandlers[eventType]?.length > 0) {
+        // Process handlers asynchronously but don't wait for them
+        void this.processCrossDomainEvent(
+          eventType, 
+          { 
+            ...enhancedEventData, 
+            workflowId, 
+            actorId, 
+            eventId 
+          }
+        );
+      }
+      
+      return eventId;
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to append event', {
@@ -169,6 +361,53 @@ export class WorkflowEventSourcingService {
       
       // Non-critical error, don't throw
       return null;
+    }
+  }
+  
+  /**
+   * Process cross-domain event handlers
+   * 
+   * PHASE 3 IMPLEMENTATION:
+   * Centralized cross-domain event coordination
+   * 
+   * @param eventType Type of event
+   * @param eventData Event data
+   */
+  private async processCrossDomainEvent(
+    eventType: string,
+    eventData: Record<string, unknown>
+  ): Promise<void> {
+    const handlers = this.crossDomainHandlers[eventType] || [];
+    
+    if (handlers.length === 0) return;
+    
+    this.logger.debug('Processing cross-domain event handlers', {
+      eventType,
+      handlerCount: handlers.length
+    });
+    
+    // Execute all handlers in parallel
+    try {
+      await Promise.all(
+        handlers.map(async (handler) => {
+          try {
+            await handler(eventData);
+          } catch (handlerError) {
+            // Log handler error but don't fail the whole process
+            this.logger.error('Cross-domain event handler failed', {
+              eventType,
+              workflowId: eventData.workflowId,
+              error: handlerError instanceof Error ? handlerError.message : String(handlerError)
+            });
+          }
+        })
+      );
+    } catch (error) {
+      this.logger.error('Error processing cross-domain event handlers', {
+        eventType,
+        workflowId: eventData.workflowId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
   

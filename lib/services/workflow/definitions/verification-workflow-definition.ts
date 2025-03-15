@@ -1,13 +1,20 @@
 /**
  * @fileoverview Verification Workflow Definition
  *
+ * PHASE 3 IMPLEMENTATION:
  * Defines the state machine for document verification workflows.
- * This includes states, transitions, actions, and side effects.
+ * This includes states, transitions, and workflow state management.
+ * 
+ * This file follows the standardized workflow definition template structure
+ * and has been updated to separate state transitions from business logic.
+ * All business logic is delegated to the VerificationService and CorrectionService.
+ * 
+ * IMPORTANT: This file should ONLY contain state transition logic and not business logic.
+ * Business logic should be delegated to domain services (verificationService, correctionService, etc.).
  */
 
 import { z } from 'zod';
 import { createWorkflowDefinition } from '../coordination/workflow-definition';
-import { randomUUID } from 'crypto';
 import { VerificationStatus } from '@/lib/types/verification';
 import { ProcessingPhase } from '@/lib/types/workflow';
 import logger from '@/lib/logger';
@@ -73,10 +80,8 @@ export const verificationWorkflowDefinition = createWorkflowDefinition<Verificat
               context.startedAt = new Date().toISOString();
               context.userId = event.payload.userId || event.meta?.userId;
               context.patientId = event.payload.patientId;
-              context.verificationId = event.payload.verificationId ||
-                                       `verify-${Date.now()}-${randomUUID().substring(0, 8)}`;
-              context.summaryId = event.payload.summaryId ||
-                                  `summary-${Date.now()}-${randomUUID().substring(0, 8)}`;
+              context.verificationId = event.payload.verificationId; // Should be provided by service
+              context.summaryId = event.payload.summaryId; // Should be provided by service
               context.originalContent = event.payload.documentText || '';
               context.currentSummary = event.payload.documentText || '';
               context.status = 'pending';
@@ -180,12 +185,12 @@ export const verificationWorkflowDefinition = createWorkflowDefinition<Verificat
           condition: (context, event) => !!event.payload?.correctionText,
           effects: [
             async (context, event) => {
-              // Create new summary ID for this correction
-              const newSummaryId = `summary-${Date.now()}-${randomUUID().substring(0, 8)}`;
+              // Use provided IDs from the service
+              const newSummaryId = event.payload.summaryId || context.summaryId;
               
-              // Record correction
+              // Record correction (ID should be provided by the correction service)
               const correction = {
-                id: `correction-${Date.now()}-${randomUUID().substring(0, 8)}`,
+                id: event.payload.correctionId,
                 text: event.payload.correctionText,
                 timestamp: new Date().toISOString(),
                 userId: event.meta?.userId || context.userId,

@@ -1,9 +1,24 @@
-import { useState, useCallback } from 'react'
-import { ProcessingPhase, DomainOnlyWorkflowStep } from '@/lib/types/workflow'
+/**
+ * @fileoverview Verification Workflow Hook
+ * 
+ * Phase 4 Implementation: Uses the Result pattern and functional composition
+ * pattern to implement a verification workflow with improved error
+ * handling and transaction management.
+ */
+
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import { ProcessingPhase, DomainOnlyWorkflowStep, WorkflowStep } from '@/lib/types/workflow'
 import { createWorkflowHook } from './create-workflow-hook'
-import { workflowService } from '@/lib/services/workflow/core/workflow-service'
 import { normalizeError } from '@/lib/errors'
+import { transactionManager } from '@/lib/services/workflow/transaction/transaction-manager'
+import { workflowVerificationService } from '@/lib/services/workflow/domain/verification-workflow'
+import { processWorkflow, getDomainMetadata, updateMetadataSafely, createDomainLogger } from '@/lib/services/workflow/infrastructure/workflow-processor-helpers'
+import { Result } from '@/lib/services/workflow/error/result'
+import { UnifiedErrorHandler } from '@/lib/services/workflow/error/unified-error-handler'
 import { VerificationStatus } from '@/lib/types/verification'
+
+// Domain-specific logger
+const domainLogger = createDomainLogger('Verification')
 
 export interface UseVerificationWorkflowOptions {
   userId?: string
@@ -32,7 +47,7 @@ interface VerificationInput {
   messageId?: string
 }
 
-// Result type for verification workflow actions
+// Result type for verification workflow actions using Result pattern
 interface VerificationResult {
   success: boolean
   summaryId?: string
@@ -51,7 +66,7 @@ interface VerificationState extends VerificationSummary {
 }
 
 /**
- * Domain actions for verification workflow
+ * Domain actions for verification workflow with Result pattern
  */
 const verificationWorkflowActions = {
   domainName: 'Verification',
@@ -69,7 +84,7 @@ const verificationWorkflowActions = {
   }),
   
   /**
-   * Process verification workflow action
+   * Process verification workflow action using Result pattern
    */
   processAction: async (
     input: VerificationInput,
@@ -77,18 +92,27 @@ const verificationWorkflowActions = {
       workflowId: string
       userId?: string
       onProgress?: (progress: number, phase: ProcessingPhase) => void
+      chatId?: string | null
     }
-  ): Promise<VerificationResult> => {
+  ): Promise<Result<VerificationResult>> => {
     const { action } = input
-    const { workflowId, userId, onProgress } = options
+    const { workflowId, userId, onProgress, chatId } = options
     
     if (!workflowId) {
-      throw new Error('Workflow not initialized. Make sure userId is provided.')
+      return Result.failure(
+        'Workflow not initialized. Make sure userId is provided.',
+        'WORKFLOW_NOT_INITIALIZED'
+      )
     }
     
+    // Handle 'initiate' action using transaction manager
     if (action === 'initiate' && input.documentText) {
-      if (!userId || !options.chatId) {
-        throw new Error('User ID and Chat ID are required for verification')
+      if (!userId || !chatId) {
+        return Result.failure(
+          'User ID and Chat ID are required for verification',
+          'MISSING_PARAMETERS',
+          { missingParams: ['userId', 'chatId'] }
+        )
       }
       
       // Prepare document text
@@ -99,108 +123,314 @@ const verificationWorkflowActions = {
       // Generate summary ID
       const summaryId = input.summaryId || crypto.randomUUID()
       
-      // Use the verification workflow processor
-      const result = await workflowService.initiateVerification(
+      // Use transaction manager for verification initiation
+      return await transactionManager.executeTransaction(
         workflowId,
+        async (transactionId, progressCallback) => {
+          // Process verification with workflowVerificationService
+          const result = await workflowVerificationService.initiateVerification(
+            workflowId,
+            {
+              documentText: textToVerify,
+              summaryId,
+              chatId: chatId,
+              messageId: input.messageId,
+              useGemini: true,
+              transactionId
+            },
+            progressCallback || onProgress
+          )
+          
+          if (result.isSuccess()) {
+            const data = result.value
+            return {
+              success: true,
+              summaryId,
+              summary: data.summary,
+              structuredData: data.structuredData,
+              status: 'pending'
+            }
+          } else {
+            // Return error result
+            return {
+              success: false,
+              error: result.error.message
+            }
+          }
+        },
         {
-          documentText: textToVerify,
-          summaryId,
-          chatId: options.chatId,
-          messageId: input.messageId,
-          useGemini: true,
-          progressCallback: onProgress
+          step: 'verification_pending',
+          errorStep: DomainOnlyWorkflowStep.ERROR,
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'pending',
+              correctionCount: 0,
+              corrections: [],
+              extractedData: input.documentText,
+              summaryId
+            }
+          },
+          onProgress,
+          domainName: 'Verification',
+          retryCount: 1
         }
       )
-      
-      return {
-        success: true,
-        summaryId,
-        summary: result.summary,
-        structuredData: result.structuredData,
-        status: 'pending'
-      }
+      .then(result => {
+        if (result.isSuccess()) {
+          return Result.success(result.value.data)
+        } else {
+          return Result.failure<VerificationResult>(
+            result.error.message,
+            result.error.code,
+            { success: false }
+          )
+        }
+      })
     }
+    // Handle 'correct' action with processWorkflow helper
     else if (action === 'correct' && input.correctionText && input.currentSummary) {
-      if (!userId || !options.chatId) {
-        throw new Error('User ID and Chat ID are required for verification')
+      if (!userId || !chatId) {
+        return Result.failure(
+          'User ID and Chat ID are required for verification',
+          'MISSING_PARAMETERS',
+          { missingParams: ['userId', 'chatId'] }
+        )
       }
       
       // Generate new summary ID
       const newSummaryId = crypto.randomUUID()
       
-      // Use the verification workflow processor
-      const result = await workflowService.processVerificationCorrection(
+      return await processWorkflow<{
+        correctionText: string,
+        currentSummary: string,
+        newSummaryId: string,
+        messageId?: string
+      }, VerificationResult>(
         workflowId,
-        input.summaryId || '',
         {
           correctionText: input.correctionText,
           currentSummary: input.currentSummary,
           newSummaryId,
-          messageId: input.messageId,
-          progressCallback: onProgress
+          messageId: input.messageId
+        },
+        {
+          targetStep: 'verification_in_progress',
+          onProgress,
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'inProgress',
+              currentSummaryId: newSummaryId
+            }
+          },
+          recoveryStep: DomainOnlyWorkflowStep.ERROR
+        },
+        'Verification',
+        DomainOnlyWorkflowStep.ERROR,
+        async (wfId, inputData, currentState, opts) => {
+          // Get current correction count
+          const metadataResult = await getDomainMetadata<{
+            verificationMetadata?: { correctionCount?: number }
+          }>(
+            wfId,
+            'verificationMetadata',
+            { verificationMetadata: { correctionCount: 0 } },
+            'Verification'
+          )
+          
+          const correctionCount = metadataResult.isSuccess() && 
+                                metadataResult.value?.verificationMetadata?.correctionCount !== undefined
+                                  ? metadataResult.value.verificationMetadata.correctionCount + 1
+                                  : 1
+          
+          // Process verification correction
+          const correctionResult = await workflowVerificationService.processVerificationCorrection(
+            wfId,
+            input.summaryId || '',
+            {
+              correctionText: inputData.correctionText,
+              currentSummary: inputData.currentSummary,
+              newSummaryId: inputData.newSummaryId,
+              messageId: inputData.messageId
+            },
+            opts.progressCallback
+          )
+          
+          if (correctionResult.isSuccess()) {
+            const data = correctionResult.value
+            return {
+              success: true,
+              summaryId: newSummaryId,
+              summary: data.summary,
+              structuredData: data.structuredData,
+              correctionCount,
+              status: 'inProgress'
+            }
+          } else {
+            return {
+              success: false,
+              error: correctionResult.error.message
+            }
+          }
         }
       )
-      
-      return {
-        success: true,
-        summaryId: newSummaryId,
-        summary: result.summary,
-        structuredData: result.structuredData,
-        correctionCount: (result.correctionCount || 0) + 1,
-        status: 'inProgress'
-      }
     }
+    // Handle 'complete' action using transaction
     else if (action === 'complete') {
       if (!userId) {
-        throw new Error('User ID required for verification completion')
+        return Result.failure(
+          'User ID required for verification completion',
+          'MISSING_PARAMETERS',
+          { missingParams: ['userId'] }
+        )
       }
       
-      // Use the verification workflow processor
-      const result = await workflowService.completeVerification(
+      const summaryId = input.summaryId || await extractSummaryIdFromMetadata(workflowId)
+      
+      if (!summaryId) {
+        return Result.failure(
+          'Summary ID is required to complete verification',
+          'MISSING_SUMMARY_ID'
+        )
+      }
+      
+      return await transactionManager.executeTransaction(
         workflowId,
-        input.summaryId || '',
-        userId,
-        false // don't auto-generate report
+        async (transactionId) => {
+          // Complete verification
+          const result = await workflowVerificationService.completeVerification(
+            workflowId,
+            summaryId,
+            userId,
+            false, // don't auto-generate report
+            transactionId
+          )
+          
+          if (result.isSuccess()) {
+            return {
+              success: true,
+              summaryId,
+              verified: true,
+              verifiedBy: userId,
+              verifiedAt: new Date().toISOString(),
+              status: 'completed'
+            }
+          } else {
+            return {
+              success: false,
+              error: result.error.message
+            }
+          }
+        },
+        {
+          step: 'verification_completed',
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'completed',
+              verifiedAt: new Date().toISOString(),
+              verifiedBy: userId,
+            }
+          },
+          domainName: 'Verification'
+        }
       )
-      
-      return {
-        success: true,
-        summaryId: input.summaryId,
-        verified: true,
-        verifiedBy: userId,
-        verifiedAt: new Date().toISOString(),
-        status: 'completed'
-      }
+      .then(result => {
+        if (result.isSuccess()) {
+          return Result.success(result.value.data)
+        } else {
+          return Result.failure<VerificationResult>(
+            result.error.message,
+            result.error.code,
+            { success: false }
+          )
+        }
+      })
     }
+    // Handle 'reject' action
     else if (action === 'reject' && input.reason) {
       if (!userId) {
-        throw new Error('User ID required for verification rejection')
+        return Result.failure(
+          'User ID required for verification rejection',
+          'MISSING_PARAMETERS',
+          { missingParams: ['userId'] }
+        )
       }
       
-      // Use the verification workflow processor
-      const result = await workflowService.rejectVerification(
+      const summaryId = input.summaryId || await extractSummaryIdFromMetadata(workflowId)
+      
+      if (!summaryId) {
+        return Result.failure(
+          'Summary ID is required to reject verification',
+          'MISSING_SUMMARY_ID'
+        )
+      }
+      
+      return await transactionManager.executeTransaction(
         workflowId,
-        input.summaryId || '',
-        userId,
-        input.reason
+        async (transactionId) => {
+          // Reject verification
+          const result = await workflowVerificationService.rejectVerification(
+            workflowId,
+            summaryId,
+            userId,
+            input.reason,
+            transactionId
+          )
+          
+          if (result.isSuccess()) {
+            return {
+              success: true,
+              status: 'rejected'
+            }
+          } else {
+            return {
+              success: false,
+              error: result.error.message
+            }
+          }
+        },
+        {
+          step: 'verification_failed',
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'rejected',
+              rejectedAt: new Date().toISOString(),
+              rejectedBy: userId,
+              rejectionReason: input.reason
+            }
+          },
+          domainName: 'Verification'
+        }
       )
-      
-      return {
-        success: true,
-        status: 'rejected'
-      }
+      .then(result => {
+        if (result.isSuccess()) {
+          return Result.success(result.value.data)
+        } else {
+          return Result.failure<VerificationResult>(
+            result.error.message,
+            result.error.code,
+            { success: false }
+          )
+        }
+      })
     }
+    // Handle reset action
     else if (action === 'reset') {
-      return {
+      // Simple reset without transaction management
+      return Result.success({
         success: true,
         summaryId: '',
         summary: '',
         correctionCount: 0,
         status: 'pending'
-      }
+      })
     }
     
-    throw new Error('Invalid verification action')
+    // Default error case
+    return Result.failure(
+      'Invalid verification action',
+      'INVALID_ACTION',
+      { action }
+    )
   },
   
   /**
@@ -238,17 +468,43 @@ const verificationWorkflowActions = {
   }
 }
 
-// Create the verification domain workflow hook
+// Create the verification domain workflow hook with Result pattern
 const useVerificationDomainWorkflow = createWorkflowHook<VerificationInput, VerificationResult, VerificationState>(
   verificationWorkflowActions
 )
 
 /**
+ * Helper function to extract summary ID from metadata
+ */
+async function extractSummaryIdFromMetadata(workflowId: string): Promise<string | undefined> {
+  const metadataResult = await getDomainMetadata<{
+    verificationMetadata?: { currentSummaryId?: string, summaryId?: string }
+  }>(
+    workflowId,
+    'verificationMetadata',
+    undefined,
+    'Verification'
+  )
+  
+  if (metadataResult.isSuccess() && metadataResult.value) {
+    return metadataResult.value.verificationMetadata?.currentSummaryId || 
+           metadataResult.value.verificationMetadata?.summaryId
+  }
+  
+  return undefined
+}
+
+/**
  * Specialized hook for verification workflows.
- * Provides an intuitive API for verifying extracted content.
+ * Phase 4 implementation: Uses Result pattern and unified error handling.
  */
 export function useVerificationWorkflow(options: UseVerificationWorkflowOptions = {}) {
   const { userId, chatId } = options
+  
+  // Unified error handler for verification domain
+  const errorHandler = useMemo(() => {
+    return new UnifiedErrorHandler('Verification')
+  }, [])
   
   // Use the domain workflow hook
   const domainWorkflow = useVerificationDomainWorkflow({
@@ -256,8 +512,6 @@ export function useVerificationWorkflow(options: UseVerificationWorkflowOptions 
     chatId,
     initialStep: 'idle'
   })
-  
-  // Maintain backward compatibility with existing API
   
   /**
    * Initiate verification process with extracted data
@@ -268,27 +522,64 @@ export function useVerificationWorkflow(options: UseVerificationWorkflowOptions 
       messageId?: string,
       onProgress?: (progress: number, phase: ProcessingPhase) => void
     } = {}
-  ) => {
-    return domainWorkflow.process(
-      {
-        action: 'initiate',
-        documentText,
-        messageId: options.messageId
-      },
-      {
-        step: 'verification_pending',
-        onProgress: options.onProgress,
-        metadata: {
-          verificationMetadata: {
-            verification_status: 'pending',
-            correctionCount: 0,
-            corrections: [],
-            extractedData: documentText,
+  ): Promise<VerificationResult> => {
+    try {
+      const result = await domainWorkflow.process(
+        {
+          action: 'initiate',
+          documentText,
+          messageId: options.messageId
+        },
+        {
+          step: 'verification_pending',
+          onProgress: options.onProgress,
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'pending',
+              correctionCount: 0,
+              corrections: [],
+              extractedData: documentText,
+            }
           }
         }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'VERIFICATION_INITIATE_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: {
+            documentTextLength: typeof documentText === 'string' 
+              ? documentText.length 
+              : JSON.stringify(documentText).length
+          }
+        })
       }
-    )
-  }, [domainWorkflow])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: {
+          documentTextLength: typeof documentText === 'string' 
+            ? documentText.length 
+            : JSON.stringify(documentText).length
+        }
+      })
+      
+      return {
+        success: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, errorHandler])
   
   /**
    * Process a correction for the current verification
@@ -300,102 +591,314 @@ export function useVerificationWorkflow(options: UseVerificationWorkflowOptions 
       messageId?: string,
       onProgress?: (progress: number, phase: ProcessingPhase) => void
     } = {}
-  ) => {
-    return domainWorkflow.process(
-      {
-        action: 'correct',
-        correctionText,
-        currentSummary,
-        summaryId: domainWorkflow.summaryId || domainWorkflow.state.metadata?.currentSummaryId as string,
-        messageId: options.messageId
-      },
-      {
-        step: 'verification_in_progress',
-        onProgress: options.onProgress
+  ): Promise<VerificationResult> => {
+    try {
+      // Get current summary ID
+      const summaryId = domainWorkflow.summaryId || 
+                       domainWorkflow.state.metadata?.currentSummaryId as string ||
+                       domainWorkflow.state.metadata?.verificationMetadata?.currentSummaryId as string
+      
+      const result = await domainWorkflow.process(
+        {
+          action: 'correct',
+          correctionText,
+          currentSummary,
+          summaryId,
+          messageId: options.messageId
+        },
+        {
+          step: 'verification_in_progress',
+          onProgress: options.onProgress
+        }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'VERIFICATION_CORRECTION_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: { 
+            correctionTextLength: correctionText.length,
+            summaryId
+          }
+        })
       }
-    )
-  }, [domainWorkflow])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: { 
+          correctionTextLength: correctionText.length
+        }
+      })
+      
+      return {
+        success: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, errorHandler])
   
   /**
    * Complete the verification process
    */
-  const completeVerification = useCallback(async (finalSummaryId?: string) => {
-    return domainWorkflow.process(
-      {
-        action: 'complete',
-        summaryId: finalSummaryId || domainWorkflow.summaryId || domainWorkflow.state.metadata?.currentSummaryId as string
-      },
-      {
-        step: 'verification_completed',
-        metadata: {
-          verificationMetadata: {
-            verification_status: 'completed',
-            verifiedAt: new Date().toISOString(),
-            verifiedBy: userId,
+  const completeVerification = useCallback(async (finalSummaryId?: string): Promise<VerificationResult> => {
+    try {
+      const summaryIdToUse = finalSummaryId || 
+                            domainWorkflow.summaryId || 
+                            domainWorkflow.state.metadata?.currentSummaryId as string ||
+                            domainWorkflow.state.metadata?.verificationMetadata?.currentSummaryId as string
+      
+      const result = await domainWorkflow.process(
+        {
+          action: 'complete',
+          summaryId: summaryIdToUse
+        },
+        {
+          step: 'verification_completed',
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'completed',
+              verifiedAt: new Date().toISOString(),
+              verifiedBy: userId,
+            }
           }
         }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'VERIFICATION_COMPLETE_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: { summaryId: summaryIdToUse }
+        })
       }
-    )
-  }, [domainWorkflow, userId])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId
+      })
+      
+      return {
+        success: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, userId, errorHandler])
   
   /**
    * Reject the verification (mark as failed)
    */
-  const rejectVerification = useCallback(async (reason: string) => {
-    return domainWorkflow.process(
-      {
-        action: 'reject',
-        reason,
-        summaryId: domainWorkflow.summaryId || domainWorkflow.state.metadata?.currentSummaryId as string
-      },
-      {
-        step: 'verification_failed',
-        metadata: {
-          verificationMetadata: {
-            verification_status: 'rejected',
-            rejectedAt: new Date().toISOString(),
-            rejectedBy: userId,
-            rejectionReason: reason
+  const rejectVerification = useCallback(async (reason: string): Promise<VerificationResult> => {
+    try {
+      const summaryId = domainWorkflow.summaryId || 
+                       domainWorkflow.state.metadata?.currentSummaryId as string ||
+                       domainWorkflow.state.metadata?.verificationMetadata?.currentSummaryId as string
+      
+      const result = await domainWorkflow.process(
+        {
+          action: 'reject',
+          reason,
+          summaryId
+        },
+        {
+          step: 'verification_failed',
+          metadata: {
+            verificationMetadata: {
+              verification_status: 'rejected',
+              rejectedAt: new Date().toISOString(),
+              rejectedBy: userId,
+              rejectionReason: reason
+            }
           }
         }
+      )
+      
+      if (result && 'error' in result && result.error) {
+        // Log error with unified error handler
+        await errorHandler.handleError({
+          message: result.error,
+          code: 'VERIFICATION_REJECT_ERROR',
+          workflowId: domainWorkflow.workflowId,
+          details: { 
+            summaryId,
+            reason
+          }
+        })
       }
-    )
-  }, [domainWorkflow, userId])
+      
+      return result
+    } catch (error) {
+      // Handle unexpected errors with unified error handler
+      const normalizedError = normalizeError(error)
+      
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: normalizedError.code || 'UNEXPECTED_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        details: { reason }
+      })
+      
+      return {
+        success: false,
+        error: normalizedError.message
+      }
+    }
+  }, [domainWorkflow, userId, errorHandler])
   
   /**
-   * Reset verification back to idle state
+   * Reset verification back to idle state with improved error handling
    */
-  const resetVerification = useCallback(async () => {
-    return domainWorkflow.reset()
-  }, [domainWorkflow])
+  const resetVerification = useCallback(async (): Promise<void> => {
+    try {
+      await domainWorkflow.reset()
+      
+      // Update metadata to reflect reset
+      if (domainWorkflow.workflowId) {
+        await updateMetadataSafely(
+          domainWorkflow.workflowId,
+          {
+            verificationMetadata: {
+              resetAt: new Date().toISOString(),
+              resetBy: userId || 'system',
+              verification_status: 'pending',
+              correctionCount: 0
+            }
+          },
+          {
+            transactionId: crypto.randomUUID(),
+            conflictStrategy: 'merge'
+          },
+          'Verification'
+        )
+      }
+    } catch (error) {
+      const normalizedError = normalizeError(error)
+      domainLogger.error('Error resetting verification workflow:', {
+        error: normalizedError.message,
+        workflowId: domainWorkflow.workflowId
+      })
+      
+      // Log but don't throw - reset should be best-effort
+      await errorHandler.handleError({
+        message: normalizedError.message,
+        code: 'VERIFICATION_RESET_ERROR',
+        workflowId: domainWorkflow.workflowId,
+        severity: 'LOW'
+      })
+    }
+  }, [domainWorkflow, userId, errorHandler])
   
   /**
-   * Get verification status
+   * Get verification status using Result pattern
    */
-  const getVerificationStatus = useCallback(async () => {
+  const getVerificationStatus = useCallback(async (): Promise<VerificationStatus | null> => {
     try {
       if (!domainWorkflow.workflowId) {
         throw new Error('Workflow not initialized')
       }
       
-      const summaryId = domainWorkflow.state.metadata?.currentSummaryId as string
+      const summaryId = domainWorkflow.state.metadata?.currentSummaryId as string ||
+                       domainWorkflow.state.metadata?.verificationMetadata?.currentSummaryId as string
       
       if (!summaryId) {
         return null
       }
       
-      // Use service to get status
-      const result = await workflowService.getVerificationStatus(
+      // Use read transaction for read-only operations
+      const result = await transactionManager.executeReadTransaction(
         domainWorkflow.workflowId,
-        summaryId
+        async () => {
+          return await workflowVerificationService.getVerificationStatus(
+            domainWorkflow.workflowId,
+            summaryId
+          )
+        }
       )
       
-      return result
-    } catch (err) {
-      console.error('Error getting verification status:', err)
+      if (result.isSuccess()) {
+        return result.value
+      } else {
+        domainLogger.warn('Error getting verification status:', {
+          error: result.error.message,
+          workflowId: domainWorkflow.workflowId
+        })
+        return null
+      }
+    } catch (error) {
+      const normalizedError = normalizeError(error)
+      domainLogger.error('Error getting verification status:', {
+        error: normalizedError.message,
+        workflowId: domainWorkflow.workflowId
+      })
+      
       return null
     }
-  }, [domainWorkflow.workflowId, domainWorkflow.state.metadata?.currentSummaryId])
+  }, [domainWorkflow.workflowId, domainWorkflow.state.metadata])
+  
+  // Get verification summary ID from state using getDomainMetadata helper
+  const [currentSummaryId, setCurrentSummaryId] = useState<string | undefined>(
+    domainWorkflow.state.metadata?.currentSummaryId as string ||
+    domainWorkflow.state.metadata?.verificationMetadata?.currentSummaryId as string
+  )
+  
+  // Fetch correction history from metadata when workflowId changes
+  const [correctionHistory, setCorrectionHistory] = useState<any[]>([])
+  
+  // Fetch metadata from workflowId changes
+  useEffect(() => {
+    if (domainWorkflow.workflowId) {
+      // Fetch current summary ID
+      getDomainMetadata<{
+        verificationMetadata?: { 
+          currentSummaryId?: string,
+          summaryId?: string,
+          corrections?: any[]
+        }
+      }>(
+        domainWorkflow.workflowId,
+        'verificationMetadata',
+        undefined,
+        'Verification'
+      ).then(result => {
+        if (result.isSuccess() && result.value?.verificationMetadata) {
+          const metadata = result.value.verificationMetadata
+          
+          // Update summary ID
+          setCurrentSummaryId(
+            metadata.currentSummaryId || 
+            metadata.summaryId ||
+            domainWorkflow.state.metadata?.currentSummaryId as string
+          )
+          
+          // Update correction history
+          if (metadata.corrections) {
+            setCorrectionHistory(metadata.corrections)
+          }
+        }
+      }).catch(error => {
+        domainLogger.warn('Error fetching verification metadata', {
+          error: error instanceof Error ? error.message : String(error),
+          workflowId: domainWorkflow.workflowId
+        })
+      })
+    }
+  }, [domainWorkflow.workflowId, domainWorkflow.state.metadata])
   
   // Compute derived states for backward compatibility
   const isVerifying =
@@ -407,7 +910,7 @@ export function useVerificationWorkflow(options: UseVerificationWorkflowOptions 
   
   const isVerificationFailed = domainWorkflow.state.currentStep === 'verification_failed'
   
-  // Return the same API shape as before
+  // Return the same API shape as before with new implementation
   return {
     ...domainWorkflow,
     initiateVerification,
@@ -420,7 +923,7 @@ export function useVerificationWorkflow(options: UseVerificationWorkflowOptions 
     isVerifying,
     isVerificationComplete,
     isVerificationFailed,
-    currentSummaryId: domainWorkflow.state.metadata?.currentSummaryId as string,
-    correctionHistory: domainWorkflow.state.metadata?.correctionHistory as any[]
+    currentSummaryId,
+    correctionHistory
   }
 }

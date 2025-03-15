@@ -85,12 +85,84 @@ interface ReportOptions {
 /**
  * Report Service
  * Single entry point for report generation across the application
+ *
+ * PHASE 1 ANALYSIS NOTES:
+ * - This service encapsulates domain logic related to report generation
+ * - Note on line 97-98: "extracts the domain logic from the workflow file"
+ *   suggests this service was intentionally refactored to pull logic from workflows
+ * - Contains business logic for report formatting, data merging, and persistence
+ * - Should be the single point of entry for all report operations, not workflow files
  */
 export class ReportService {
   private readonly supabase: SupabaseClient<Database>
 
   constructor(supabaseClient?: SupabaseClient<Database>) {
     this.supabase = supabaseClient || createBrowserClient()
+  }
+  
+  /**
+   * Prepare report data for workflow processing
+   * This method extracts the domain logic from the workflow file
+   * 
+   * @param options Report generation options
+   * @returns Processed report data with ID and metadata
+   */
+  async prepareReportData(options: {
+    workflowId: string;
+    verificationId: string;
+    userId: string;
+  }): Promise<{
+    reportId: string;
+    metadata: Record<string, any>;
+  }> {
+    const reportModuleLogger = logger.withMetadata({
+      module: 'ReportService',
+      method: 'prepareReportData',
+      workflowId: options.workflowId,
+      verificationId: options.verificationId
+    });
+    
+    try {
+      // Generate a new report ID
+      const reportId = crypto.randomUUID();
+      
+      // Build report metadata
+      const metadata = {
+        reportId,
+        generatedAt: new Date().toISOString(),
+        generatedBy: options.userId,
+        sourceVerificationId: options.verificationId,
+        workflowId: options.workflowId,
+        status: 'pending',
+        reportType: ReportType.DIAGNOSTIC
+      };
+      
+      reportModuleLogger.info('Report data prepared for workflow', {
+        reportId,
+        workflowId: options.workflowId,
+        verificationId: options.verificationId
+      });
+      
+      return {
+        reportId,
+        metadata
+      };
+    } catch (error) {
+      reportModuleLogger.error('Failed to prepare report data', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // Provide fallback data in case of error
+      return {
+        reportId: crypto.randomUUID(),
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          generatedBy: options.userId,
+          status: 'pending',
+          sourceVerificationId: options.verificationId
+        }
+      };
+    }
   }
 
   /**

@@ -11,7 +11,7 @@ import { workflowEventSourcing } from './workflow-event-source'
 import { ApplicationError, normalizeError } from '@/lib/errors'
 import logger from '@/lib/logger'
 import { ALLOWED_TRANSITIONS, DomainOnlyWorkflowStep } from '@/lib/types/workflow'
-import { getDomainConcurrencyConfig } from '../domain/domain-concurrency-config'
+import { getDomainConcurrencyConfig } from './domain-concurrency-config'
 
 import type { 
   WorkflowStep, 
