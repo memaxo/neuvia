@@ -210,71 +210,29 @@ export interface ErrorHandlingOptions {
  * Utility for categorizing errors
  */
 class ErrorCategorizer {
-  private static readonly CATEGORY_PATTERNS: Record<ErrorCategory, RegExp[]> = {
-    [ErrorCategory.VALIDATION]: [
-      /validation/i, /invalid/i, /required/i, /missing/i, /schema/i, /constraint/i
-    ],
-    [ErrorCategory.NETWORK]: [
-      /network/i, /connection/i, /unreachable/i, /dns/i, /offline/i
-    ],
-    [ErrorCategory.PERMISSION]: [
-      /permission/i, /unauthorized/i, /forbidden/i, /access denied/i
-    ],
-    [ErrorCategory.TIMEOUT]: [
-      /timeout/i, /timed out/i, /too slow/i, /deadline exceeded/i
-    ],
-    [ErrorCategory.WORKFLOW]: [
-      /workflow/i, /transition/i, /state/i, /step/i
-    ],
-    [ErrorCategory.CONCURRENCY]: [
-      /concurrent/i, /conflict/i, /optimistic/i, /lock/i, /race condition/i
-    ],
-    [ErrorCategory.TRANSACTION]: [
-      /transaction/i, /rollback/i, /commit/i
-    ],
-    [ErrorCategory.DATA]: [
-      /data/i, /database/i, /query/i, /record/i, /not found/i
-    ],
-    [ErrorCategory.SYSTEM]: [
-      /system/i, /internal/i, /server/i, /runtime/i, /memory/i
-    ],
-    [ErrorCategory.UNKNOWN]: [
-      /.*/
-    ]
-  };
-
   /**
    * Categorize an error based on its message and context
    */
   public static categorize(error: unknown, context?: ErrorContext): ErrorCategory {
+    // First check for normalized error with existing category
     const normalizedError = normalizeError(error);
-    const message = normalizedError.message.toLowerCase();
-    const code = (normalizedError.code || '').toLowerCase();
-
-    // First check error code if available
-    if (code) {
-      if (code.includes('validation') || code.includes('invalid')) {
-        return ErrorCategory.VALIDATION;
-      } else if (code.includes('permission') || code.includes('auth')) {
-        return ErrorCategory.PERMISSION;
-      } else if (code.includes('timeout')) {
-        return ErrorCategory.TIMEOUT;
-      } else if (code.includes('network') || code.includes('connection')) {
-        return ErrorCategory.NETWORK;
-      } else if (code.includes('workflow') || code.includes('transition')) {
-        return ErrorCategory.WORKFLOW;
-      } else if (code.includes('concurrent') || code.includes('conflict')) {
-        return ErrorCategory.CONCURRENCY;
-      } else if (code.includes('transaction')) {
-        return ErrorCategory.TRANSACTION;
-      } else if (code.includes('data') || code.includes('not_found')) {
-        return ErrorCategory.DATA;
-      } else if (code.includes('system') || code.includes('internal')) {
-        return ErrorCategory.SYSTEM;
+    
+    // If the error already has a category, use it
+    if (normalizedError.category) {
+      try {
+        return normalizedError.category as ErrorCategory;
+      } catch (e) {
+        // If category is invalid, continue with normal logic
       }
     }
-
-    // Check domain from context
+    
+    // Import the centralized categorization function
+    const { categorizeError } = require('@/lib/errors');
+    
+    // Use centralized categorization with context
+    const category = categorizeError(error, context);
+    
+    // Check domain from context as an additional signal
     if (context?.domain) {
       const domainCategories: Record<string, ErrorCategory> = {
         'workflow': ErrorCategory.WORKFLOW,
@@ -286,21 +244,8 @@ class ErrorCategorizer {
         return domainCategories[context.domain];
       }
     }
-
-    // Check error message against patterns
-    for (const [category, patterns] of Object.entries(ErrorCategorizer.CATEGORY_PATTERNS)) {
-      // Skip the UNKNOWN category for now
-      if (category === ErrorCategory.UNKNOWN) continue;
-
-      for (const pattern of patterns) {
-        if (pattern.test(message)) {
-          return category as ErrorCategory;
-        }
-      }
-    }
-
-    // Default to UNKNOWN
-    return ErrorCategory.UNKNOWN;
+    
+    return category;
   }
 
   /**
@@ -310,36 +255,10 @@ class ErrorCategorizer {
     category: ErrorCategory,
     context?: ErrorContext
   ): ErrorSeverity {
-    switch (category) {
-      case ErrorCategory.NETWORK:
-      case ErrorCategory.TIMEOUT:
-        return ErrorSeverity.MEDIUM;
-
-      case ErrorCategory.VALIDATION:
-        return ErrorSeverity.LOW;
-
-      case ErrorCategory.PERMISSION:
-        return ErrorSeverity.HIGH;
-
-      case ErrorCategory.WORKFLOW:
-        return ErrorSeverity.MEDIUM;
-
-      case ErrorCategory.CONCURRENCY:
-        return ErrorSeverity.MEDIUM;
-
-      case ErrorCategory.TRANSACTION:
-        return ErrorSeverity.HIGH;
-
-      case ErrorCategory.DATA:
-        return ErrorSeverity.HIGH;
-
-      case ErrorCategory.SYSTEM:
-        return ErrorSeverity.FATAL;
-
-      case ErrorCategory.UNKNOWN:
-      default:
-        return ErrorSeverity.HIGH;
-    }
+    // Import the centralized severity determination function
+    const { determineSeverity } = require('@/lib/errors');
+    
+    return determineSeverity(category);
   }
 
   /**

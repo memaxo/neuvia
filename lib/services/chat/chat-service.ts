@@ -8,6 +8,13 @@ import type {
   ChatMessageType 
 } from '@/lib/types/chat'
 import { 
+  createSystemMessage,
+  createProgressMessage,
+  createUserMessage,
+  createAssistantMessage,
+  createMessage
+} from '@/lib/types/chat'
+import {
   ApplicationError, 
   NotFoundError, 
   SystemError, 
@@ -1021,8 +1028,6 @@ export class ChatService {
     metadata?: Record<string, any>
   ): Promise<UUID | null> {
     try {
-      // Use the unified system message creation function from lib/types/chat.ts
-      const { createSystemMessage } = await import('@/lib/types/chat');
       const message = createSystemMessage(content, {
         ...metadata
       });
@@ -1284,7 +1289,6 @@ export class ChatService {
     try {
       // Parse corrections from message
       const corrections = this.parseCorrectionData(message);
-      
       if (!corrections || Object.keys(corrections).length === 0) {
         return {
           success: false,
@@ -1292,10 +1296,50 @@ export class ChatService {
         };
       }
 
-      // Add processing message
-        import { createProgressMessage } from '@/lib/types/chat';
-        const processingMessage = createProgressMessage('Processing your corrections...', 0, 'correction_processing');
-        await this.saveMessage(processingMessage, chatId as UUID);
+      // Create a progress message indicating correction is processing
+      const processingMessage = createProgressMessage(
+        'Processing your corrections...',
+        0,
+        'correction_processing'
+      );
+      await this.saveMessage(processingMessage, chatId as UUID);
+
+      // (Simulate partial verification step ~50% done)
+      await this.updateMessageProgress(processingMessage.id, 50, 'verifying_corrections');
+
+      // Summarize corrections for the final assistant message
+      const summaryLines = Object.entries(corrections)
+        .map(([field, value]) => `- ${field}: ${value}`)
+        .join('\n');
+      const updatedSummary = `I've updated the information with your corrections:\n\n${summaryLines}`;
+
+      // Create an assistant message for the updated summary
+      const summaryMessage = createAssistantMessage(updatedSummary, {
+        type: 'summary',
+        correctionData: corrections
+      });
+      await this.saveMessage(summaryMessage, chatId as UUID);
+
+      // Mark progress as complete
+      await this.updateMessageProgress(processingMessage.id, 100, 'correction_complete');
+
+      return {
+        success: true,
+        messageId: summaryMessage.id
+      };
+    } catch (error) {
+      this.logger.error('Error processing correction message', {
+        chatId,
+        workflowId,
+        verificationId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
 
       // Update verification with corrections
       // This would normally call your verification service
@@ -1441,19 +1485,16 @@ export class ChatService {
       
       // Then add the summary if available
       if (summary) {
-        const messageId = crypto.randomUUID();
-        await this.saveMessage({
-          id: messageId,
-          role: 'assistant',
-          content: `Here's a summary of the generated report:\n\n${summary}`,
-          createdAt: new Date().toISOString(),
-          metadata: {
+        const summaryMessage = createAssistantMessage(
+          \`Here's a summary of the generated report:\n\n\${summary}\`,
+          {
             type: 'report',
             reportId
           }
-        }, chatId);
+        );
+        await this.saveMessage(summaryMessage, chatId);
         
-        return messageId;
+        return summaryMessage.id;
       }
       
       return null;
@@ -1482,19 +1523,18 @@ export class ChatService {
     findings: string
   ): Promise<UUID | null> {
     try {
-      const messageId = crypto.randomUUID();
-      await this.saveMessage({
-        id: messageId,
-        role: 'assistant',
-        content: findings || 'Research completed. Here are the findings:',
-        createdAt: new Date().toISOString(),
-        metadata: {
+      // Use createAssistantMessage for the final research findings
+      const researchMsg = createAssistantMessage(
+        findings || 'Research completed. Here are the findings:',
+        {
           type: 'research',
           researchId,
           researchCompleted: true,
           completedAt: new Date().toISOString()
         }
-      }, chatId);
+      );
+      await this.saveMessage(researchMsg, chatId);
+      const messageId = researchMsg.id;
       
       return messageId;
     } catch (error) {
@@ -1520,30 +1560,21 @@ export class ChatService {
     phase: string
   ): Promise<UUID | null> {
     try {
-      const messageId = crypto.randomUUID();
-      await this.saveMessage({
-        id: messageId,
-        role: 'system',
-        content: `Processing your ${phase} request...`,
-        createdAt: new Date().toISOString(),
-        metadata: {
-          type: 'progress',
-          progress: {
-            value: 10,
-            phase,
-            startedAt: new Date().toISOString()
-          }
-        }
-      }, chatId);
-      
-      return messageId;
+      // Use the createProgressMessage factory
+      const progressMsg = createProgressMessage(
+        `Processing your ${phase} request...`,
+        10, // initial progress value
+        phase
+      );
+      // Save to DB
+      await this.saveMessage(progressMsg, chatId);
+      return progressMsg.id;
     } catch (error) {
       this.logger.error('Failed to create progress message', {
         chatId,
         phase,
         error: error instanceof Error ? error.message : String(error)
       });
-      
       return null;
     }
   }

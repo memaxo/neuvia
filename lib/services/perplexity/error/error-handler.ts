@@ -1,8 +1,10 @@
-import { normalizeError } from '@/lib/errors'
+import { normalizeError, categorizeError, ErrorCategory, ErrorSeverity, determineSeverity } from '@/lib/errors'
+import { DocumentProcessingError } from '@/lib/errors/verification-errors'
 import logger from '@/lib/logger'
 import type { ResearchOptions } from '@/lib/types/research'
 import type { ParsedResearchOutput } from '@/lib/types/perplexity'
 import { ResearchTextParser } from '../parsers/research-text-parser'
+import { Result } from '@/lib/services/workflow/error/result'
 
 /**
  * Standardized error handler for Perplexity research operations
@@ -20,13 +22,16 @@ export class ResearchErrorHandler {
    * @param query The query string that was being researched
    * @param options Research options (may be used in future for better error handling)
    * @param error The error that occurred
+   * @returns Result with error details for further handling
    */
   handleResearchError(
     query: string,
     options: ResearchOptions | undefined,
     error: unknown
-  ): void {
+  ): Result<void> {
     const normalizedError = normalizeError(error)
+    const category = categorizeError(normalizedError)
+    const severity = determineSeverity(category)
     
     this.logger
       .withMetadata({
@@ -34,8 +39,22 @@ export class ResearchErrorHandler {
         method: 'handleResearchError',
         query,
         errorCode: normalizedError.code,
+        errorCategory: category,
+        errorSeverity: severity
       })
       .error('Research failed', {}, normalizedError)
+      
+    // Return a Result for potential further handling
+    return Result.failure(
+      normalizedError.message,
+      normalizedError.code,
+      {
+        query,
+        options,
+        errorDetails: normalizedError.data
+      },
+      category
+    )
   }
 
   /**
@@ -49,19 +68,24 @@ export class ResearchErrorHandler {
     error: unknown,
     text: string
   ): ParsedResearchOutput {
+    const normalizedError = normalizeError(error)
+    const category = categorizeError(normalizedError)
+    
     // Create a logger with context metadata
     const moduleLogger = this.logger.withMetadata({
       module: 'PerplexityService',
       method: 'handleParsingError',
       textLength: text.length,
       errorType: error instanceof Error ? error.name : typeof error,
+      errorCategory: category
     })
 
     // Log detailed error information with structured logging
     moduleLogger.warn(
       'Structured parsing failed',
       {
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: normalizedError.message,
+        errorCode: normalizedError.code,
         textPreview: text.length > 200 ? `${text.substring(0, 200)}...` : text,
       },
       error
@@ -83,5 +107,26 @@ export class ResearchErrorHandler {
         : ResearchTextParser.extractKeyFindings(text),
       sources: [], // Empty sources array, will be filled later
     }
+  }
+  
+  /**
+   * Create a standardized document processing error
+   *
+   * @param message Error message
+   * @param code Error code
+   * @param data Additional error data
+   * @returns DocumentProcessingError
+   */
+  createProcessingError(
+    message: string,
+    code = 'RESEARCH_PROCESSING_ERROR',
+    data: Record<string, any> = {}
+  ): DocumentProcessingError {
+    return new DocumentProcessingError({
+      message,
+      code,
+      data,
+      category: ErrorCategory.SYSTEM
+    })
   }
 }

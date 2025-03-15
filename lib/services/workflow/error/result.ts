@@ -39,13 +39,14 @@ export interface ResultError {
   stack?: string;
   cause?: unknown;
   details?: Record<string, unknown>;
+  category?: string;
 }
 
 /**
  * Type predicate to check if an object matches the ResultError interface
  */
 export function isResultError(obj: unknown): obj is ResultError {
-  return (
+  const isBaseResultError = (
     typeof obj === 'object' &&
     obj !== null &&
     'message' in obj &&
@@ -53,6 +54,13 @@ export function isResultError(obj: unknown): obj is ResultError {
     'code' in obj &&
     typeof (obj as ResultError).code === 'string'
   );
+  
+  // Check category if it exists (optional)
+  if (isBaseResultError && 'category' in obj) {
+    return typeof (obj as ResultError).category === 'string' || (obj as ResultError).category === undefined;
+  }
+  
+  return isBaseResultError;
 }
 
 /**
@@ -82,12 +90,14 @@ export class Result<T> {
   public static failure<U>(
     message: string,
     code = 'UNKNOWN_ERROR',
-    details?: Record<string, unknown>
+    details?: Record<string, unknown>,
+    category?: string
   ): Result<U> {
     const error: ResultError = {
       message,
       code,
       details,
+      category
     };
     return new Result<U>(false, undefined, error);
   }
@@ -97,10 +107,15 @@ export class Result<T> {
    */
   public static fromError<U>(error: unknown): Result<U> {
     const normalized = normalizeError(error);
+    
+    // Import is not available here so we use normalized.category
+    const errorCategory = normalized.category;
+    
     return Result.failure<U>(
       normalized.message,
-      normalized.code || 'UNKNOWN_ERROR',
-      normalized.data
+      normalized.code,
+      normalized.data,
+      errorCategory
     );
   }
 
@@ -138,6 +153,21 @@ export class Result<T> {
     } catch (error) {
       return Result.fromError<U>(error);
     }
+  }
+  
+  /**
+   * Creates a failure result from an ApplicationError
+   * This provides direct integration with exception-based code
+   */
+  public static fromApplicationError<U>(
+    error: import('@/lib/errors').ApplicationError
+  ): Result<U> {
+    return Result.failure<U>(
+      error.message,
+      error.code,
+      error.data,
+      error.category
+    );
   }
 
   /**
@@ -343,6 +373,41 @@ export class Result<T> {
       await handler(this._error);
     }
     return this;
+  }
+  
+  /**
+   * Convert to ApplicationError
+   * This provides direct integration with exception-based code
+   */
+  public toApplicationError(statusCode = 500): import('@/lib/errors').ApplicationError {
+    if (this._isSuccess) {
+      throw new Error('Cannot convert successful result to error');
+    }
+    
+    const resultError = this._error as ResultError;
+    
+    // Use dynamic import to avoid circular dependencies
+    const { ApplicationError } = require('@/lib/errors');
+    
+    return new ApplicationError({
+      message: resultError.message,
+      code: resultError.code,
+      statusCode,
+      data: resultError.details || {},
+      cause: resultError.cause,
+      category: resultError.category
+    });
+  }
+  
+  /**
+   * Throw the error if this is a failure result
+   * Useful for transitioning from Result pattern to exception handling
+   */
+  public throwIfFailure(): T {
+    if (this.isFailure()) {
+      throw this.toApplicationError();
+    }
+    return this.value;
   }
 }
 

@@ -13,11 +13,13 @@ export interface ErrorContextOptions {
   details?: Record<string, unknown>;
 }
 
+import { ErrorCategory } from '@/lib/errors';
+
 export interface WorkflowErrorContext {
   errorMessage: string;
   originalError?: unknown;
   errorCode?: string;
-  errorType: 'validation' | 'network' | 'permission' | 'timeout' | 'system' | 'unknown';
+  errorType: ErrorCategory;
   workflowStep: WorkflowStep;
   previousStep?: WorkflowStep;
   recoveryPaths?: WorkflowStep[];
@@ -76,31 +78,40 @@ export class WorkflowErrorContextBuilder {
   }
   
   /**
-   * Map string error types to known enum values
+   * Map string error types to ErrorCategory enum values
    */
   private normalizeErrorType(
     errorType?: string
-  ): 'validation' | 'network' | 'permission' | 'timeout' | 'system' | 'unknown' {
-    if (!errorType) return 'unknown';
+  ): ErrorCategory {
+    if (!errorType) return ErrorCategory.UNKNOWN;
     
     switch (errorType.toLowerCase()) {
       case 'validation':
       case 'invalid':
-        return 'validation';
+        return ErrorCategory.VALIDATION;
       case 'network':
       case 'connection':
       case 'fetch':
-        return 'network';
+        return ErrorCategory.NETWORK;
       case 'permission':
       case 'unauthorized':
       case 'forbidden':
-        return 'permission';
+        return ErrorCategory.PERMISSION;
       case 'timeout':
-        return 'timeout';
+        return ErrorCategory.TIMEOUT;
       case 'system':
-        return 'system';
+        return ErrorCategory.SYSTEM;
+      case 'workflow':
+        return ErrorCategory.WORKFLOW;
+      case 'transaction':
+        return ErrorCategory.TRANSACTION;
+      case 'data':
+      case 'database':
+        return ErrorCategory.DATA;
+      case 'concurrency':
+        return ErrorCategory.CONCURRENCY;
       default:
-        return 'unknown';
+        return ErrorCategory.UNKNOWN;
     }
   }
   

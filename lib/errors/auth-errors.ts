@@ -3,6 +3,7 @@ import {
   AUTH_ERROR_CODES, 
   API_ERROR_CODES 
 } from './error-codes'
+import { ErrorCategory } from './index'
 
 /**
  * Combined error codes for auth-related errors
@@ -26,15 +27,27 @@ export class UserError extends ApplicationError {
     code = ERROR_CODES.AUTH.GENERIC_ERROR,
     statusCode = 400,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.PERMISSION,
+    isOperational = true
   }: {
     message: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause, isOperational: true })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      isOperational,
+      category
+    })
   }
 }
 
@@ -47,15 +60,27 @@ export class AuthenticationError extends UserError {
     code = ERROR_CODES.AUTH.AUTH_REQUIRED,
     statusCode = 401,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.PERMISSION,
+    isOperational = true
   }: {
     message?: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      category,
+      isOperational
+    })
   }
 }
 
@@ -68,14 +93,26 @@ export class AuthorizationError extends UserError {
     code = ERROR_CODES.AUTH.FORBIDDEN,
     statusCode = 403,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.PERMISSION,
+    isOperational = true
   }: {
     message?: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      category,
+      isOperational
+    })
   }
 }

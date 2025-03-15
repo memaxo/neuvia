@@ -4,6 +4,7 @@ import type { Database } from '@/lib/types/database'
 import { ApplicationError, normalizeError } from '@/lib/errors'
 import logger from '@/lib/logger'
 import { Result } from '@/lib/services/workflow/error/result'
+import { WorkflowStepMapper } from '../utils/workflow-utils'
 
 import type {
   WorkflowStep,
@@ -18,6 +19,8 @@ import { DomainOnlyWorkflowStep } from '@/lib/types/workflow'
 export interface UpdateOptions {
   /** Skip validation of workflow transitions */
   skipValidation?: boolean;
+  /** Force update even if validation fails */
+  forceUpdate?: boolean;
 }
 
 /**
@@ -60,46 +63,37 @@ export class WorkflowManager {
     if (!workflowId) return Result.success(null);
 
     try {
-      const { data, error } = await this.supabase
-        .from('workflow_states')
-        .select('*')
-        .eq('id', workflowId)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No row found
-          return Result.success(null);
-        }
+      // Use the helper method to fetch the workflow
+      const workflowResult = await this.fetchWorkflowById(workflowId);
+      
+      if (workflowResult.isFailure()) {
         return Result.failure(
-          `Database error: ${error.message}`,
-          'WORKFLOW_FETCH_FAILED',
-          { workflowId, error }
+          workflowResult.error.message,
+          workflowResult.error.code,
+          workflowResult.error.details
         );
       }
-      if (!data) return Result.success(null);
+      
+      const workflow = workflowResult.value;
+      if (!workflow) return Result.success(null);
 
       // Map DB data to domain model
       return Result.success({
-        currentStep: WorkflowStepMapper.toDomainStep(data.current_step),
-        progress: typeof data.metadata?.progress === 'number' ? data.metadata.progress : 0,
-        phase: typeof data.metadata?.phase === 'string'
-          ? data.metadata.phase as ProcessingPhase
+        currentStep: WorkflowStepMapper.toDomainStep(workflow.current_step),
+        progress: typeof workflow.metadata?.progress === 'number' ? workflow.metadata.progress : 0,
+        phase: typeof workflow.metadata?.phase === 'string'
+          ? workflow.metadata.phase as ProcessingPhase
           : ProcessingPhase.INITIALIZATION,
-        error: typeof data.metadata?.error === 'string' ? data.metadata.error : null,
-        metadata: data.metadata || {},
-        timestamp: data.updated_at || new Date().toISOString(),
+        error: typeof workflow.metadata?.error === 'string' ? workflow.metadata.error : null,
+        metadata: workflow.metadata || {},
+        timestamp: workflow.updated_at || new Date().toISOString(),
       });
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get workflow state', {
-        workflowId,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to get workflow state: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to get workflow state',
         'WORKFLOW_FETCH_FAILED',
-        { workflowId, originalError: normalizedError }
+        { workflowId }
       );
     }
   }
@@ -125,6 +119,9 @@ export class WorkflowManager {
     try {
       const now = new Date().toISOString();
       
+      // Ensure initialStep is properly mapped to DB format
+      const dbStep = WorkflowStepMapper.toDatabaseStep(initialStep);
+      
       const enrichedMetadata = {
         ...metadata,
         createdAt: now,
@@ -132,46 +129,29 @@ export class WorkflowManager {
         clientId: this.clientId,
       };
       
-      const { data, error } = await this.supabase
-        .from('workflow_states')
-        .insert({
-          user_id: userId,
-          current_step: initialStep,
-          chat_id: chatId,
-          metadata: enrichedMetadata,
-        })
-        .select('id')
-        .single();
-
-      if (error) {
-        return Result.failure(
-          `Database error: ${error.message}`,
-          'WORKFLOW_CREATE_FAILED',
-          { userId, initialStep, chatId, error }
-        );
-      }
-      
-      if (!data) {
-        return Result.failure(
-          'Failed to create workflow state: No data returned',
-          'WORKFLOW_CREATE_FAILED',
-          { userId, initialStep, chatId }
-        );
-      }
-      
-      return Result.success(data.id);
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to create workflow state', {
-        userId,
-        initialStep,
-        chatId,
-        error: normalizedError.message
+      // Use the helper method to insert the workflow
+      const result = await this.insertWorkflow({
+        user_id: userId,
+        current_step: dbStep,
+        chat_id: chatId,
+        metadata: enrichedMetadata,
       });
-      return Result.failure(
-        `Failed to create workflow state: ${normalizedError.message}`,
+      
+      if (result.isFailure()) {
+        return Result.failure(
+          result.error.message,
+          result.error.code,
+          result.error.details
+        );
+      }
+      
+      return Result.success(result.value);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to create workflow state',
         'WORKFLOW_CREATE_FAILED',
-        { userId, initialStep, chatId, originalError: normalizedError }
+        { userId, initialStep, chatId }
       );
     }
   }
@@ -186,6 +166,14 @@ export class WorkflowManager {
     initialStep: WorkflowStep = 'idle',
     initialMetadata: Record<string, unknown> = {}
   ): Promise<Result<{ id: string; state: WorkflowState }>> {
+    if (!userId) {
+      return Result.failure(
+        'User ID is required',
+        'WORKFLOW_GET_OR_CREATE_VALIDATION',
+        { userId, chatId }
+      );
+    }
+
     try {
       // Try to load existing
       const existingResult = await this.loadStateForUser(userId, chatId);
@@ -227,16 +215,11 @@ export class WorkflowManager {
       
       return Result.success({ id, state: stateResult.value });
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get or create workflow for user', {
-        userId,
-        chatId,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to get or create workflow: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to get or create workflow for user',
         'WORKFLOW_GET_OR_CREATE_FAILED',
-        { userId, chatId, originalError: normalizedError }
+        { userId, chatId }
       );
     }
   }
@@ -258,33 +241,24 @@ export class WorkflowManager {
     }
     
     try {
-      let query = this.supabase
-        .from('workflow_states')
-        .select('*')
-        .eq('user_id', userId);
-        
-      if (chatId !== undefined && chatId !== null) {
-        query = query.eq('chat_id', chatId);
-      } else {
-        query = query.is('chat_id', null);
-      }
+      // Use the helper method to fetch workflow by user ID
+      const result = await this.fetchWorkflowByUserId(userId, chatId);
       
-      const { data, error } = await query.maybeSingle();
-      
-      if (error) {
+      if (result.isFailure()) {
         return Result.failure(
-          `Database error: ${error.message}`,
-          'WORKFLOW_LOAD_FAILED',
-          { userId, chatId, error }
+          result.error.message,
+          result.error.code,
+          result.error.details
         );
       }
       
+      const data = result.value;
       if (!data) return Result.success(null);
       
       // Map to domain model
       return Result.success({
         id: data.id,
-        currentStep: data.current_step as WorkflowStep,
+        currentStep: WorkflowStepMapper.toDomainStep(data.current_step),
         progress: typeof data.metadata?.progress === 'number' ? data.metadata.progress : 0,
         phase: typeof data.metadata?.phase === 'string'
           ? data.metadata.phase as ProcessingPhase
@@ -294,16 +268,11 @@ export class WorkflowManager {
         timestamp: data.updated_at || new Date().toISOString(),
       });
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to load workflow state for user', {
-        userId,
-        chatId,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to load workflow state: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to load workflow state for user',
         'WORKFLOW_LOAD_FAILED',
-        { userId, chatId, originalError: normalizedError }
+        { userId, chatId }
       );
     }
   }
@@ -329,10 +298,13 @@ export class WorkflowManager {
     try {
       // Get current state for adding to metadata
       let currentStep: WorkflowStep = 'idle';
+      let currentState: WorkflowState | null = null;
+      
       try {
         const currentStateResult = await this.getState(workflowId);
         if (currentStateResult.isSuccess() && currentStateResult.value) {
-          currentStep = currentStateResult.value.currentStep;
+          currentState = currentStateResult.value;
+          currentStep = currentState.currentStep;
         }
       } catch (err) {
         // If we can't get the state, continue with default
@@ -344,6 +316,9 @@ export class WorkflowManager {
       
       const now = new Date().toISOString();
       
+      // Ensure toStep is properly mapped to DB format
+      const dbStep = WorkflowStepMapper.toDatabaseStep(toStep);
+      
       // Prepare metadata
       const enrichedMetadata = {
         ...metadata,
@@ -352,26 +327,37 @@ export class WorkflowManager {
         clientId: this.clientId,
       };
       
-      // Update the state
-      const { data, error } = await this.supabase
-        .from('workflow_states')
-        .update({
-          current_step: WorkflowStepMapper.toDatabaseStep(toStep),
+      // Check for valid transitions if validation is enabled
+      if (!options.skipValidation && !options.forceUpdate && currentState) {
+        const isValidTransition = this.isValidTransition(currentStep, toStep);
+        if (!isValidTransition) {
+          return Result.failure(
+            `Invalid workflow transition from ${currentStep} to ${toStep}`,
+            'WORKFLOW_INVALID_TRANSITION',
+            { workflowId, fromStep: currentStep, toStep }
+          );
+        }
+      }
+      
+      // Use the helper method to update the workflow
+      const updateResult = await this.updateWorkflow(
+        workflowId,
+        {
+          current_step: dbStep,
           metadata: enrichedMetadata,
           updated_at: now,
-        })
-        .eq('id', workflowId)
-        .select()
-        .single();
+        }
+      );
       
-      if (error) {
+      if (updateResult.isFailure()) {
         return Result.failure(
-          `Database error: ${error.message}`,
-          'WORKFLOW_UPDATE_FAILED',
-          { workflowId, toStep, error }
+          updateResult.error.message,
+          updateResult.error.code,
+          updateResult.error.details
         );
       }
       
+      const data = updateResult.value;
       if (!data) {
         return Result.failure(
           'No data returned from update',
@@ -380,9 +366,22 @@ export class WorkflowManager {
         );
       }
       
+      // Optionally record the transition
+      try {
+        await this.recordTransition(workflowId, currentStep, toStep, metadata);
+      } catch (transitionErr) {
+        // Log but don't fail the operation if transition recording fails
+        this.logger.warn('Failed to record workflow transition', {
+          workflowId,
+          fromStep: currentStep,
+          toStep,
+          error: transitionErr instanceof Error ? transitionErr.message : String(transitionErr)
+        });
+      }
+      
       // Return updated state
       return Result.success({
-        currentStep: data.current_step as WorkflowStep,
+        currentStep: WorkflowStepMapper.toDomainStep(data.current_step),
         progress: typeof data.metadata?.progress === 'number' ? data.metadata.progress : 0,
         phase: typeof data.metadata?.phase === 'string'
           ? data.metadata.phase as ProcessingPhase
@@ -392,16 +391,11 @@ export class WorkflowManager {
         timestamp: data.updated_at || now,
       });
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to update workflow state', {
-        workflowId,
-        toStep,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to update workflow state: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to update workflow state',
         'WORKFLOW_UPDATE_FAILED',
-        { workflowId, toStep, originalError: normalizedError }
+        { workflowId, toStep }
       );
     }
   }
@@ -416,14 +410,26 @@ export class WorkflowManager {
     options: ProgressOptions = {}
   ): Promise<Result<boolean>> {
     if (!workflowId) {
-      return Result.failure("Workflow ID is required", "WORKFLOW_UPDATE_PROGRESS_INVALID", { workflowId });
+      return Result.failure(
+        "Workflow ID is required",
+        "WORKFLOW_UPDATE_PROGRESS_INVALID",
+        { workflowId }
+      );
     }
+    
     try {
       const { currentStep, notifyUsers = false } = options;
+      
+      // Get current state
       const stateResult = await this.getState(workflowId);
       if (stateResult.isFailure() || !stateResult.value) {
-         return Result.failure("Workflow state not found", "WORKFLOW_STATE_NOT_FOUND", { workflowId });
+         return Result.failure(
+           "Workflow state not found",
+           "WORKFLOW_STATE_NOT_FOUND",
+           { workflowId }
+         );
       }
+      
       const state = stateResult.value;
       const updatedMetadata = {
          ...state.metadata,
@@ -431,49 +437,47 @@ export class WorkflowManager {
          phase: phase.toString(),
          progressUpdatedAt: new Date().toISOString()
       };
-      const { error } = await this.supabase
-         .from('workflow_states')
-         .update({
-            metadata: updatedMetadata,
-            updated_at: new Date().toISOString()
-         })
-         .eq('id', workflowId);
-      if (error) {
-         return Result.failure(`Database error: ${error.message}`, "WORKFLOW_PROGRESS_UPDATE_FAILED", { workflowId, error });
+      
+      // Update the workflow
+      const updateResult = await this.updateWorkflow(
+        workflowId,
+        {
+          metadata: updatedMetadata,
+          updated_at: new Date().toISOString()
+        }
+      );
+      
+      if (updateResult.isFailure()) {
+        return Result.failure(
+          updateResult.error.message,
+          updateResult.error.code,
+          updateResult.error.details
+        );
       }
+      
+      // Send notification if requested
       if (notifyUsers) {
-         const { data, error: chatError } = await this.supabase
-           .from('workflow_states')
-           .select('chat_id')
-           .eq('id', workflowId)
-           .single();
-         if (chatError) {
-            this.logger.warn("Failed to retrieve chat_id for progress notification", { workflowId, chatError: chatError.message });
-         }
-         if (data?.chat_id) {
-            const { error: messageError } = await this.supabase
-              .from('messages')
-              .insert({
-                chat_id: data.chat_id,
-                role: 'system',
-                content: { text: `Progress update: ${progress}% (${phase})` },
-                metadata: { type: 'progress_update', progress, phase: phase.toString() }
-              });
-            if (messageError) {
-               this.logger.warn("Failed to send progress notification", { workflowId, messageError: messageError.message });
-            }
-         }
+        try {
+          await this.sendProgressNotification(workflowId, progress, phase);
+        } catch (notifyErr) {
+          // Log but don't fail the operation if notification fails
+          this.logger.warn("Failed to send progress notification", {
+            workflowId,
+            progress,
+            phase: phase.toString(),
+            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr)
+          });
+        }
       }
+      
       return Result.success(true);
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error("Failed to update workflow progress", {
-         workflowId,
-         progress,
-         phase: phase.toString(),
-         error: normalizedError.message
-      });
-      return Result.failure(normalizedError.message, normalizedError.code || "WORKFLOW_PROGRESS_UPDATE_FAILED", { workflowId });
+      return this.handleError(
+        err,
+        "Failed to update workflow progress",
+        "WORKFLOW_PROGRESS_UPDATE_FAILED",
+        { workflowId, progress, phase: phase.toString() }
+      );
     }
   }
   
@@ -521,7 +525,8 @@ export class WorkflowManager {
       const updateResult = await this.updateState(
         workflowId,
         errorStep,
-        errorMetadata
+        errorMetadata,
+        { skipValidation: true } // Skip validation for error states
       );
       
       if (updateResult.isSuccess()) {
@@ -575,6 +580,14 @@ export class WorkflowManager {
     initialStep: WorkflowStep = 'idle',
     metadata: Record<string, unknown> = {}
   ): Promise<Result<WorkflowState>> {
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_RESET_VALIDATION_FAILED',
+        { workflowId, initialStep }
+      );
+    }
+
     try {
       const resetMetadata = {
         ...metadata,
@@ -584,23 +597,19 @@ export class WorkflowManager {
         error: null
       };
       
-      // Update to initial step
+      // Update to initial step with skipValidation to allow any transition
       return await this.updateState(
         workflowId,
         initialStep,
-        resetMetadata
+        resetMetadata,
+        { skipValidation: true }
       );
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to reset workflow', {
-        workflowId,
-        initialStep,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to reset workflow: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to reset workflow',
         'WORKFLOW_RESET_FAILED',
-        { workflowId, initialStep, originalError: normalizedError }
+        { workflowId, initialStep }
       );
     }
   }
@@ -613,6 +622,14 @@ export class WorkflowManager {
     workflowId: string,
     completionMetadata: Record<string, unknown> = {}
   ): Promise<Result<WorkflowState>> {
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_COMPLETION_VALIDATION_FAILED',
+        { workflowId }
+      );
+    }
+
     try {
       const completionTimestamp = new Date().toISOString();
       
@@ -626,18 +643,11 @@ export class WorkflowManager {
         }
       );
     } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to complete workflow', {
-        workflowId,
-        error: normalizedError.message
-      });
-      return Result.failure(
-        `Failed to complete workflow: ${normalizedError.message}`,
+      return this.handleError(
+        err,
+        'Failed to complete workflow',
         'WORKFLOW_COMPLETION_FAILED',
-        {
-          workflowId,
-          originalError: normalizedError
-        }
+        { workflowId }
       );
     }
   }
@@ -652,28 +662,47 @@ export class WorkflowManager {
     messageContent: string,
     messageRole: string = 'system',
     messageMetadata: Record<string, unknown> | null = null
-  ): Promise<{ success: boolean; workflowId?: string; messageId?: string }> {
+  ): Promise<Result<{ workflowId: string; messageId: string }>> {
+    if (!workflowId) {
+      return Result.failure(
+        'Workflow ID is required',
+        'WORKFLOW_CHAT_UPDATE_VALIDATION_FAILED',
+        { workflowId, step }
+      );
+    }
+
     try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
+      // Get the chat_id from the workflow state
+      const workflowResult = await this.fetchWorkflowById(workflowId);
+      
+      if (workflowResult.isFailure()) {
+        return Result.failure(
+          workflowResult.error.message,
+          workflowResult.error.code,
+          workflowResult.error.details
+        );
       }
       
-      // Get the chat_id from the workflow state
-      const { data: workflow, error: workflowError } = await this.supabase
-        .from('workflow_states')
-        .select('chat_id, current_step')
-        .eq('id', workflowId)
-        .single();
-      
-      if (workflowError) throw workflowError;
+      const workflow = workflowResult.value;
       if (!workflow) {
-        return { success: false };
+        return Result.failure(
+          'Workflow not found',
+          'WORKFLOW_NOT_FOUND',
+          { workflowId }
+        );
       }
       
       const chatId = workflow.chat_id;
       if (!chatId) {
-        return { success: false };
+        return Result.failure(
+          'No chat ID associated with this workflow',
+          'WORKFLOW_NO_CHAT_ID',
+          { workflowId }
+        );
       }
+      
+      // Ensure step is properly mapped to DB format
+      const dbStep = WorkflowStepMapper.toDatabaseStep(step);
       
       // Update workflow state
       const enrichedMetadata = {
@@ -682,54 +711,62 @@ export class WorkflowManager {
         clientId: this.clientId,
       };
       
-      const { error: updateError } = await this.supabase
-        .from('workflow_states')
-        .update({
-          current_step: step,
+      const updateResult = await this.updateWorkflow(
+        workflowId,
+        {
+          current_step: dbStep,
           metadata: enrichedMetadata,
           updated_at: new Date().toISOString()
-        })
-        .eq('id', workflowId);
+        }
+      );
       
-      if (updateError) throw updateError;
+      if (updateResult.isFailure()) {
+        return Result.failure(
+          updateResult.error.message,
+          updateResult.error.code,
+          updateResult.error.details
+        );
+      }
       
       // Add chat message
-      const { data: message, error: messageError } = await this.supabase
-        .from('messages')
-        .insert({
-          chat_id: chatId,
-          role: messageRole,
-          content: typeof messageContent === 'string'
-            ? { text: messageContent }
-            : messageContent,
-          metadata: messageMetadata
-        })
-        .select('id')
-        .single();
+      const messageInsertResult = await this.insertChatMessage(
+        chatId,
+        messageRole,
+        typeof messageContent === 'string'
+          ? { text: messageContent }
+          : messageContent,
+        messageMetadata
+      );
       
-      if (messageError) throw messageError;
+      if (messageInsertResult.isFailure()) {
+        return Result.failure(
+          messageInsertResult.error.message,
+          messageInsertResult.error.code,
+          messageInsertResult.error.details
+        );
+      }
+      
+      const messageId = messageInsertResult.value;
       
       // Update workflow to reference the new message
-      await this.supabase
-        .from('workflow_states')
-        .update({
-          last_message_id: message.id
-        })
-        .eq('id', workflowId);
+      await this.updateWorkflow(
+        workflowId,
+        {
+          last_message_id: messageId
+        }
+      );
       
-      return {
-        success: true,
+      return Result.success({
         workflowId,
-        messageId: message.id
-      };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to update with chat message', {
-        workflowId,
-        step,
-        error: normalizedError.message
+        messageId
       });
-      return { success: false };
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to update with chat message',
+        'WORKFLOW_CHAT_UPDATE_FAILED',
+        { workflowId, step }
+      );
     }
   }
   
@@ -820,6 +857,374 @@ export class WorkflowManager {
    */
   getClientId(): string {
     return this.clientId;
+  }
+  
+  // Private helper methods
+  
+  /**
+   * Centralized error handling
+   */
+  private handleError<T>(
+    error: unknown,
+    message: string,
+    code: string,
+    context: Record<string, unknown> = {}
+  ): Result<T> {
+    const normalizedError = normalizeError(error);
+    
+    this.logger.error(message, {
+      ...context,
+      error: normalizedError.message,
+      stack: normalizedError.stack,
+      data: normalizedError.data
+    });
+    
+    return Result.failure(
+      `${message}: ${normalizedError.message}`,
+      normalizedError.code || code,
+      { ...context, originalError: normalizedError }
+    );
+  }
+  
+  /**
+   * Fetch workflow by ID
+   */
+  private async fetchWorkflowById(workflowId: string): Promise<Result<Record<string, any> | null>> {
+    try {
+      const { data, error } = await this.supabase
+        .from('workflow_states')
+        .select('*')
+        .eq('id', workflowId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No row found
+          return Result.success(null);
+        }
+        return Result.failure(
+          `Database error: ${error.message}`,
+          'WORKFLOW_FETCH_FAILED',
+          { workflowId, error }
+        );
+      }
+      
+      return Result.success(data);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to fetch workflow',
+        'WORKFLOW_FETCH_FAILED',
+        { workflowId }
+      );
+    }
+  }
+  
+  /**
+   * Fetch workflow by user ID
+   */
+  private async fetchWorkflowByUserId(
+    userId: string,
+    chatId?: string | null
+  ): Promise<Result<Record<string, any> | null>> {
+    try {
+      let query = this.supabase
+        .from('workflow_states')
+        .select('*')
+        .eq('user_id', userId);
+        
+      if (chatId !== undefined && chatId !== null) {
+        query = query.eq('chat_id', chatId);
+      } else {
+        query = query.is('chat_id', null);
+      }
+      
+      const { data, error } = await query.maybeSingle();
+      
+      if (error) {
+        return Result.failure(
+          `Database error: ${error.message}`,
+          'WORKFLOW_FETCH_FAILED',
+          { userId, chatId, error }
+        );
+      }
+      
+      return Result.success(data);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to fetch workflow by user ID',
+        'WORKFLOW_FETCH_FAILED',
+        { userId, chatId }
+      );
+    }
+  }
+  
+  /**
+   * Insert workflow
+   */
+  private async insertWorkflow(workflow: Record<string, any>): Promise<Result<string>> {
+    try {
+      const { data, error } = await this.supabase
+        .from('workflow_states')
+        .insert(workflow)
+        .select('id')
+        .single();
+
+      if (error) {
+        return Result.failure(
+          `Database error: ${error.message}`,
+          'WORKFLOW_INSERT_FAILED',
+          { workflow, error }
+        );
+      }
+      
+      if (!data) {
+        return Result.failure(
+          'Failed to insert workflow: No data returned',
+          'WORKFLOW_INSERT_FAILED',
+          { workflow }
+        );
+      }
+      
+      return Result.success(data.id);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to insert workflow',
+        'WORKFLOW_INSERT_FAILED',
+        { workflow }
+      );
+    }
+  }
+  
+  /**
+   * Update workflow
+   */
+  private async updateWorkflow(
+    workflowId: string,
+    updates: Record<string, any>
+  ): Promise<Result<Record<string, any> | null>> {
+    try {
+      const { data, error } = await this.supabase
+        .from('workflow_states')
+        .update(updates)
+        .eq('id', workflowId)
+        .select()
+        .single();
+      
+      if (error) {
+        return Result.failure(
+          `Database error: ${error.message}`,
+          'WORKFLOW_UPDATE_FAILED',
+          { workflowId, updates, error }
+        );
+      }
+      
+      return Result.success(data);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to update workflow',
+        'WORKFLOW_UPDATE_FAILED',
+        { workflowId, updates }
+      );
+    }
+  }
+  
+  /**
+   * Insert chat message
+   */
+  private async insertChatMessage(
+    chatId: string,
+    role: string,
+    content: any,
+    metadata: Record<string, unknown> | null = null
+  ): Promise<Result<string>> {
+    try {
+      const { data, error } = await this.supabase
+        .from('messages')
+        .insert({
+          chat_id: chatId,
+          role,
+          content,
+          metadata
+        })
+        .select('id')
+        .single();
+      
+      if (error) {
+        return Result.failure(
+          `Database error: ${error.message}`,
+          'MESSAGE_INSERT_FAILED',
+          { chatId, role, error }
+        );
+      }
+      
+      if (!data) {
+        return Result.failure(
+          'Failed to insert message: No data returned',
+          'MESSAGE_INSERT_FAILED',
+          { chatId, role }
+        );
+      }
+      
+      return Result.success(data.id);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to insert chat message',
+        'MESSAGE_INSERT_FAILED',
+        { chatId, role }
+      );
+    }
+  }
+  
+  /**
+   * Send progress notification
+   */
+  private async sendProgressNotification(
+    workflowId: string,
+    progress: number,
+    phase: ProcessingPhase
+  ): Promise<Result<boolean>> {
+    try {
+      const { data, error: chatError } = await this.supabase
+        .from('workflow_states')
+        .select('chat_id')
+        .eq('id', workflowId)
+        .single();
+      
+      if (chatError) {
+        return Result.failure(
+          `Failed to retrieve chat_id: ${chatError.message}`,
+          'CHAT_ID_FETCH_FAILED',
+          { workflowId, chatError }
+        );
+      }
+      
+      if (!data?.chat_id) {
+        return Result.failure(
+          'No chat ID associated with this workflow',
+          'NO_CHAT_ID',
+          { workflowId }
+        );
+      }
+      
+      const { error: messageError } = await this.supabase
+        .from('messages')
+        .insert({
+          chat_id: data.chat_id,
+          role: 'system',
+          content: { text: `Progress update: ${progress}% (${phase})` },
+          metadata: { type: 'progress_update', progress, phase: phase.toString() }
+        });
+      
+      if (messageError) {
+        return Result.failure(
+          `Failed to send notification: ${messageError.message}`,
+          'NOTIFICATION_FAILED',
+          { workflowId, chatId: data.chat_id, messageError }
+        );
+      }
+      
+      return Result.success(true);
+    } catch (err) {
+      return this.handleError(
+        err,
+        'Failed to send progress notification',
+        'NOTIFICATION_FAILED',
+        { workflowId, progress, phase: phase.toString() }
+      );
+    }
+  }
+  
+  /**
+   * Record a workflow transition for auditing purposes
+   */
+  private async recordTransition(
+    workflowId: string,
+    fromStep: WorkflowStep,
+    toStep: WorkflowStep,
+    metadata: Record<string, unknown> = {}
+  ): Promise<Result<boolean>> {
+    try {
+      // Convert steps to database format
+      const dbFromStep = WorkflowStepMapper.toDatabaseStep(fromStep);
+      const dbToStep = WorkflowStepMapper.toDatabaseStep(toStep);
+      
+      const { error } = await this.supabase
+        .from('workflow_transitions')
+        .insert({
+          workflow_id: workflowId,
+          from_step: dbFromStep,
+          to_step: dbToStep,
+          metadata,
+          transitioned_at: new Date().toISOString()
+        });
+      
+      if (error) {
+        return Result.failure(
+          `Failed to record transition: ${error.message}`,
+          'TRANSITION_RECORD_FAILED',
+          { workflowId, fromStep, toStep, error }
+        );
+      }
+      
+      return Result.success(true);
+    } catch (err) {
+      // Log but don't propagate errors from transition recording
+      this.logger.warn('Failed to record workflow transition', {
+        workflowId,
+        fromStep,
+        toStep,
+        error: err instanceof Error ? err.message : String(err)
+      });
+      
+      // Still return success - transition recording is non-critical
+      return Result.success(false);
+    }
+  }
+  
+  /**
+   * Check if a transition is valid
+   */
+  private isValidTransition(fromStep: WorkflowStep, toStep: WorkflowStep): boolean {
+    // Allow all transitions to error state
+    if (toStep === DomainOnlyWorkflowStep.ERROR ||
+        toStep === 'error' ||
+        toStep === 'chat_error' ||
+        toStep === 'verification_failed') {
+      return true;
+    }
+    
+    // Import allowed transitions from workflow types
+    // For now, basic validation - can be expanded later
+    const basicAllowedTransitions: Record<string, string[]> = {
+      'idle': ['uploading', 'chat_started', 'research', 'error'],
+      'uploading': ['extracting', 'error'],
+      'extracting': ['verification', 'verification_pending', 'complete', 'document_analysis', 'error'],
+      'verification': ['verification_pending', 'error'],
+      'verification_pending': ['verification_in_progress', 'error'],
+      'verification_in_progress': ['verification_completed', 'verification_failed', 'error'],
+      'verification_completed': ['report_generation', 'error'],
+      'verification_failed': ['verification_in_progress', 'error'],
+      'report_generation': ['complete', 'report_presentation', 'error'],
+      'report_presentation': ['complete', 'error'],
+      'chat_started': ['chat_in_progress', 'error'],
+      'chat_in_progress': ['chat_completed', 'error'],
+      'chat_completed': ['chat_in_progress', 'error'],
+      'complete': ['idle', 'chat_in_progress', 'uploading', 'error'],
+      'error': ['idle', 'uploading', 'extracting', 'verification', 'report_generation'],
+      'research': ['report_generation', 'error']
+    };
+    
+    // Convert steps to strings to handle enums
+    const fromStepStr = String(fromStep);
+    const toStepStr = String(toStep);
+    
+    // Check if transition is allowed
+    return basicAllowedTransitions[fromStepStr]?.includes(toStepStr) || false;
   }
   
   /**

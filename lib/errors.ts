@@ -6,18 +6,20 @@ import type { z } from 'zod'
  */
 export class ApplicationError extends Error {
   readonly timestamp: string
-  readonly code?: string
+  readonly code: string
   readonly statusCode: number
   readonly data: Record<string, any>
   readonly isOperational: boolean
+  readonly category?: string
 
   constructor({
     message,
-    code,
+    code = 'UNKNOWN_ERROR',
     statusCode = 500,
     data = {},
     cause,
-    isOperational = true
+    isOperational = true,
+    category
   }: {
     message: string
     code?: string
@@ -25,6 +27,7 @@ export class ApplicationError extends Error {
     data?: Record<string, any>
     cause?: Error | unknown
     isOperational?: boolean
+    category?: string
   }) {
     super(message, { cause })
 
@@ -34,6 +37,7 @@ export class ApplicationError extends Error {
     this.statusCode = statusCode
     this.data = data
     this.isOperational = isOperational
+    this.category = category
 
     // Maintains proper stack trace for where error was thrown (only V8)
     if (Error.captureStackTrace) {
@@ -50,8 +54,26 @@ export class ApplicationError extends Error {
         message: this.message,
         code: this.code,
         timestamp: this.timestamp,
+        ...(this.category ? { category: this.category } : {}),
         ...(Object.keys(this.data).length > 0 ? { details: this.data } : {})
       }
+    }
+  }
+
+  /**
+   * Convert to ResultError format for use with Result pattern
+   */
+  toResultError(): {
+    message: string;
+    code: string;
+    details?: Record<string, unknown>;
+    category?: string;
+  } {
+    return {
+      message: this.message,
+      code: this.code,
+      details: this.data,
+      category: this.category
     }
   }
 }
@@ -130,20 +152,31 @@ export function normalizeError(error: unknown): ApplicationError {
   // Check if it's a ResultError (from Result pattern)
   if (typeof error === 'object' && error !== null &&
       'message' in error && 'code' in error) {
-    const resultError = error as { message: string; code: string; details?: Record<string, unknown> };
+    const resultError = error as {
+      message: string;
+      code: string;
+      details?: Record<string, unknown>;
+      category?: string;
+    };
+    
     return new ApplicationError({
       message: resultError.message,
       code: resultError.code,
-      data: resultError.details || { originalError: error }
+      data: resultError.details || { originalError: error },
+      category: resultError.category
     });
   }
 
   // Handle standard Error objects
   if (error instanceof Error) {
+    const code = (error as any).code || 'UNKNOWN_ERROR';
+    const category = (error as any).category;
+    
     return new ApplicationError({
       message: error.message,
       cause: error,
-      code: (error as any).code || 'UNKNOWN_ERROR',
+      code,
+      category,
       data: {
         originalStack: error.stack,
         originalName: error.name,
@@ -173,36 +206,20 @@ export function normalizeError(error: unknown): ApplicationError {
 export function errorToResultError(error: unknown): {
   message: string;
   code: string;
-  details?: Record<string, unknown>
+  details?: Record<string, unknown>;
+  category?: string;
 } {
   const normalized = normalizeError(error);
   
   return {
     message: normalized.message,
-    code: normalized.code || 'UNKNOWN_ERROR',
-    details: normalized.data
+    code: normalized.code,
+    details: normalized.data,
+    category: normalized.category
   };
 }
 
-/**
- * Helper function to convert Zod errors to our new ValidationError
- * We'll import ValidationError from lib/errors/verification-errors
+/*
+ * Note: zodErrorToValidationError has been moved to lib/errors/index.ts
+ * for centralized error handling
  */
-import { ValidationError } from '@/lib/errors/verification-errors'
-
-export function zodErrorToValidationError(
-  error: z.ZodError,
-  message = 'Validation failed',
-  code = 'VALIDATION_ERROR'
-): ValidationError {
-  const fields: Record<string, string> = {}
-  error.errors.forEach(err => {
-    fields[err.path.join('.')] = err.message
-  })
-
-  return new ValidationError({
-    message,
-    code,
-    data: { fields }
-  })
-}

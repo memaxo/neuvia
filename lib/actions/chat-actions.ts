@@ -1,9 +1,9 @@
 import type {
   ChatAction,
   ChatMode,
-  Message,
   ReportOptions,
 } from '@/lib/chat/types'
+import type { ChatMessage } from '@/lib/types/chat'
 import type { VerificationOptions } from '@/lib/processing/types/verification'
 import type { WorkflowStep } from '@/lib/workflow/types'
 
@@ -44,7 +44,7 @@ export const chatActions = {
     meta: { errorCode: errorCode || '' }
   }),
 
-  addMessage: (message: Message | Omit<Message, 'id'>): ChatAction => ({
+  addMessage: (message: ChatMessage | Omit<ChatMessage, 'id'>): ChatAction => ({
     type: 'ADD_MESSAGE',
     payload: { data: { message } },
     meta: {}

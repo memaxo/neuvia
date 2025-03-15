@@ -1,4 +1,5 @@
 import { ApplicationError } from '@/lib/errors'
+import { ErrorCategory } from './index'
 
 /**
  * A generic error class for verification-specific errors
@@ -9,15 +10,27 @@ export class VerificationError extends ApplicationError {
     code = 'VERIFICATION_ERROR',
     statusCode = 400,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.VALIDATION,
+    isOperational = true
   }: {
     message: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause, isOperational: true })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      isOperational,
+      category
+    })
   }
 }
 
@@ -30,15 +43,27 @@ export class DocumentProcessingError extends ApplicationError {
     code = 'DOCUMENT_PROCESSING_ERROR',
     statusCode = 500,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.SYSTEM,
+    isOperational = true
   }: {
     message: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause, isOperational: true })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      isOperational,
+      category
+    })
   }
 }
 
@@ -51,15 +76,27 @@ export class ReportGenerationError extends ApplicationError {
     code = 'REPORT_GENERATION_ERROR',
     statusCode = 500,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.SYSTEM,
+    isOperational = true
   }: {
     message: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause, isOperational: true })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      isOperational,
+      category
+    })
   }
 }
 
@@ -72,14 +109,26 @@ export class ValidationError extends ApplicationError {
     code = 'VALIDATION_ERROR',
     statusCode = 422,
     data = {},
-    cause
+    cause,
+    category = ErrorCategory.VALIDATION,
+    isOperational = true
   }: {
     message: string
     code?: string
     statusCode?: number
     data?: Record<string, any>
     cause?: unknown
+    category?: string
+    isOperational?: boolean
   }) {
-    super({ message, code, statusCode, data, cause, isOperational: true })
+    super({
+      message,
+      code,
+      statusCode,
+      data,
+      cause,
+      isOperational,
+      category
+    })
   }
 }
