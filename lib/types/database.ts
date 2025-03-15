@@ -1022,6 +1022,41 @@ export type Database = {
           },
         ]
       }
+      workflow_transitions: {
+        Row: {
+          from_step: Database["public"]["Enums"]["workflow_step"]
+          id: string
+          metadata: Json | null
+          to_step: Database["public"]["Enums"]["workflow_step"]
+          transitioned_at: string
+          workflow_id: string | null
+        }
+        Insert: {
+          from_step: Database["public"]["Enums"]["workflow_step"]
+          id?: string
+          metadata?: Json | null
+          to_step: Database["public"]["Enums"]["workflow_step"]
+          transitioned_at?: string
+          workflow_id?: string | null
+        }
+        Update: {
+          from_step?: Database["public"]["Enums"]["workflow_step"]
+          id?: string
+          metadata?: Json | null
+          to_step?: Database["public"]["Enums"]["workflow_step"]
+          transitioned_at?: string
+          workflow_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_transitions_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

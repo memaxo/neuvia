@@ -59,29 +59,22 @@ export enum DomainOnlyWorkflowStep {
  */
 export type WorkflowStep = DbWorkflowStep | DomainOnlyWorkflowStep
 
-/**
- * Convert a domain WorkflowStep to the corresponding database enum if possible.
- * For domain-only steps, return a suitable fallback.
- * 
- * @deprecated Use WorkflowStepMapper.toDatabaseStep instead for consistency
- */
-export function toDbWorkflowStep(step: WorkflowStep): DbWorkflowStep {
-  // Import at function level to avoid circular dependency
-  const { WorkflowStepMapper } = require('@/lib/services/workflow/utils/step-mapper');
-  return WorkflowStepMapper.toDatabaseStep(step);
-}
+// Common workflow step constants for shared usage
+export const WORKFLOW_STEP_IDLE: WorkflowStep = 'idle';
+export const WORKFLOW_STEP_UPLOADING: WorkflowStep = 'uploading';
+export const WORKFLOW_STEP_EXTRACTION: WorkflowStep = 'extracting';
+export const WORKFLOW_STEP_VERIFICATION: WorkflowStep = 'verification';
+export const WORKFLOW_STEP_VERIFICATION_PENDING: WorkflowStep = 'verification_pending';
+export const WORKFLOW_STEP_VERIFICATION_IN_PROGRESS: WorkflowStep = 'verification_in_progress';
+export const WORKFLOW_STEP_VERIFICATION_COMPLETED: WorkflowStep = 'verification_completed';
+export const WORKFLOW_STEP_VERIFICATION_FAILED: WorkflowStep = 'verification_failed';
+export const WORKFLOW_STEP_REPORT_GENERATION: WorkflowStep = 'report_generation';
+export const WORKFLOW_STEP_CHAT_STARTED: WorkflowStep = 'chat_started';
+export const WORKFLOW_STEP_CHAT_IN_PROGRESS: WorkflowStep = 'chat_in_progress';
+export const WORKFLOW_STEP_CHAT_COMPLETED: WorkflowStep = 'chat_completed';
+export const WORKFLOW_STEP_CHAT_ERROR: WorkflowStep = 'chat_error';
 
-/**
- * Convert a DB workflow step to the domain WorkflowStep union.
- * If you have domain-only logic, interpret as needed.
- * 
- * @deprecated Use WorkflowStepMapper.toDomainStep instead for consistency
- */
-export function fromDbWorkflowStep(dbStep: DbWorkflowStep): WorkflowStep {
-  // Import at function level to avoid circular dependency
-  const { WorkflowStepMapper } = require('@/lib/services/workflow/utils/step-mapper');
-  return WorkflowStepMapper.toDomainStep(dbStep);
-}
+
 
 // ==========================================================================
 // Core Workflow Types
@@ -105,6 +98,7 @@ export enum ProcessingPhase {
   REPORT_GENERATION = 'report_generation',
   REPORT_FORMATTING = 'report_formatting',
   REPORT_PREVIEW = 'report_preview',
+  CHAT_PROCESSING = 'chat_processing',
   COMPLETION = 'completion',
   ERROR = 'error',
 }

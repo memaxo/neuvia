@@ -1,25 +1,45 @@
-/**
- * @fileoverview Document Workflow Definition
- *
- * Defines the declarative state machine for document processing workflows.
- * This definition is registered with the workflow engine to provide
- * consistent state management for document processing.
- */
-
+// lib/services/workflow/definitions/document-workflow-definition.ts
 import { z } from 'zod';
-import { ProcessingPhase, WorkflowStep, DomainOnlyWorkflowStep } from '@/lib/types/workflow';
-import { createWorkflowDefinition, WorkflowAction } from '../coordination/workflow-definition';
-import { DocumentCategory } from '@/lib/types/document';
-import logger from '@/lib/logger';
+import { StateMachineConfig } from '../../../state-machine/types';
+import { GenericWorkflowService, WorkflowContext, baseContextSchema } from '../generic-workflow-service';
+import { Result } from '../../../result/result';
+
+// Shared processing phases for document workflow
+export enum ProcessingPhase {
+  INITIALIZATION = 'initialization',
+  UPLOAD = 'upload',
+  EXTRACTION = 'extraction',
+  VERIFICATION = 'verification',
+  COMPLETION = 'completion',
+  ERROR = 'error',
+}
+
+// Shared workflow steps for document workflow
+export enum WorkflowStep {
+  IDLE = 'idle',
+  UPLOAD = 'upload',
+  EXTRACTION = 'extraction',
+  VERIFICATION_PENDING = 'verification_pending',
+  VERIFICATION_IN_PROGRESS = 'verification_in_progress',
+  VERIFICATION_COMPLETED = 'verification_completed',
+  VERIFICATION_FAILED = 'verification_failed',
+  COMPLETE = 'complete',
+  ERROR = 'error',
+}
+
+// Document types
+export enum DocumentCategory {
+  MEDICAL = 'medical',
+  FINANCIAL = 'financial',
+  LEGAL = 'legal',
+  IDENTIFICATION = 'identification',
+  OTHER = 'other',
+}
 
 /**
- * Document workflow context schema
+ * Document workflow context with document-specific fields
  */
-export interface DocumentWorkflowContext {
-  // User information
-  userId: string;
-  patientId?: string;
-  
+export interface DocumentWorkflowContext extends WorkflowContext {
   // Document information
   documentId?: string;
   fileName?: string;
@@ -31,11 +51,8 @@ export interface DocumentWorkflowContext {
     subtype?: string;
   };
   
-  // Processing state
-  progress: number;
-  phase?: ProcessingPhase;
-  startedAt?: string;
-  completedAt?: string;
+  // Patient information
+  patientId?: string;
   
   // Extraction results
   extractedContent?: string;
@@ -43,26 +60,13 @@ export interface DocumentWorkflowContext {
   chunkCount?: number;
   
   // Error handling
-  error?: string;
-  errorCode?: string;
-  errorDetails?: Record<string, unknown>;
   retryCount?: number;
-  
-  // Other metadata
-  transactionId?: string;
-  metadata?: Record<string, unknown>;
 }
 
 /**
- * Zod schema for document workflow context validation
+ * Extended schema for document workflow context validation
  */
-const documentContextSchema = z.object({
-  // Required fields
-  userId: z.string(),
-  progress: z.number().min(0).max(100).default(0),
-  
-  // Optional fields
-  patientId: z.string().optional(),
+export const documentContextSchema = baseContextSchema.extend({
   documentId: z.string().optional(),
   fileName: z.string().optional(),
   fileSize: z.number().optional(),
@@ -72,586 +76,416 @@ const documentContextSchema = z.object({
     type: z.string(),
     subtype: z.string().optional()
   }).optional(),
-  phase: z.string().optional(),
-  startedAt: z.string().optional(),
-  completedAt: z.string().optional(),
+  patientId: z.string().optional(),
   extractedContent: z.string().optional(),
   extractedData: z.record(z.unknown()).optional(),
   chunkCount: z.number().optional(),
-  error: z.string().optional(),
-  errorCode: z.string().optional(),
-  errorDetails: z.record(z.unknown()).optional(),
-  retryCount: z.number().optional(),
-  transactionId: z.string().optional(),
-  metadata: z.record(z.unknown()).optional()
+  retryCount: z.number().optional()
 });
 
-/**
- * Initial context for document workflows
- */
-const initialDocumentContext: DocumentWorkflowContext = {
-  userId: '',
-  progress: 0
-};
-
-/**
- * Define common logging for effects
- */
-const logTransition = (step: string) => async (context: DocumentWorkflowContext, action: WorkflowAction) => {
-  logger.info(`Document workflow transitioning to ${step}`, {
-    userId: context.userId,
-    documentId: context.documentId,
-    fileName: context.fileName,
-    fromStep: action.meta?.fromStep,
-    toStep: step,
-    transactionId: action.meta?.transactionId || context.transactionId
-  });
-};
-
-/**
- * Document workflow definition
- */
-export const documentWorkflowDefinition = createWorkflowDefinition<DocumentWorkflowContext>({
+// Define the document workflow configuration
+export const documentWorkflowConfig: StateMachineConfig<DocumentWorkflowContext> = {
   id: 'document-workflow',
   name: 'Document Processing Workflow',
-  description: 'Handles document upload, extraction, and processing',
-  version: '1.0.0',
-  initialState: 'idle' as WorkflowStep,
-  domains: ['Document'],
-  context: {
-    schema: documentContextSchema,
-    initialValue: initialDocumentContext
-  },
+  initial: WorkflowStep.IDLE,
   
-  // State machine definition
   states: {
-    // Initial state - waiting for document
-    'idle': {
-      id: 'idle' as WorkflowStep,
-      type: 'initial',
+    [WorkflowStep.IDLE]: {
+      id: WorkflowStep.IDLE,
       description: 'Initial state before processing starts',
-      transitions: {
-        'UPLOAD_DOCUMENT': {
-          target: 'uploading' as WorkflowStep,
-          effects: [
-            logTransition('uploading'),
-            async (context, event) => {
-              // Record upload start
-              context.fileName = event.payload?.fileName;
-              context.fileSize = event.payload?.fileSize;
-              context.fileType = event.payload?.fileType;
-              context.patientId = event.payload?.patientId;
-              context.documentType = event.payload?.documentType;
-              context.startedAt = new Date().toISOString();
-              context.phase = ProcessingPhase.UPLOADING;
-              context.progress = 0;
-              
-              // Store transaction ID if provided
-              if (event.meta?.transactionId) {
-                context.transactionId = event.meta.transactionId;
-              }
-              
-              // Store user ID
-              if (event.meta?.userId) {
-                context.userId = event.meta.userId;
-              }
-            }
-          ]
-        }
-      }
-    },
-    
-    // Document is being uploaded
-    'uploading': {
-      id: 'uploading' as WorkflowStep,
-      description: 'Document is being uploaded',
-      onEntry: [
+      onEnter: [
         async (context) => {
-          context.phase = ProcessingPhase.UPLOADING;
+          context.progress = 0;
+          context.phase = ProcessingPhase.INITIALIZATION;
+        }
+      ]
+    },
+    [WorkflowStep.UPLOAD]: {
+      id: WorkflowStep.UPLOAD,
+      description: 'Document is being uploaded',
+      onEnter: [
+        async (context) => {
+          context.phase = ProcessingPhase.UPLOAD;
           context.progress = 10;
         }
-      ],
-      transitions: {
-        'UPLOAD_PROGRESS': {
-          target: 'uploading' as WorkflowStep, // self-transition for progress updates
-          effects: [
-            async (context, event) => {
-              // Update progress
-              if (typeof event.payload?.progress === 'number') {
-                context.progress = event.payload.progress;
-              }
-            }
-          ]
-        },
-        'UPLOAD_COMPLETED': {
-          target: 'extracting' as WorkflowStep,
-          effects: [
-            logTransition('extracting'),
-            async (context, event) => {
-              // Store document ID and update progress
-              context.documentId = event.payload.documentId;
-              context.progress = 100;
-              context.phase = ProcessingPhase.UPLOADING;
-              context.metadata = {
-                ...context.metadata,
-                uploadedAt: new Date().toISOString(),
-                documentId: event.payload.documentId
-              };
-            }
-          ]
-        },
-        'UPLOAD_FAILED': {
-          target: DomainOnlyWorkflowStep.ERROR,
-          effects: [
-            logTransition('error'),
-            async (context, event) => {
-              context.error = event.payload.error;
-              context.errorCode = event.payload.errorCode || 'UPLOAD_FAILED';
-              context.phase = ProcessingPhase.ERROR;
-              context.errorDetails = event.payload.details;
-            }
-          ]
-        }
-      }
+      ]
     },
-    
-    // Document content is being extracted
-    'extracting': {
-      id: 'extracting' as WorkflowStep,
+    [WorkflowStep.EXTRACTION]: {
+      id: WorkflowStep.EXTRACTION,
       description: 'Document content is being extracted',
-      onEntry: [
+      onEnter: [
         async (context) => {
           context.phase = ProcessingPhase.EXTRACTION;
           context.progress = 0;
         }
-      ],
-      transitions: {
-        'EXTRACTION_PROGRESS': {
-          target: 'extracting' as WorkflowStep, // self-transition for progress updates
-          effects: [
-            async (context, event) => {
-              // Update progress
-              if (typeof event.payload?.progress === 'number') {
-                context.progress = event.payload.progress;
-              }
-              // Update phase if provided
-              if (event.payload?.phase) {
-                context.phase = event.payload.phase as ProcessingPhase;
-              }
-            }
-          ]
-        },
-        'EXTRACTION_COMPLETED': {
-          target: 'verification_pending' as WorkflowStep,
-          condition: (context, event) => !!event.payload?.autoVerify,
-          effects: [
-            logTransition('verification_pending'),
-            async (context, event) => {
-              // Record extracted content and data
-              context.extractedContent = event.payload.content;
-              context.extractedData = event.payload.extractedData;
-              context.chunkCount = event.payload.chunkCount;
-              context.progress = 100;
-              context.phase = ProcessingPhase.EXTRACTION_COMPLETED;
-              context.metadata = {
-                ...context.metadata,
-                extractedAt: new Date().toISOString(),
-                extractionMethod: event.payload.extractionMethod,
-                contentLength: event.payload.content?.length || 0,
-                chunkCount: event.payload.chunkCount
-              };
-            }
-          ]
-        },
-        'EXTRACTION_COMPLETED_NO_VERIFY': {
-          target: 'complete' as WorkflowStep,
-          effects: [
-            logTransition('complete'),
-            async (context, event) => {
-              // Record extracted content and data without proceeding to verification
-              context.extractedContent = event.payload.content;
-              context.extractedData = event.payload.extractedData;
-              context.chunkCount = event.payload.chunkCount;
-              context.progress = 100;
-              context.phase = ProcessingPhase.COMPLETION;
-              context.completedAt = new Date().toISOString();
-              context.metadata = {
-                ...context.metadata,
-                extractedAt: new Date().toISOString(),
-                extractionMethod: event.payload.extractionMethod,
-                contentLength: event.payload.content?.length || 0,
-                chunkCount: event.payload.chunkCount,
-                skipVerification: true
-              };
-            }
-          ]
-        },
-        'EXTRACTION_FAILED': {
-          target: DomainOnlyWorkflowStep.ERROR,
-          effects: [
-            logTransition('error'),
-            async (context, event) => {
-              context.error = event.payload.error;
-              context.errorCode = event.payload.errorCode || 'EXTRACTION_FAILED';
-              context.phase = ProcessingPhase.ERROR;
-              context.errorDetails = event.payload.details;
-            }
-          ]
-        }
-      }
+      ]
     },
-    
-    // Document is awaiting verification
-    'verification_pending': {
-      id: 'verification_pending' as WorkflowStep,
-      description: 'Document is awaiting verification',
-      onEntry: [
+    [WorkflowStep.VERIFICATION_PENDING]: {
+      id: WorkflowStep.VERIFICATION_PENDING,
+      description: 'Document is waiting for verification',
+      onEnter: [
         async (context) => {
           context.phase = ProcessingPhase.VERIFICATION;
           context.progress = 0;
         }
-      ],
-      transitions: {
-        'START_VERIFICATION': {
-          target: 'verification_in_progress' as WorkflowStep,
-          effects: [
-            logTransition('verification_in_progress'),
-            async (context, event) => {
-              // Update verification metadata
-              context.metadata = {
-                ...context.metadata,
-                verificationStartedAt: new Date().toISOString(),
-                verificationId: event.payload.verificationId
-              };
-            }
-          ]
-        },
-        'VERIFICATION_PROGRESS': {
-          target: 'verification_pending' as WorkflowStep, // self-transition for progress updates
-          effects: [
-            async (context, event) => {
-              // Update progress
-              if (typeof event.payload?.progress === 'number') {
-                context.progress = event.payload.progress;
-              }
-            }
-          ]
-        },
-        'SKIP_VERIFICATION': {
-          target: 'complete' as WorkflowStep,
-          effects: [
-            logTransition('complete'),
-            async (context) => {
-              // Mark as completed without verification
-              context.progress = 100;
-              context.phase = ProcessingPhase.COMPLETION;
-              context.completedAt = new Date().toISOString();
-              context.metadata = {
-                ...context.metadata,
-                skipVerification: true,
-                completedAt: new Date().toISOString()
-              };
-            }
-          ]
-        }
-      }
+      ]
     },
-    
-    // Verification is in progress
-    'verification_in_progress': {
-      id: 'verification_in_progress' as WorkflowStep,
-      description: 'User is verifying document data',
-      transitions: {
-        'VERIFY_CONFIRM': {
-          target: 'verification_completed' as WorkflowStep,
-          effects: [
-            logTransition('verification_completed'),
-            async (context, event) => {
-              // Update verification status
-              context.progress = 100;
-              context.metadata = {
-                ...context.metadata,
-                verificationCompletedAt: new Date().toISOString(),
-                verificationStatus: 'completed',
-                verificationData: event.payload.verificationData,
-                verifiedBy: event.meta?.userId || context.userId
-              };
-            }
-          ]
-        },
-        'VERIFY_CORRECT': {
-          target: 'verification_in_progress' as WorkflowStep, // Stay in same state for corrections
-          effects: [
-            async (context, event) => {
-              // Record corrections
-              context.metadata = {
-                ...context.metadata,
-                corrections: [
-                  ...(context.metadata?.corrections || []),
-                  {
-                    fields: event.payload.corrections,
-                    timestamp: new Date().toISOString(),
-                    appliedBy: event.meta?.userId || context.userId
-                  }
-                ]
-              };
-            }
-          ]
-        },
-        'VERIFY_REJECT': {
-          target: 'verification_failed' as WorkflowStep,
-          effects: [
-            logTransition('verification_failed'),
-            async (context, event) => {
-              // Record rejection
-              context.metadata = {
-                ...context.metadata,
-                verificationRejectedAt: new Date().toISOString(),
-                verificationStatus: 'failed',
-                rejectionReason: event.payload.reason,
-                rejectedBy: event.meta?.userId || context.userId
-              };
-            }
-          ]
-        }
-      }
-    },
-    
-    // Verification completed successfully
-    'verification_completed': {
-      id: 'verification_completed' as WorkflowStep,
-      description: 'Document has been verified',
-      transitions: {
-        'GENERATE_REPORT': {
-          target: 'report_generation' as WorkflowStep,
-          effects: [
-            logTransition('report_generation'),
-            async (context, event) => {
-              // Prepare for report generation
-              context.progress = 0;
-              context.phase = ProcessingPhase.REPORT_GENERATION;
-              context.metadata = {
-                ...context.metadata,
-                reportGenerationStartedAt: new Date().toISOString(),
-                reportType: event.payload.reportType
-              };
-            }
-          ]
-        },
-        'COMPLETE_WORKFLOW': {
-          target: 'complete' as WorkflowStep,
-          effects: [
-            logTransition('complete'),
-            async (context) => {
-              // Mark as completed
-              context.progress = 100;
-              context.phase = ProcessingPhase.COMPLETION;
-              context.completedAt = new Date().toISOString();
-              context.metadata = {
-                ...context.metadata,
-                completedAt: new Date().toISOString()
-              };
-            }
-          ]
-        }
-      }
-    },
-    
-    // Verification failed
-    'verification_failed': {
-      id: 'verification_failed' as WorkflowStep,
-      description: 'Document verification was rejected',
-      transitions: {
-        'RETRY_VERIFICATION': {
-          target: 'verification_in_progress' as WorkflowStep,
-          effects: [
-            logTransition('verification_in_progress'),
-            async (context) => {
-              // Reset verification for retry
-              context.metadata = {
-                ...context.metadata,
-                verificationRetryAt: new Date().toISOString(),
-                verificationRetryCount: (context.metadata?.verificationRetryCount as number || 0) + 1
-              };
-            }
-          ]
-        },
-        'RESTART_EXTRACTION': {
-          target: 'extracting' as WorkflowStep,
-          effects: [
-            logTransition('extracting'),
-            async (context) => {
-              // Reset for re-extraction
-              context.progress = 0;
-              context.phase = ProcessingPhase.EXTRACTION;
-              context.metadata = {
-                ...context.metadata,
-                reExtractionAt: new Date().toISOString()
-              };
-            }
-          ]
-        }
-      }
-    },
-    
-    // Report generation
-    'report_generation': {
-      id: 'report_generation' as WorkflowStep,
-      description: 'Generating report from document data',
-      onEntry: [
+    [WorkflowStep.VERIFICATION_IN_PROGRESS]: {
+      id: WorkflowStep.VERIFICATION_IN_PROGRESS,
+      description: 'Document verification is in progress',
+      onEnter: [
         async (context) => {
-          context.phase = ProcessingPhase.REPORT_GENERATION;
-          context.progress = 0;
+          context.phase = ProcessingPhase.VERIFICATION;
+          context.progress = 50;
         }
-      ],
-      transitions: {
-        'REPORT_PROGRESS': {
-          target: 'report_generation' as WorkflowStep, // self-transition for progress updates
-          effects: [
-            async (context, event) => {
-              // Update progress
-              if (typeof event.payload?.progress === 'number') {
-                context.progress = event.payload.progress;
-              }
-            }
-          ]
-        },
-        'REPORT_COMPLETED': {
-          target: 'complete' as WorkflowStep,
-          effects: [
-            logTransition('complete'),
-            async (context, event) => {
-              // Record report completion
-              context.progress = 100;
-              context.phase = ProcessingPhase.COMPLETION;
-              context.completedAt = new Date().toISOString();
-              context.metadata = {
-                ...context.metadata,
-                reportId: event.payload.reportId,
-                reportType: event.payload.reportType,
-                reportGeneratedAt: new Date().toISOString(),
-                reportFormat: event.payload.reportFormat
-              };
-            }
-          ]
-        },
-        'REPORT_FAILED': {
-          target: DomainOnlyWorkflowStep.ERROR,
-          effects: [
-            logTransition('error'),
-            async (context, event) => {
-              context.error = event.payload.error;
-              context.errorCode = event.payload.errorCode || 'REPORT_GENERATION_FAILED';
-              context.phase = ProcessingPhase.ERROR;
-              context.errorDetails = event.payload.details;
-            }
-          ]
-        }
-      }
+      ]
     },
-    
-    // Workflow complete
-    'complete': {
-      id: 'complete' as WorkflowStep,
-      type: 'final',
+    [WorkflowStep.VERIFICATION_COMPLETED]: {
+      id: WorkflowStep.VERIFICATION_COMPLETED,
+      description: 'Document verification completed successfully',
+      onEnter: [
+        async (context) => {
+          context.phase = ProcessingPhase.VERIFICATION;
+          context.progress = 100;
+        }
+      ]
+    },
+    [WorkflowStep.VERIFICATION_FAILED]: {
+      id: WorkflowStep.VERIFICATION_FAILED,
+      description: 'Document verification failed',
+      onEnter: [
+        async (context) => {
+          context.phase = ProcessingPhase.ERROR;
+          context.progress = 100;
+          context.error = 'Document verification failed';
+          context.errorCode = 'VERIFICATION_FAILED';
+        }
+      ]
+    },
+    [WorkflowStep.COMPLETE]: {
+      id: WorkflowStep.COMPLETE,
       description: 'Document processing completed successfully',
-      onEntry: [
+      onEnter: [
         async (context) => {
           context.phase = ProcessingPhase.COMPLETION;
           context.progress = 100;
           context.completedAt = context.completedAt || new Date().toISOString();
         }
-      ],
-      transitions: {
-        'RESET': {
-          target: 'idle' as WorkflowStep,
-          effects: [
-            logTransition('idle'),
-            async (context) => {
-              // Reset workflow but keep document/user IDs
-              const userId = context.userId;
-              const patientId = context.patientId;
-              const documentId = context.documentId;
-              
-              // Reset to initial state
-              Object.assign(context, initialDocumentContext);
-              
-              // But preserve IDs
-              context.userId = userId;
-              context.patientId = patientId;
-              context.documentId = documentId;
-              context.metadata = {
-                resetAt: new Date().toISOString(),
-                previousDocumentId: documentId
-              };
-            }
-          ]
-        }
-      }
+      ]
     },
-    
-    // Error state
-    [DomainOnlyWorkflowStep.ERROR]: {
-      id: DomainOnlyWorkflowStep.ERROR,
-      type: 'error',
+    [WorkflowStep.ERROR]: {
+      id: WorkflowStep.ERROR,
       description: 'Document processing encountered an error',
-      onEntry: [
+      onEnter: [
         async (context) => {
           context.phase = ProcessingPhase.ERROR;
           context.metadata = {
             ...context.metadata,
-            errorTimestamp: new Date().toISOString(),
-            errorDetails: context.errorDetails,
-            errorCode: context.errorCode
+            errorTimestamp: new Date().toISOString()
           };
         }
-      ],
-      transitions: {
-        'RETRY': {
-          target: 'extracting' as WorkflowStep,
-          effects: [
-            logTransition('extracting'),
-            async (context) => {
-              // Clear error but increment retry count
-              context.error = undefined;
-              context.errorCode = undefined;
-              context.retryCount = (context.retryCount || 0) + 1;
-              context.phase = ProcessingPhase.EXTRACTION;
-              context.progress = 0;
-              context.metadata = {
-                ...context.metadata,
-                retryAt: new Date().toISOString(),
-                retryCount: (context.retryCount || 0) + 1
-              };
-            }
-          ]
-        },
-        'RESET': {
-          target: 'idle' as WorkflowStep,
-          effects: [
-            logTransition('idle'),
-            async (context) => {
-              // Reset workflow but keep document/user IDs
-              const userId = context.userId;
-              const patientId = context.patientId;
-              const documentId = context.documentId;
-              
-              // Reset to initial state
-              Object.assign(context, initialDocumentContext);
-              
-              // But preserve IDs
-              context.userId = userId;
-              context.patientId = patientId;
-              context.documentId = documentId;
-              context.metadata = {
-                resetAt: new Date().toISOString(),
-                previousError: context.error,
-                previousErrorCode: context.errorCode
-              };
-            }
-          ]
-        }
-      }
+      ]
     }
-  }
+  },
+  
+  transitions: [
+    {
+      from: WorkflowStep.IDLE,
+      to: WorkflowStep.UPLOAD,
+      on: 'UPLOAD_DOCUMENT',
+      actions: [
+        async (context, event) => {
+          context.fileName = event.payload?.fileName as string;
+          context.fileSize = event.payload?.fileSize as number;
+          context.fileType = event.payload?.fileType as string;
+          context.patientId = event.payload?.patientId as string;
+          context.documentType = event.payload?.documentType as any;
+          context.startedAt = new Date().toISOString();
+          context.phase = ProcessingPhase.UPLOAD;
+          context.progress = 0;
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.UPLOAD,
+      to: WorkflowStep.UPLOAD,
+      on: 'UPLOAD_PROGRESS',
+      actions: [
+        async (context, event) => {
+          if (typeof event.payload?.progress === 'number') {
+            context.progress = event.payload.progress as number;
+          }
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.UPLOAD,
+      to: WorkflowStep.EXTRACTION,
+      on: 'UPLOAD_COMPLETED',
+      actions: [
+        async (context, event) => {
+          context.documentId = event.payload?.documentId as string;
+          context.progress = 100;
+          context.metadata = {
+            ...context.metadata,
+            uploadedAt: new Date().toISOString(),
+            documentId: event.payload?.documentId
+          };
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.UPLOAD,
+      to: WorkflowStep.ERROR,
+      on: 'UPLOAD_FAILED',
+      actions: [
+        async (context, event) => {
+          context.error = event.payload?.error as string;
+          context.errorCode = (event.payload?.errorCode as string) || 'UPLOAD_FAILED';
+          context.phase = ProcessingPhase.ERROR;
+          context.errorDetails = event.payload?.details as Record<string, unknown>;
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.EXTRACTION,
+      to: WorkflowStep.EXTRACTION,
+      on: 'EXTRACTION_PROGRESS',
+      actions: [
+        async (context, event) => {
+          if (typeof event.payload?.progress === 'number') {
+            context.progress = event.payload.progress as number;
+          }
+          if (event.payload?.phase) {
+            context.phase = event.payload.phase as string;
+          }
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.EXTRACTION,
+      to: WorkflowStep.VERIFICATION_PENDING,
+      on: 'EXTRACTION_COMPLETED',
+      actions: [
+        async (context, event) => {
+          context.extractedContent = event.payload?.content as string;
+          context.extractedData = event.payload?.extractedData as Record<string, unknown>;
+          context.chunkCount = event.payload?.chunkCount as number;
+          context.progress = 100;
+          context.phase = ProcessingPhase.VERIFICATION;
+          context.metadata = {
+            ...context.metadata,
+            extractedAt: new Date().toISOString(),
+            extractionMethod: event.payload?.extractionMethod,
+            contentLength: (event.payload?.content as string)?.length || 0,
+            chunkCount: event.payload?.chunkCount
+          };
+        }
+      ]
+    },
+    {
+      from: WorkflowStep.EXTRACTION,
+      to: WorkflowStep.ERROR,
+      on: 'EXTRACTION_FAILED',
+      actions: [
+        async (context, event) => {
+          context.error = event.payload?.error as string;
+          context.errorCode = (event.payload?.errorCode as string) || 'EXTRACTION_FAILED';
+          context.phase = ProcessingPhase.ERROR;
+          context.errorDetails = event.payload?.details as Record<string, unknown>;
+        }
+      ]
+    },
+    {
+      from: 'verification_pending',
+      to: 'verification_in_progress',
+      on: 'PREPARE_VERIFICATION',
+      actions: [
+        async (context, event) => {
+          context.progress = 20;
+          context.metadata = {
+            ...context.metadata,
+            verificationId: event.payload?.verificationId || `verification-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+            fromChat: event.payload?.fromChat === true,
+            chatId: event.payload?.chatId
+          };
+        }
+      ]
+    },
+    {
+      from: 'verification_in_progress',
+      to: 'verification_completed',
+      on: 'CONFIRM_VERIFICATION',
+      actions: [
+        async (context, event) => {
+          context.completedAt = new Date().toISOString();
+          context.status = 'completed';
+          context.metadata = {
+            ...context.metadata,
+            verification_status: 'completed',
+            verifiedAt: context.completedAt,
+            verifiedBy: event.meta?.userId || context.userId,
+            lastUpdated: context.completedAt
+          };
+          
+          logger.info('Verification confirmed and completed', {
+            verificationId: context.metadata.verificationId,
+            documentId: context.documentId,
+            userId: event.meta?.userId || context.userId,
+            correctionCount: context.correctionCount
+          });
+        }
+      ]
+    },
+    {
+      from: 'verification_in_progress',
+      to: 'verification_failed',
+      on: 'REJECT_VERIFICATION',
+      actions: [
+        async (context, event) => {
+          context.completedAt = new Date().toISOString();
+          context.status = 'failed';
+          context.error = event.payload?.reason || 'Verification rejected by user';
+          context.metadata = {
+            ...context.metadata,
+            verification_status: 'failed',
+            rejectedAt: context.completedAt,
+            rejectedBy: event.meta?.userId || context.userId,
+            rejectionReason: context.error,
+            lastUpdated: context.completedAt
+          };
+          
+          logger.info('Verification rejected', {
+            verificationId: context.metadata.verificationId,
+            documentId: context.documentId,
+            userId: event.meta?.userId || context.userId,
+            reason: context.error
+          });
+        }
+      ]
+    },
+    {
+      from: 'verification_in_progress',
+      to: 'error',
+      on: 'VERIFICATION_ERROR',
+      actions: [
+        async (context, event) => {
+          context.error = event.payload?.error || 'Error during verification';
+          context.status = 'failed';
+          context.metadata = {
+            ...context.metadata,
+            error: event.payload?.error || 'Error during verification'
+          };
+          
+          logger.error('Verification in-progress error', {
+            verificationId: context.metadata.verificationId,
+            documentId: context.documentId,
+            error: context.error
+          });
+        }
+      ]
+    },
+    {
+      from: 'verification_completed',
+      to: 'report_generation',
+      on: 'GENERATE_REPORT',
+      condition: (context) => context.autoGenerateReport === true,
+      effects: [
+        async (context, event) => {
+          context.metadata = {
+            ...context.metadata,
+            reportGenerationStartedAt: new Date().toISOString(),
+            autoGenerateReport: true
+          };
+        }
+      ]
+    },
+    {
+      from: 'verification_completed',
+      to: 'chat_return',
+      on: 'RETURN_TO_CHAT',
+      condition: (context, event) => context.metadata.fromChat === true && context.metadata.chatId !== undefined,
+      effects: [
+        async (context, event) => {
+          context.metadata = {
+            ...context.metadata,
+            returnToChat: true,
+            chatCompletedAt: new Date().toISOString()
+          };
+        }
+      ]
+    },
+    {
+      from: 'verification_completed',
+      to: 'verification_pending',
+      on: 'START_NEW_RESEARCH',
+      effects: [
+        async (context, event) => {
+          context.metadata = {
+            ...context.metadata,
+            previousResearchId: context.metadata.verificationId,
+            previousResearchContent: context.currentSummary,
+            previousSources: context.metadata.sources,
+            previousCompletedAt: context.completedAt
+          };
+          context.documentId = event.payload?.documentId;
+          context.progress = 10;
+          context.verificationId = undefined;
+          context.currentSummary = undefined;
+          const { verificationId, summaryId, originalContent, currentSummary, status, autoGenerateReport, ...rest } = context.metadata;
+          context.metadata = { ...rest };
+          context.completedAt = undefined;
+        }
+      ]
+    },
+    {
+      from: 'verification_completed',
+      to: 'complete',
+      on: 'COMPLETE_WORKFLOW',
+      effects: [
+        async (context, event) => {
+          // No additional actions
+        }
+      ]
+    },
+    {
+      from: 'verification_error',
+      to: 'verification_pending',
+      on: 'RETRY_VERIFICATION',
+      effects: [
+        async (context, event) => {
+          context.error = undefined;
+          context.status = 'pending';
+          context.progress = 10;
+        }
+      ]
+    },
+    {
+      from: 'verification_error',
+      to: 'chat_return',
+      on: 'RETURN_TO_CHAT',
+      condition: (context, event) => context.metadata.fromChat === true && context.metadata.chatId !== undefined,
+      effects: [
+        async (context, event) => {
+          context.metadata = {
+            ...context.metadata,
+            returnToChat: true,
+            chatCompletedAt: new Date().toISOString()
+          };
+        }
+      ]
+    },
+    {
+      from: 'verification_error',
+      to: 'complete',
+      on: 'COMPLETE_WORKFLOW',
+      effects: [
+        async (context, event) => {
+          // No additional actions
+        }
+      ]
+    }
+  ]
 });
+
+export default verificationWorkflowDefinition;

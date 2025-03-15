@@ -207,8 +207,16 @@ export class WorkflowStepMapper {
     ['chat_error', 'chat_error'],
     [DomainOnlyWorkflowStep.ERROR, 'chat_error'],
     [DomainOnlyWorkflowStep.RESEARCH, 'chat_in_progress'],
-    [DomainOnlyWorkflowStep.REPORT_PRESENTATION, 'report_generation']
-  ]);
+    [DomainOnlyWorkflowStep.REPORT_PRESENTATION, 'report_generation'],
+    [DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS, 'document_analysis'],
+    [DomainOnlyWorkflowStep.DOCUMENT_FORMATTING, 'document_formatting'],
+    [DomainOnlyWorkflowStep.DOCUMENT_INDEXING, 'document_indexing'],
+    [DomainOnlyWorkflowStep.DOCUMENT_PREVIEW, 'document_preview'],
+    [DomainOnlyWorkflowStep.VERIFICATION_CORRECTION, 'verification_correction'],
+    [DomainOnlyWorkflowStep.VERIFICATION_REVIEW, 'verification_review'],
+    [DomainOnlyWorkflowStep.RECOVERABLE_ERROR, 'recoverable_error'],
+    [DomainOnlyWorkflowStep.PERMANENT_ERROR, 'permanent_error']
+]);
 
   // Domain-specific error step mappings
   private static readonly domainErrorMap = new Map<string, WorkflowStep>([

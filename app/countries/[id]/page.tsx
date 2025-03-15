@@ -2,7 +2,7 @@
 
 import { notFound } from 'next/navigation'
 
-import { useCountry } from '@/hooks/use-country'
+import { useCountry } from '@/lib/hooks/use-country'
 
 import CountryDisplay from '../../ssrcountries/[id]/country'
 

@@ -1,246 +1,115 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
 import {
-  type WorkflowTransition,
   type WorkflowStep,
-  DomainOnlyWorkflowStep,
   type ProcessingPhase
 } from '@/lib/types/workflow'
 import { ApplicationError, normalizeError } from '@/lib/errors'
-import { WorkflowErrorContextBuilder } from '../error-context'
-import { workflowRepository } from '../infrastructure/workflow-repository'
-import { workflowStateManager } from '../infrastructure/workflow-state-manager'
-import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
-import { workflowOperations } from '../infrastructure/workflow-operations'
-import { workflowTransactionManager } from '../workflow-transaction-manager'
-import { workflowCoordinator } from '../coordination/workflow-coordinator'
-import { 
-  recoveryService, 
-  RecoveryStrategy, 
-  type RecoveryOptions 
-} from '../recovery/recovery-service'
-import type { WorkflowErrorMetadata } from '@/lib/workflow/workflow-error-handler'
-import { Result } from '../error/result'
-
-// Import domain-specific workflow processors
-import { documentWorkflow } from '../domain/document-workflow'
-import { verificationWorkflow } from '../domain/verification-workflow'
-import { reportWorkflow } from '../domain/report-workflow'
-import { researchWorkflow } from '../domain/research-workflow'
-import { chatWorkflow } from '../domain/chat-workflow'
-
-// Import domain-specific types
-import type { 
-  DocumentProcessingResult, 
-  DocumentUploadOptions,
-  DocumentExtractionOptions
-} from '../domain/document-workflow'
-import type { 
-  VerificationResult,
-  VerificationOptions,
-  CorrectionData
-} from '../domain/verification-workflow'
-import type { 
-  ReportGenerationResult,
-  ReportGenerationOptions,
-  ReportFormatOptions
-} from '../domain/report-workflow'
-import type { 
-  ResearchResult,
-  ResearchOptions
-} from '../domain/research-workflow'
-import type { 
-  ChatSessionResult,
-  MessageProcessingOptions
-} from '../domain/chat-workflow'
-import type {
-  EndToEndResult,
-  DocumentToReportOptions
-} from '../domain/workflow-orchestrator'
-
+import { workflowManager } from './workflow-manager'
 import logger from '@/lib/logger'
+import { Result } from '@/lib/services/workflow/error/result'
 
 /**
- * WORKFLOW CONFLICT RESOLUTION STRATEGY
- * 
- * This service implements a simplified conflict resolution approach with two strategies:
- * 
- * 1. Pessimistic (default): Prevents conflicts by checking if the record has been modified
- *    since it was last read. Uses timestamp-based detection without requiring extra DB columns.
- *    Steps:
- *    - Read current state including updated_at timestamp
- *    - Before update, fetch the latest updated_at timestamp
- *    - If timestamps don't match, reject the update with a conflict error
- *    - If timestamps match, proceed with update
- * 
- * 2. Optimistic: Applies changes without checking for conflicts, assuming they will rarely happen.
- *    - Suitable for non-critical updates or when UI handles conflict resolution
- *    - Simply updates the record without checking timestamps
- *    - May silently overwrite concurrent changes
- * 
- * Usage:
- * ```
- * // Default pessimistic approach
- * await workflowService.updateWorkflowState(id, step, metadata);
- * 
- * // Explicit pessimistic approach
- * await workflowService.updateWorkflowState(id, step, metadata, { conflictStrategy: 'pessimistic' });
- * 
- * // Optimistic approach
- * await workflowService.updateWorkflowState(id, step, metadata, { conflictStrategy: 'optimistic' });
- * ```
+ * Options for document processing
  */
-
-/**
- * Minimal error handler to avoid circular dependencies
- */
-class LocalWorkflowErrorHandler {
-  async handleError(
-    error: unknown,
-    step: WorkflowStep,
-    options?: { details?: Record<string, unknown>; showToast?: boolean }
-  ): Promise<void> {
-    // Using a more generic logging approach instead of console.error
-    // This can be replaced with a proper logger implementation
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const errorDetails = { step, errorMsg, ...(options?.details || {}) };
-    
-    // Log in a way that doesn't trigger the no-console rule
-    // In a real implementation, this would use a logger service
-    this.logError('Workflow error:', errorDetails);
-  }
-
-  private logError(message: string, details: Record<string, unknown>): void {
-    // This is a placeholder for a proper logging implementation
-    // In production, this would use a logger service instead of console
-    // eslint-disable-next-line no-console
-    console.error(message, details);
-  }
+export interface DocumentProcessingOptions {
+  userId: string;
+  patientId?: string;
+  documentType?: string;
+  onProgress?: (progress: number, phase: ProcessingPhase) => void;
 }
 
 /**
- * Transaction status type for workflow state updates
+ * Result of document processing
  */
-export type TransactionStatus =
-  | 'pending'
-  | 'committed'
-  | 'failed'
-  | 'conflict'
-  | 'not_found'
-
-/**
- * Simplified conflict resolution strategy for handling concurrent updates
- */
-export type ConflictStrategy = 'optimistic' | 'pessimistic'
-
-/**
- * Transaction record for tracking updates
- */
-export interface TransactionRecord {
-  id: string
-  workflowId: string
-  timestamp: string
-  status: TransactionStatus
-  conflictStrategy: ConflictStrategy
-  clientId: string
-  fromStep?: WorkflowStep
-  toStep?: WorkflowStep
-  metadata?: Record<string, unknown>
+export interface DocumentProcessingResult {
+  documentId: string;
+  fileName?: string;
+  fileSize?: number;
+  content?: string;
+  metadata?: Record<string, unknown>;
+  success: boolean;
+  processingTime?: number;
+  error?: string;
 }
 
 /**
- * Metadata interface for custom fields and state in the workflow.
- * This can include progress, errors, or specialized verification data.
+ * Options for report generation
  */
-export interface WorkflowMetadata {
-  progress?: number
-  phase?: string
-  error?: string | null
-  errorDetails?: Record<string, unknown>
-  verificationMetadata?: Record<string, unknown>
-  [key: string]: unknown
-}
-
-// WorkflowStepEnum enum for use in the service
-export enum WorkflowStepEnum {
-  IDLE = 'idle',
-  UPLOADING = 'uploading',
-  EXTRACTING = 'extracting',
-  VERIFICATION = 'verification',
-  VERIFICATION_PENDING = 'verification_pending',
-  VERIFICATION_IN_PROGRESS = 'verification_in_progress',
-  VERIFICATION_COMPLETED = 'verification_completed',
-  VERIFICATION_FAILED = 'verification_failed',
-  REPORT_GENERATION = 'report_generation',
-  COMPLETE = 'complete',
-  CHAT_STARTED = 'chat_started',
-  CHAT_IN_PROGRESS = 'chat_in_progress',
-  CHAT_COMPLETED = 'chat_completed',
-  CHAT_ERROR = 'chat_error',
-  ERROR = 'error',
-  RESEARCH = 'research',
-  REPORT_PRESENTATION = 'report_presentation'
+export interface ReportGenerationOptions {
+  userId: string;
+  patientId?: string;
+  documentId?: string;
+  onProgress?: (progress: number, phase: ProcessingPhase) => void;
 }
 
 /**
- * Custom workflow state error class
+ * Result of report generation
  */
-class WorkflowStateError extends ApplicationError {
-  constructor(options: { message: string; data?: Record<string, unknown> }) {
-    super({
-      message: options.message,
-      code: 'WORKFLOW_STATE_ERROR',
-      data: options.data
-    });
-  }
+export interface ReportGenerationResult {
+  reportId?: string;
+  title?: string;
+  content?: string;
+  documentId?: string;
+  patientId?: string;
+  success: boolean;
+  metadata?: Record<string, unknown>;
+  error?: string;
 }
 
 /**
- * Deprecated: This function has been moved to workflowStateManager.validateTransition
- * Use workflowStateManager.validateTransition instead as the canonical validation method.
- * 
- * @deprecated Use workflowStateManager.validateTransition for all workflow transition validation
+ * Options for verification
  */
-export function validateWorkflowTransition(
-  fromStep: WorkflowStep,
-  toStep: WorkflowStep,
-  metadata?: Record<string, unknown>
-): {
-  isValid: boolean
-  error?: string
-  transition?: WorkflowTransition
-  details?: Record<string, unknown>
-} {
-  // Forward to the canonical implementation in workflowStateManager
-  return workflowStateManager.validateTransition(fromStep, toStep, metadata);
+export interface VerificationOptions {
+  userId: string;
+  documentId?: string;
+  documentText?: string;
+  onProgress?: (progress: number, phase: ProcessingPhase) => void;
 }
 
-// The WorkflowStepMapper.toDatabaseStep() function is now used directly
+/**
+ * Result of verification
+ */
+export interface VerificationResult {
+  verificationId?: string;
+  documentId?: string;
+  success: boolean;
+  metadata?: Record<string, unknown>;
+  error?: string;
+}
 
 /**
- * Facade service that provides a single entry point for all workflow operations.
- * Delegates implementation details to specialized components.
+ * Correction data for verification
+ */
+export interface CorrectionData {
+  correctionText: string;
+  currentSummary: string;
+  userId: string;
+  messageId?: string;
+}
+
+/**
+ * Simplified workflow service for common operations
  */
 export class WorkflowService {
   private readonly logger = logger.withMetadata({ module: 'WorkflowService' });
   
   /**
-   * Update workflow progress with optional notification
-   * Now uses WorkflowOperations service
+   * Update workflow progress
    */
   async updateProgress(
     workflowId: string,
     progress: number,
     phase: ProcessingPhase,
     currentStep?: WorkflowStep,
-    notifyUsers: boolean = true
+    notifyUsers: boolean = false
   ): Promise<boolean> {
     try {
       if (!workflowId) {
         throw new Error('workflowId is required');
       }
       
-      const result = await workflowOperations.updateProgress(
+      return await workflowManager.updateProgress(
         workflowId,
         progress,
         phase,
@@ -249,8 +118,6 @@ export class WorkflowService {
           notifyUsers 
         }
       );
-      
-      return result.isSuccess();
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to update progress', {
@@ -264,929 +131,679 @@ export class WorkflowService {
   }
   
   /**
-   * DOMAIN-SPECIFIC METHODS
-   * The following methods delegate to domain-specific workflow processors
-   */
-  
-  /**
-   * Document workflow methods
+   * Document processing methods
    */
   
   /**
    * Process document upload
-   * Handles Result pattern from domain workflow processor
+   * @returns Result containing document processing result
    */
   async processDocumentUpload(
     workflowId: string,
     file: File,
-    options: DocumentUploadOptions
-  ): Promise<DocumentProcessingResult> {
-    const result = await documentWorkflow.processUpload(workflowId, file, options);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Document upload failed', {
+    options: DocumentProcessingOptions
+  ): Promise<Result<DocumentProcessingResult>> {
+    try {
+      // Update state to uploading
+      const updateResult = await workflowManager.updateState(
         workflowId,
-        fileName: file.name,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
-      
-      // Convert to legacy error format
-      return {
-        documentId: '',
-        metadata: {
+        'uploading',
+        {
           fileName: file.name,
           fileSize: file.size,
-          error: result.error.message,
-          errorCode: result.error.code
-        },
-        success: false,
-        processingTime: 0,
-        error: result.error.message
-      };
-    }
-  }
-  
-  /**
-   * Extract content from document
-   * Handles Result pattern from domain workflow processor
+          uploadStartedAt: new Date().toISOString(),
+          userId: options.userId,
+          patientId: options.patientId
+        }
+      );
+      
+      if (updateResult.isFailure()) {
+        return Result.failure(
+          updateResult.error.message,
+          updateResult.error.code,
+          { ...updateResult.error.details, fileName: file.name, fileSize: file.size }
+        );
+      }
+      
+      // Track progress
+      const onProgress = options.onProgress || (() => {});
+      onProgress(10, ProcessingPhase.UPLOAD);
+      
+      // Perform upload using FormData
+      const formData = new FormData();
+      formData.append('file', file);
+      if (options.patientId) {
+        formData.append('patientId', options.patientId);
+      }
+      if (options.documentType) {
+        formData.append('documentType', options.documentType);
+      }
+      
+      const startTime = Date.now();
+      
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        // Update to error state
+        await workflowManager.handleError(
+          workflowId,
+          new Error(`Upload failed: ${errorText}`),
+          'error',
+          {
+            fileName: file.name,
+            fileSize: file.size,
+            userId: options.userId
+          }
+        );
+        
+        return Result.failure(
+          `Upload failed: ${errorText}`,
+          'DOCUMENT_UPLOAD_FAILED',
+          { fileName: file.name, fileSize: file.size }
+        );
+      }
+      
+      const result = await response.json();
+      const documentId = result.documentId;
+      const processingTime = Date.now() - startTime;
+      
+      // Update state after upload
+      const extractingResult = await workflowManager.updateState(
+        workflowId,
+        'extracting',
+        {
+          documentId,
+          uploadTime: processingTime,
+          uploadCompletedAt: new Date().toISOString()
+        }
+      );
+      
+      if (extractingResult.isFailure()) {
+        return Result.failure(
+          extractingResult.error.message,
+          extractingResult.error.code,
+          { ...extractingResult.error.details, documentId, fileName: file.name }
+        );
+      }
+      
+      // Successful upload
+      return Result.success({
+        documentId,
+        fileName: file.name,
+        fileSize: file.size,
+        success: true,
+        processingTime
+      });
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      
+      // Update to error state
+      await workflowManager.handleError(
+      // Return error result using Result pattern
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'DOCUMENT_UPLOAD_FAILED',
+        { documentId: '', fileName: file.name, fileSize: file.size }
+      );
+          userId: options.userId
+        }
+      /**
+   * Extract document content
+   * @returns Result containing document processing result
    */
   async extractDocumentContent(
     workflowId: string,
     documentId: string,
-    options?: DocumentExtractionOptions
-  ): Promise<DocumentProcessingResult> {
-    const result = await documentWorkflow.extractContent(workflowId, documentId, options);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Document extraction failed', {
+    options?: {
+      userId?: string;
+      onProgress?: (progress: number, phase: ProcessingPhase) => void;
+    }
+  ): Promise<Result<DocumentProcessingResult>> {
+    try {
+      // Update state to extracting
+      const updateResult = await workflowManager.updateState(
         workflowId,
-        documentId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
+        'extracting',
+        {
+          documentId,
+          extractionStartedAt: new Date().toISOString(),
+          userId: options?.userId
+        }
+      );
+      
+      if (updateResult.isFailure()) {
+        return Result.failure(
+          updateResult.error.message,
+          updateResult.error.code,
+          { ...updateResult.error.details, documentId }
+        );
+      }
+      
+      // Track progress
+      const onProgress = options?.onProgress || (() => {});
+      onProgress(30, ProcessingPhase.EXTRACTION);
+      
+      // Call extraction API
+      const startTime = Date.now();
+      
+      const response = await fetch(`/api/documents/${documentId}/extract`, {
+        method: 'POST'
       });
       
-      // Convert to legacy error format
+      if (!response.ok) {
+        const errorText = await response.text();
+        
+        // Update to error state
+        await workflowManager.handleError(
+          workflowId,
+          new Error(`Extraction failed: ${errorText}`),
+          'error',
+          {
+            documentId,
+            phase: ProcessingPhase.EXTRACTION
+          }
+        );
+        
+        return Result.failure(
+          `Extraction failed: ${errorText}`,
+          'DOCUMENT_EXTRACTION_FAILED',
+          { documentId }
+        );
+      }
+      
+      const result = await response.json();
+      const processingTime = Date.now() - startTime;
+      
+      // Update to complete state
+      const completeResult = await workflowManager.updateState(
+        workflowId,
+        'complete',
+        {
+          documentId,
+          extractionTime: processingTime,
+          extractionCompletedAt: new Date().toISOString()
+        }
+      );
+      
+      if (completeResult.isFailure()) {
+        return Result.failure(
+          completeResult.error.message,
+          completeResult.error.code,
+          { ...completeResult.error.details, documentId }
+        );
+      }
+      
+      onProgress(100, ProcessingPhase.COMPLETION);
+      
+      // Return successful result
+      return Result.success({
+        documentId,
+        content: result.text,
+        metadata: result.data,
+        success: true,
+        processingTime
+      });
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      
+      // Update to error state
+      await workflowManager.handleError(
+        workflowId,
+        normalizedError,
+        'error',
+        {
+          documentId,
+          phase: ProcessingPhase.EXTRACTION
+        }
+      );
+      
+      // Return error result using Result pattern
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'DOCUMENT_EXTRACTION_FAILED',
+        { documentId, success: false }
+      );
+    }
+  }
+        }
+      );
+      
+      // Return error result
       return {
         documentId,
-        metadata: {
-          error: result.error.message,
-          errorCode: result.error.code
-        },
         success: false,
-        processingTime: 0,
-        error: result.error.message
+        error: normalizedError.message
       };
     }
   }
   
   /**
-   * Get document info
-   * Handles Result pattern from domain workflow processor
-   */
-  async getDocumentInfo(
-    workflowId: string,
-    documentId: string
-  ): Promise<Record<string, unknown> | null> {
-    const result = await documentWorkflow.getDocumentInfo(workflowId, documentId);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Failed to get document info', {
-        workflowId,
-        documentId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
-      
-      // Return null for backward compatibility
-      return null;
-    }
-  }
-  
-  /**
-   * Verification workflow methods
+   * Verification methods
    */
   
   /**
    * Initialize verification process
-   * Handles Result pattern from domain workflow processor
    */
   async initiateVerification(
     workflowId: string,
     options: VerificationOptions
   ): Promise<VerificationResult> {
-    const result = await verificationWorkflow.initiateVerification(workflowId, options);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Verification initialization failed', {
+    try {
+      // Update to verification_pending
+      await workflowManager.updateState(
         workflowId,
-        documentId: options?.documentId,
-        userId: options?.userId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
+        'verification_pending',
+        {
+          documentId: options.documentId,
+          userId: options.userId,
+          verificationStartedAt: new Date().toISOString()
+        }
+      );
       
-      // Convert to legacy error format
+      // Track progress
+      const onProgress = options.onProgress || (() => {});
+      onProgress(10, ProcessingPhase.VERIFICATION_PENDING);
+      
+      // If we have document text, generate summary
+      if (options.documentText) {
+        // Prepare request
+        const response = await fetch('/api/verification/initiate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: options.documentText,
+            documentId: options.documentId
+          })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Verification initialization failed: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        const verificationId = result.summaryId;
+        
+        // Update to verification_in_progress
+        await workflowManager.updateState(
+          workflowId,
+          'verification_in_progress',
+          {
+            verificationId,
+            documentId: options.documentId,
+            summary: result.summary,
+            summaryGenerated: true,
+            verificationMetadata: result.metadata
+          }
+        );
+        
+        onProgress(100, ProcessingPhase.VERIFICATION_PENDING);
+        
+        // Return successful result
+        return {
+          verificationId,
+          documentId: options.documentId,
+          success: true,
+          metadata: {
+            summary: result.summary
+          }
+        };
+      } else if (options.documentId) {
+        // Just update the state if document ID provided but no text
+        await workflowManager.updateState(
+          workflowId,
+          'verification_pending',
+          {
+            documentId: options.documentId,
+            awaitingDocument: true
+          }
+        );
+        
+        // Return pending result
+        return {
+          documentId: options.documentId,
+          success: true,
+          metadata: {
+            status: 'pending'
+          }
+        };
+      } else {
+        throw new Error('Either documentText or documentId must be provided');
+      }
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      
+      // Update to error state
+      await workflowManager.handleError(
+        workflowId,
+        normalizedError,
+        'error',
+        {
+          documentId: options.documentId,
+          phase: ProcessingPhase.VERIFICATION
+        }
+      );
+      
+      // Return error result
       return {
-        verificationId: '',
         documentId: options.documentId,
         success: false,
-        metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          userId: options.userId
-        },
-        error: result.error.message
+        error: normalizedError.message
       };
     }
   }
   
   /**
    * Process verification correction
-   * Handles Result pattern from domain workflow processor
    */
   async processVerificationCorrection(
     workflowId: string,
-    verificationId: string,
     correction: CorrectionData
   ): Promise<VerificationResult> {
-    const result = await verificationWorkflow.processCorrection(workflowId, verificationId, correction);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Verification correction failed', {
-        workflowId,
-        verificationId,
-        userId: correction?.userId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
+    try {
+      // Validate input
+      if (!correction.correctionText || !correction.currentSummary) {
+        throw new Error('Correction text and current summary are required');
+      }
+      
+      // Get current state
+      const state = await workflowManager.getState(workflowId);
+      if (!state) {
+        throw new Error('Workflow state not found');
+      }
+      
+      const verificationId = state.metadata?.verificationId as string;
+      const documentId = state.metadata?.documentId as string;
+      
+      // Call correction API
+      const response = await fetch('/api/verification/correct', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          correctionText: correction.correctionText,
+          currentSummary: correction.currentSummary,
+          verificationId,
+          messageId: correction.messageId
+        })
       });
       
-      // Convert to legacy error format
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Correction processing failed: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      // Get current correction count
+      const correctionCount = (state.metadata?.correctionCount as number) || 0;
+      
+      // Update workflow state
+      await workflowManager.updateState(
+        workflowId,
+        'verification_in_progress',
+        {
+          verificationId,
+          documentId,
+          summary: result.summary,
+          correctionCount: correctionCount + 1,
+          correctionTimestamp: new Date().toISOString()
+        }
+      );
+      
+      // Return successful result
       return {
         verificationId,
-        documentId: '', // Unknown at this point
-        success: false,
+        documentId,
+        success: true,
         metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          userId: correction.userId
-        },
-        error: result.error.message
+          summary: result.summary,
+          correctionCount: correctionCount + 1
+        }
+      };
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      this.logger.error('Verification correction failed', {
+        workflowId,
+        error: normalizedError.message
+      });
+      
+      // Return error result
+      return {
+        success: false,
+        error: normalizedError.message
       };
     }
   }
   
   /**
-   * Complete verification process
-   * Handles Result pattern from domain workflow processor
+   * Complete verification
    */
   async completeVerification(
     workflowId: string,
-    verificationId: string,
-    userId: string,
-    autoGenerateReport: boolean = false
+    verifiedBy: string
   ): Promise<VerificationResult> {
-    const result = await verificationWorkflow.completeVerification(
-      workflowId, 
-      verificationId, 
-      userId, 
-      autoGenerateReport
-    );
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Verification completion failed', {
-        workflowId,
-        verificationId,
-        userId,
-        autoGenerateReport,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
+    try {
+      // Get current state
+      const state = await workflowManager.getState(workflowId);
+      if (!state) {
+        throw new Error('Workflow state not found');
+      }
       
-      // Convert to legacy error format
+      const verificationId = state.metadata?.verificationId as string;
+      const documentId = state.metadata?.documentId as string;
+      
+      if (!verificationId) {
+        throw new Error('Verification ID not found in workflow state');
+      }
+      
+      // Update to completed
+      await workflowManager.updateState(
+        workflowId,
+        'verification_completed',
+        {
+          verificationId,
+          documentId,
+          verifiedBy,
+          verifiedAt: new Date().toISOString()
+        }
+      );
+      
+      // Return successful result
       return {
         verificationId,
-        documentId: '', // Unknown at this point
-        success: false,
+        documentId,
+        success: true,
         metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          userId,
-          autoGenerateReport
-        },
-        error: result.error.message
+          verifiedBy,
+          verifiedAt: new Date().toISOString(),
+          status: 'completed'
+        }
+      };
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      
+      // Update to error state
+      await workflowManager.handleError(
+        workflowId,
+        normalizedError,
+        'error',
+        {
+          phase: ProcessingPhase.VERIFICATION_COMPLETION
+        }
+      );
+      
+      // Return error result
+      return {
+        success: false,
+        error: normalizedError.message
       };
     }
   }
   
   /**
-   * Reject verification (mark as failed)
-   * Handles Result pattern from domain workflow processor
-   */
-  async rejectVerification(
-    workflowId: string,
-    verificationId: string,
-    userId: string,
-    reason: string
-  ): Promise<VerificationResult> {
-    const result = await verificationWorkflow.rejectVerification(
-      workflowId, 
-      verificationId, 
-      userId, 
-      reason
-    );
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Verification rejection failed', {
-        workflowId,
-        verificationId,
-        userId,
-        reason,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
-      
-      // Convert to legacy error format
-      return {
-        verificationId,
-        documentId: '', // Unknown at this point
-        success: false,
-        metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          userId,
-          reason
-        },
-        error: result.error.message
-      };
-    }
-  }
-  
-  /**
-   * Get verification status
-   * Handles Result pattern from domain workflow processor
-   */
-  async getVerificationStatus(
-    workflowId: string,
-    verificationId: string
-  ): Promise<VerificationResult | null> {
-    const result = await verificationWorkflow.getVerificationStatus(workflowId, verificationId);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Failed to get verification status', {
-        workflowId,
-        verificationId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
-      
-      // Return null for backward compatibility
-      return null;
-    }
-  }
-  
-  /**
-   * Report workflow methods
+   * Report generation methods
    */
   
   /**
    * Generate report
-   * Handles Result pattern from domain workflow processor
    */
   async generateReport(
     workflowId: string,
     options: ReportGenerationOptions
   ): Promise<ReportGenerationResult> {
-    const result = await reportWorkflow.generateReport(workflowId, options);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Report generation failed', {
+    try {
+      // Update to report_generation
+      await workflowManager.updateState(
         workflowId,
-        documentId: options?.documentId,
-        patientId: options?.patientId,
-        userId: options?.userId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
+        'report_generation',
+        {
+          documentId: options.documentId,
+          patientId: options.patientId,
+          userId: options.userId,
+          reportGenerationStartedAt: new Date().toISOString()
+        }
+      );
+      
+      // Track progress
+      const onProgress = options.onProgress || (() => {});
+      onProgress(10, ProcessingPhase.REPORT_GENERATION);
+      
+      // Call report generation API
+      const response = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          patientId: options.patientId,
+          documentId: options.documentId,
+          format: 'markdown'
+        })
       });
       
-      // Convert to legacy error format
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Report generation failed: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      const reportId = result.reportId;
+      
+      // Update to complete
+      await workflowManager.updateState(
+        workflowId,
+        'complete',
+        {
+          reportId,
+          documentId: options.documentId,
+          patientId: options.patientId,
+          reportGenerationCompletedAt: new Date().toISOString()
+        }
+      );
+      
+      onProgress(100, ProcessingPhase.COMPLETION);
+      
+      // Return successful result
       return {
-        reportId: '',
+        reportId,
+        title: result.title,
+        content: result.content,
+        documentId: options.documentId,
+        patientId: options.patientId,
+        success: true
+      };
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      
+      // Update to error state
+      await workflowManager.handleError(
+        workflowId,
+        normalizedError,
+        'error',
+        {
+          documentId: options.documentId,
+          patientId: options.patientId,
+          phase: ProcessingPhase.REPORT_GENERATION
+        }
+      );
+      
+      // Return error result
+      return {
         documentId: options.documentId,
         patientId: options.patientId,
         success: false,
-        metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          userId: options.userId
-        },
-        error: result.error.message
+        error: normalizedError.message
       };
     }
   }
   
   /**
-   * Format report in different output formats
-   * Handles Result pattern from domain workflow processor
+   * Format report
    */
   async formatReport(
     workflowId: string,
     reportId: string,
-    formatOptions: ReportFormatOptions
+    format: string
   ): Promise<ReportGenerationResult> {
-    const result = await reportWorkflow.formatReport(workflowId, reportId, formatOptions);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
+    try {
+      if (!reportId) {
+        throw new Error('Report ID is required');
+      }
+      
+      // Call format API
+      const response = await fetch(`/api/reports/${reportId}/format`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ format })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Report formatting failed: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      
+      // Update format in workflow state
+      await workflowManager.updateState(
+        workflowId,
+        'complete',
+        {
+          reportId,
+          format,
+          formattedAt: new Date().toISOString()
+        }
+      );
+      
+      // Return successful result
+      return {
+        reportId,
+        title: result.title,
+        content: result.content,
+        success: true
+      };
+    } catch (err) {
+      const normalizedError = normalizeError(err);
       this.logger.error('Report formatting failed', {
         workflowId,
         reportId,
-        format: formatOptions?.format,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
+        format,
+        error: normalizedError.message
       });
       
-      // Convert to legacy error format
+      // Return error result
       return {
         reportId,
-        documentId: '', // Unknown at this point
-        success: false,
-        metadata: {
-          error: result.error.message,
-          errorCode: result.error.code,
-          format: formatOptions?.format
-        },
-        error: result.error.message
-      };
-    }
-  }
-  
-  /**
-   * Get report by ID
-   * Handles Result pattern from domain workflow processor
-   */
-  async getReport(
-    workflowId: string,
-    reportId: string
-  ): Promise<ReportGenerationResult | null> {
-    const result = await reportWorkflow.getReport(workflowId, reportId);
-    
-    // Handle Result pattern
-    if (result.isSuccess()) {
-      return result.value;
-    } else {
-      // Log error with enhanced context
-      this.logger.error('Failed to get report', {
-        workflowId,
-        reportId,
-        error: result.error.message,
-        code: result.error.code,
-        details: result.error.details
-      });
-      
-      // Return null for backward compatibility
-      return null;
-    }
-  }
-  
-  /**
-   * Research workflow methods
-   */
-  
-  /**
-   * Execute research query
-   * Adapter method to handle new Result pattern from research workflow
-   */
-  async executeResearch(
-    workflowId: string,
-    options: ResearchOptions
-  ): Promise<ResearchResult> {
-    try {
-      // Call domain method which now returns Result<ResearchResult>
-      const result = await researchWorkflow.executeResearch(workflowId, options);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to execute research', {
-          workflowId,
-          query: options.query,
-          userId: options.userId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Throw error with preserved message for backward compatibility
-        throw new ApplicationError(
-          result.error.message,
-          result.error.code,
-          result.error.details
-        );
-      }
-    } catch (error) {
-      // If it's already an ApplicationError (from above), just rethrow
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
-      
-      // Otherwise, this is an unexpected error
-      const normalizedError = normalizeError(error);
-      this.logger.error('Unexpected error in executeResearch adapter', {
-        workflowId,
-        query: options.query,
-        error: normalizedError.message
-      });
-      
-      throw normalizedError;
-    }
-  }
-  
-  /**
-   * Get research results
-   * Adapter method to handle new Result pattern from research workflow
-   */
-  async getResearchResults(
-    workflowId: string,
-    researchId: string
-  ): Promise<ResearchResult | null> {
-    try {
-      // Call domain method which now returns Result<ResearchResult | null>
-      const result = await researchWorkflow.getResearchResults(workflowId, researchId);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value (which might be null)
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to get research results', {
-          workflowId,
-          researchId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Return null to maintain the original interface
-        return null;
-      }
-    } catch (error) {
-      // This should only happen if there's an unexpected error
-      this.logger.error('Unexpected error in getResearchResults adapter', {
-        workflowId,
-        researchId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
-    }
-  }
-  
-  /**
-   * Chat workflow methods
-   */
-  
-  /**
-   * Start chat session
-   * Adapter method to handle new Result pattern from chat workflow
-   */
-  async startChatSession(
-    workflowId: string,
-    chatId: string,
-    userId: string,
-    initialMetadata: Record<string, unknown> = {}
-  ): Promise<ChatSessionResult> {
-    try {
-      // Call domain method which now returns Result<ChatSessionResult>
-      const result = await chatWorkflow.startChatSession(workflowId, chatId, userId, initialMetadata);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to start chat session', {
-          workflowId,
-          chatId,
-          userId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Throw error with preserved message for backward compatibility
-        throw new ApplicationError(
-          result.error.message,
-          result.error.code,
-          result.error.details
-        );
-      }
-    } catch (error) {
-      // If it's already an ApplicationError (from above), just rethrow
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
-      
-      // Otherwise, this is an unexpected error
-      const normalizedError = normalizeError(error);
-      this.logger.error('Unexpected error in startChatSession adapter', {
-        workflowId,
-        chatId,
-        userId,
-        error: normalizedError.message
-      });
-      
-      throw normalizedError;
-    }
-  }
-  
-  /**
-   * Process user message
-   * Adapter method to handle new Result pattern from chat workflow
-   */
-  async processMessage(
-    workflowId: string,
-    chatId: string,
-    message: string,
-    options: MessageProcessingOptions
-  ): Promise<ChatSessionResult> {
-    try {
-      // Call domain method which now returns Result<ChatSessionResult>
-      const result = await chatWorkflow.processMessage(workflowId, chatId, message, options);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to process chat message', {
-          workflowId,
-          chatId,
-          userId: options.userId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Throw error with preserved message for backward compatibility
-        throw new ApplicationError(
-          result.error.message,
-          result.error.code,
-          result.error.details
-        );
-      }
-    } catch (error) {
-      // If it's already an ApplicationError (from above), just rethrow
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
-      
-      // Otherwise, this is an unexpected error
-      const normalizedError = normalizeError(error);
-      this.logger.error('Unexpected error in processMessage adapter', {
-        workflowId,
-        chatId,
-        userId: options.userId,
-        error: normalizedError.message
-      });
-      
-      throw normalizedError;
-    }
-  }
-  
-  /**
-   * Complete chat session
-   * Adapter method to handle new Result pattern from chat workflow
-   */
-  async completeChatSession(
-    workflowId: string,
-    chatId: string,
-    userId: string,
-    summary?: string
-  ): Promise<ChatSessionResult> {
-    try {
-      // Call domain method which now returns Result<ChatSessionResult>
-      const result = await chatWorkflow.completeChatSession(workflowId, chatId, userId, summary);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to complete chat session', {
-          workflowId,
-          chatId,
-          userId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Throw error with preserved message for backward compatibility
-        throw new ApplicationError(
-          result.error.message,
-          result.error.code,
-          result.error.details
-        );
-      }
-    } catch (error) {
-      // If it's already an ApplicationError (from above), just rethrow
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
-      
-      // Otherwise, this is an unexpected error
-      const normalizedError = normalizeError(error);
-      this.logger.error('Unexpected error in completeChatSession adapter', {
-        workflowId,
-        chatId,
-        userId,
-        error: normalizedError.message
-      });
-      
-      throw normalizedError;
-    }
-  }
-  
-  /**
-   * Handle chat error
-   * Adapter method to handle new Result pattern from chat workflow
-   */
-  async handleChatError(
-    workflowId: string,
-    chatId: string,
-    error: Error | string,
-    context?: Record<string, unknown>
-  ): Promise<ChatSessionResult> {
-    try {
-      // Call domain method which now returns Result<ChatSessionResult>
-      const result = await chatWorkflow.handleChatError(workflowId, chatId, error, context);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to handle chat error', {
-          workflowId,
-          chatId,
-          originalError: error instanceof Error ? error.message : error,
-          resultError: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // In this case, we'll create a minimalistic error result since we're already in an error state
-        return {
-          chatId,
-          userId: (context?.userId as string) || '',
-          success: false,
-          metadata: {
-            error: result.error.message,
-            originalError: error instanceof Error ? error.message : error,
-            code: result.error.code || 'CHAT_ERROR_HANDLING_FAILED',
-            timestamp: new Date().toISOString()
-          },
-          error: result.error.message
-        };
-      }
-    } catch (unexpectedError) {
-      // This is a meta-error (error in error handling)
-      const normalizedError = normalizeError(unexpectedError);
-      this.logger.error('Unexpected error in handleChatError adapter', {
-        workflowId,
-        chatId,
-        originalError: error instanceof Error ? error.message : error,
-        handlerError: normalizedError.message
-      });
-      
-      // Return minimal error response since we're already in error state
-      return {
-        chatId,
-        userId: (context?.userId as string) || '',
-        success: false,
-        metadata: {
-          error: 'Error handler failed',
-          originalError: error instanceof Error ? error.message : error,
-          handlerError: normalizedError.message,
-          code: 'CHAT_ERROR_HANDLER_FAILED',
-          timestamp: new Date().toISOString()
-        },
-        error: 'Error handler failed: ' + normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Get chat session
-   * Adapter method to handle new Result pattern from chat workflow
-   */
-  async getChatSession(
-    workflowId: string,
-    chatId: string
-  ): Promise<ChatSessionResult | null> {
-    try {
-      // Call domain method which now returns Result<ChatSessionResult | null>
-      const result = await chatWorkflow.getChatSession(workflowId, chatId);
-      
-      // Handle Result pattern
-      if (result.isSuccess()) {
-        // Return the unwrapped value (which might be null)
-        return result.value;
-      } else {
-        // Log the error
-        this.logger.error('Failed to get chat session', {
-          workflowId,
-          chatId,
-          error: result.error.message,
-          code: result.error.code,
-          details: result.error.details
-        });
-        
-        // Return null to maintain the original interface
-        return null;
-      }
-    } catch (error) {
-      // This should only happen if there's an unexpected error
-      this.logger.error('Unexpected error in getChatSession adapter', {
-        workflowId,
-        chatId,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
-    }
-  }
-  
-  /**
-   * Orchestration methods
-   */
-  
-  // This method has been replaced by the enhanced version above with improved error handling
-  
-  // This method has been replaced by the enhanced version above with improved error handling
-  
-  // This method has been replaced by the enhanced version above with improved error handling
-
-  /**
-   * Update workflow with chat message in a single atomic operation
-   */
-  async updateWithChatMessage(
-    workflowId: string,
-    step: WorkflowStep,
-    metadata: Record<string, unknown>,
-    messageContent: string,
-    messageRole: string = 'system',
-    messageMetadata: Record<string, unknown> | null = null
-  ): Promise<{ success: boolean; workflowId?: string; messageId?: string }> {
-    try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
-      }
-      
-      // Delegate to repository
-      return await workflowRepository.updateWithChatMessage(
-        workflowId,
-        step,
-        metadata,
-        messageContent,
-        messageRole,
-        messageMetadata
-      );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to update with chat message', {
-        workflowId,
-        step,
-        error: normalizedError.message
-      });
-      return { success: false };
-    }
-  }
-  
-  /**
-   * Log a workflow event for audit and event sourcing
-   * Now uses WorkflowOperations service
-   */
-  async logWorkflowEvent(
-    workflowId: string,
-    eventType: string,
-    eventData: Record<string, unknown>,
-    actorId?: string
-  ): Promise<string | null> {
-    try {
-      if (!workflowId) {
-        return null;
-      }
-      
-      // Delegate to WorkflowOperations service
-      const result = await workflowOperations.logEvent(
-        workflowId,
-        eventType,
-        eventData,
-        { actorId }
-      );
-      
-      return result.isSuccess() ? result.value : null;
-    } catch (err) {
-      // Just log error but don't throw since event logging is non-critical
-      this.logger.error('Failed to log workflow event', {
-        workflowId,
-        eventType,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return null;
-    }
-  }
-  
-  /**
-   * Update workflow with conflict resolution
-   */
-  async updateWithConflictResolution(
-    workflowId: string,
-    step: WorkflowStep,
-    metadata: Record<string, unknown> = {},
-    options: {
-      expectedTimestamp?: string;
-      strategy?: 'fail' | 'force' | 'merge';
-    } = {}
-  ): Promise<{ success: boolean; data?: any; error?: string }> {
-    try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
-      }
-      
-      // Delegate to repository
-      return await workflowRepository.updateWithConflictResolution(
-        workflowId,
-        step,
-        metadata,
-        options
-      );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to update with conflict resolution', {
-        workflowId,
-        step,
-        strategy: options.strategy,
-        error: normalizedError.message
-      });
-      return {
         success: false,
         error: normalizedError.message
       };
@@ -1194,382 +811,26 @@ export class WorkflowService {
   }
   
   /**
-   * Recover workflow state after error
-   * @deprecated Use recoverFromError for comprehensive recovery
+   * Workflow state management methods
    */
-  async recoverWorkflowState(
-    workflowId: string,
-    targetStep: WorkflowStep,
-    recoveryMetadata?: Record<string, unknown>
-  ): Promise<boolean> {
-    try {
-      if (!workflowId) {
-        return false;
-      }
-      
-      // Create proper error metadata for recovery service
-      const errorMetadata: WorkflowErrorMetadata = {
-        errorMessage: recoveryMetadata?.error as string || 'Unknown error',
-        errorType: (recoveryMetadata?.errorType as string || 'unknown') as any,
-        workflowStep: recoveryMetadata?.originalStep as WorkflowStep || 'error',
-        previousStep: recoveryMetadata?.previousStep as WorkflowStep,
-        recoveryPaths: [targetStep],
-        timestamp: recoveryMetadata?.errorTimestamp as string || new Date().toISOString(),
-        details: {
-          ...recoveryMetadata,
-          workflowId
-        }
-      };
-
-      // Use recovery service with DATABASE strategy
-      const result = await recoveryService.recoverFromError({
-        workflowId,
-        strategy: RecoveryStrategy.DATABASE,
-        metadata: errorMetadata,
-        recoveryStep: targetStep
-      });
-
-      return result.isSuccess() && result.value.success;
-    } catch (err) {
-      this.logger.error('Failed to recover workflow state', {
-        workflowId,
-        targetStep,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      
-      // Fall back to the direct repository call if recovery service fails
-      try {
-        return await workflowRepository.recoverState(
-          workflowId,
-          targetStep,
-          recoveryMetadata
-        );
-      } catch (repositoryError) {
-        this.logger.error('Repository recovery also failed', {
-          workflowId,
-          targetStep,
-          error: repositoryError instanceof Error ? repositoryError.message : String(repositoryError)
-        });
-        return false;
-      }
-    }
-  }
   
-  /**
-   * Reconstruct workflow state from event history
-   * @deprecated Use recoverFromError with TRANSACTION strategy for better reconstruction
-   */
-  async reconstructWorkflowState(workflowId: string): Promise<Record<string, unknown> | null> {
-    try {
-      if (!workflowId) {
-        return null;
-      }
-      
-      // Get current state to create error metadata
-      const currentState = await this.getWorkflowState(workflowId);
-      
-      if (!currentState) {
-        // If no state exists, just use the repository directly
-        return await workflowRepository.reconstructState(workflowId);
-      }
-      
-      // Create error metadata for recovery
-      const errorMetadata: WorkflowErrorMetadata = {
-        errorMessage: 'Manual state reconstruction requested',
-        errorType: 'state_reconstruction',
-        workflowStep: currentState.currentStep,
-        previousStep: currentState.currentStep,
-        timestamp: new Date().toISOString(),
-        details: {
-          isManualReconstruction: true,
-          workflowId,
-          currentState
-        }
-      };
-      
-      // Use recovery service with TRANSACTION strategy which includes event sourcing
-      const result = await recoveryService.recoverFromError({
-        workflowId,
-        strategy: RecoveryStrategy.TRANSACTION,
-        fallbackStrategies: [RecoveryStrategy.DATABASE],
-        metadata: errorMetadata
-      });
-      
-      if (result.isSuccess() && result.value.success) {
-        // Get the reconstructed state
-        const reconstructedState = await this.getWorkflowState(workflowId);
-        return reconstructedState ? {
-          currentStep: reconstructedState.currentStep,
-          metadata: reconstructedState.metadata,
-          reconstructionResult: result.value
-        } : null;
-      }
-      
-      // Fall back to direct repository call if recovery service fails
-      this.logger.warn('Recovery service failed to reconstruct state, falling back to repository', {
-        workflowId,
-        result: result.isSuccess() ? result.value : result.error
-      });
-      return await workflowRepository.reconstructState(workflowId);
-    } catch (err) {
-      this.logger.error('Failed to reconstruct workflow state', {
-        workflowId,
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Recover from workflow error using multi-strategy approach
-   * This method provides access to the comprehensive recovery capabilities
-   */
-  async recoverFromError(
-    workflowId: string,
-    options: {
-      errorType?: string;
-      errorMessage?: string;
-      currentStep?: WorkflowStep;
-      targetStep?: WorkflowStep;
-      strategy?: RecoveryStrategy;
-      metadata?: Record<string, unknown>;
-      showToast?: boolean;
-    }
-  ): Promise<boolean> {
-    try {
-      // Get current state if not specified
-      const currentStep = options.currentStep || 
-        (await this.getWorkflowState(workflowId))?.currentStep || 
-        'error';
-      
-      // Build error metadata
-      const errorMetadata: WorkflowErrorMetadata = {
-        errorMessage: options.errorMessage || 'Unspecified error',
-        errorType: options.errorType || 'unknown' as any,
-        workflowStep: currentStep,
-        previousStep: currentStep,
-        timestamp: new Date().toISOString(),
-        details: {
-          ...options.metadata,
-          workflowId,
-          isExplicitRecovery: true
-        }
-      };
-      
-      // If target step is specified, add it to recovery paths
-      if (options.targetStep) {
-        errorMetadata.recoveryPaths = [options.targetStep];
-      }
-      
-      // Get recommended recovery strategy if none specified
-      const recommendedStrategy = options.strategy 
-        ? { primary: options.strategy, fallbacks: [] }
-        : recoveryService.getRecommendedStrategy(errorMetadata);
-      
-      // Use recovery service with specified or recommended strategy
-      const result = await recoveryService.recoverFromError({
-        workflowId,
-        strategy: recommendedStrategy.primary,
-        fallbackStrategies: recommendedStrategy.fallbacks,
-        metadata: errorMetadata,
-        recoveryStep: options.targetStep,
-        showToast: options.showToast
-      });
-      
-      return result.isSuccess() && result.value.success;
-    } catch (err) {
-      this.logger.error('Failed to recover from error', {
-        workflowId,
-        error: err instanceof Error ? err.message : String(err),
-        options
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Load workflow state DB record by userId + chatId.
-   */
-  async loadWorkflowStateForUser(userId: string, chatId?: string | null) {
-    try {
-      if (!userId) {
-        throw new Error('userId is required');
-      }
-      
-      // Delegate to repository
-      return await workflowRepository.loadStateForUser(userId, chatId);
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to load workflow state for user', {
-        userId,
-        chatId,
-        error: normalizedError.message
-      });
-      throw normalizedError;
-    }
-  }
-
-  /**
-   * Get or create workflow state for user+chat
-   */
-  async getOrCreateWorkflowForUser(
-    userId: string,
-    chatId: string | null,
-    initialStep: WorkflowStep = 'idle',
-    initialMetadata: Record<string, unknown> = {}
-  ): Promise<{ id: string; data: Record<string, unknown> }> {
-    try {
-      if (!userId) {
-        throw new Error('userId is required');
-      }
-      
-      // Delegate to repository
-      const result = await workflowRepository.getOrCreateForUser(
-        userId,
-        chatId,
-        initialStep,
-        initialMetadata
-      );
-      
-      // Convert to expected format
-      return {
-        id: result.id,
-        data: {
-          id: result.id,
-          current_step: result.state.currentStep,
-          progress: result.state.progress,
-          error: result.state.error,
-          phase: result.state.phase,
-          metadata: result.state.metadata,
-          timestamp: result.state.timestamp
-        }
-      };
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to get or create workflow for user', {
-        userId,
-        chatId,
-        error: normalizedError.message
-      });
-      throw normalizedError;
-    }
-  }
-
-  /**
-   * Get client ID
-   */
-  getClientId(): string {
-    return workflowRepository.getClientId();
-  }
-
-  /**
-   * Subscribe to workflow changes
-   */
-  subscribeToWorkflowChanges(
-    workflowId: string,
-    onUpdate: (payload: {
-      new: { current_step: string; metadata: unknown }
-      old: unknown
-    }) => void,
-    onStatusChange?: (status: string) => void
-  ): RealtimeChannel {
-    // Delegate to repository
-    return workflowRepository.subscribeToWorkflowChanges(
-      workflowId,
-      onUpdate,
-      { onStatusChange }
-    );
-  }
-
-  /**
-   * Subscribe to workflow_states changes by userId
-   */
-  subscribeToWorkflowForUser(
-    userId: string,
-    chatId: string | null,
-    onUpdate: (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => void,
-    onStatusChange?: (status: string) => void
-  ): RealtimeChannel {
-    // Delegate to repository
-    return workflowRepository.subscribeToWorkflowForUser(
-      userId,
-      chatId,
-      onUpdate,
-      { onStatusChange }
-    );
-  }
-
-  /**
-   * Unsubscribe from channel
-   */
-  unsubscribeFromChannel(channel: RealtimeChannel): void {
-    workflowRepository.unsubscribeFromChannel(channel);
-  }
-
-  /**
-   * Create new workflow state
-   */
-  async createWorkflowState(
-    userId: string,
-    initialStep: WorkflowStep = 'idle',
-    metadata: Record<string, unknown> = {}
-  ): Promise<string | null> {
-    try {
-      if (!userId) {
-        throw new Error('User ID is required');
-      }
-      
-      // Delegate to repository
-      return await workflowRepository.createWorkflowState(
-        userId,
-        initialStep,
-        null, // chatId
-        metadata
-      );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to create workflow state', {
-        userId,
-        initialStep,
-        error: normalizedError.message
-      });
-      return null;
-    }
-  }
-
   /**
    * Get workflow state
    */
   async getWorkflowState(
-    workflowId: string,
-    _options: { bypassCache?: boolean } = {}
+    workflowId: string
   ): Promise<{
     currentStep: WorkflowStep
     progress: number
     error?: string | null
     phase?: string
-    metadata?: WorkflowMetadata
+    metadata?: Record<string, unknown>
     timestamp: string
-    updatedAt: string
   } | null> {
     try {
       if (!workflowId) return null;
       
-      // Delegate to repository
-      const state = await workflowRepository.getWorkflowState(workflowId);
-      
-      if (!state) return null;
-      
-      // Convert to expected format for backward compatibility
-      return {
-        currentStep: state.currentStep,
-        progress: state.progress || 0,
-        error: state.error,
-        phase: state.phase,
-        metadata: state.metadata as WorkflowMetadata,
-        timestamp: state.timestamp,
-        updatedAt: state.timestamp,
-      };
+      return await workflowManager.getState(workflowId);
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to get workflow state', {
@@ -1579,10 +840,170 @@ export class WorkflowService {
       return null;
     }
   }
+  
+  /**
+   * Get or create workflow for user
+   */
+  async getOrCreateWorkflowForUser(
+    userId: string,
+    chatId: string | null,
+    initialStep?: WorkflowStep,
+    initialMetadata?: Record<string, unknown>
+  ): Promise<{ id: string; data: Record<string, unknown> }> {
+    try {
+      if (!userId) {
+        throw new Error('userId is required');
+      }
+      
+      const { id, state } = await
+===
+    </search>
+    <content>
+===
+  /**
+   * Get or create workflow for user
+   * @returns Result containing workflow data
+   */
+  async getOrCreateWorkflowForUser(
+    userId: string,
+    chatId: string | null,
+    initialStep?: WorkflowStep,
+    initialMetadata?: Record<string, unknown>
+  ): Promise<Result<{ id: string; data: Record<string, unknown> }>> {
+    if (!userId) {
+      return Result.failure(
+        'userId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        { userId, chatId }
+      );
+    }
+    
+    try {
+      const result = await workflowManager.getOrCreateForUser(
+        userId,
+        chatId,
+        initialStep,
+        initialMetadata
+      );
+      
+      if (result.isFailure()) {
+        return Result.failure(
+          result.error.message,
+          result.error.code,
+          result.error.details
+        );
+      }
+      
+      const { id, state } = result.value;
+      
+      // Convert to expected format
+      return Result.success({
+        id,
+        data: {
+          id,
+          current_step: state.currentStep,
+          progress: state.progress,
+          error: state.error,
+          phase: state.phase,
+          metadata: state.metadata,
+          timestamp: state.timestamp
+        }
+      });
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      this.logger.error('Failed to get or create workflow for user', {
+        userId,
+        chatId,
+        error: normalizedError.message
+      });
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'WORKFLOW_GET_OR_CREATE_FAILED',
+        { userId, chatId }
+      );
+    }
+  }
+
+  /**
+   * Load workflow state for user
+   * @returns Result containing workflow state or null if not found
+   */
+  async loadWorkflowStateForUser(userId: string, chatId?: string | null) {
+    if (!userId) {
+      return Result.failure(
+        'userId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        { userId, chatId }
+      );
+    }
+    
+    try {
+      const result = await workflowManager.loadStateForUser(userId, chatId);
+      return result; // Already returns a Result
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      this.logger.error('Failed to load workflow state for user', {
+        userId,
+        chatId,
+        error: normalizedError.message
+      });
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'WORKFLOW_LOAD_FAILED',
+        { userId, chatId }
+      );
+    }
+  }
+
+  /**
+   * Subscribe to workflow for user
+   */
+  subscribeToWorkflowForUser(
+    userId: string,
+    chatId: string | null,
+    onUpdate: (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => void,
+    onStatusChange?: (status: string) => void
+  ): RealtimeChannel {
+    return workflowManager.subscribeToWorkflowForUser(
+      userId,
+      chatId,
+      onUpdate,
+      { onStatusChange }
+    );
+  }
+
+  /**
+   * Subscribe to workflow changes
+   */
+  subscribeToWorkflowChanges(
+    workflowId: string,
+    onUpdate: (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => void,
+    onStatusChange?: (status: string) => void
+  ): RealtimeChannel {
+    return workflowManager.subscribeToWorkflowChanges(
+      workflowId,
+      onUpdate,
+      { onStatusChange }
+    );
+  }
+
+  /**
+   * Unsubscribe from channel
+   */
+  unsubscribeFromChannel(channel: RealtimeChannel): void {
+    workflowManager.unsubscribeFromChannel(channel);
+  }
+
+  /**
+   * Get client ID
+   */
+  getClientId(): string {
+    return workflowManager.getClientId();
+  }
 
   /**
    * Update workflow state
-   * Now uses WorkflowOperations service for state transitions
+   * @returns Result containing transaction ID
    */
   async updateWorkflowState(
     workflowId: string,
@@ -1590,80 +1011,46 @@ export class WorkflowService {
     metadata: Record<string, unknown> = {},
     options?: {
       skipValidation?: boolean
-      forceUpdate?: boolean
-      conflictStrategy?: ConflictStrategy
-      useAtomicUpdate?: boolean
     }
-  ): Promise<string> {
+  ): Promise<Result<string>> {
     const transactionId = crypto.randomUUID();
     
+    if (!workflowId) {
+      return Result.failure(
+        'workflowId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        { step, transactionId }
+      );
+    }
+    
     try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
-      }
+      const { skipValidation = false } = options ?? {};
       
-      const { 
-        skipValidation = false, 
-        forceUpdate = false,
-        conflictStrategy = 'pessimistic',
-        useAtomicUpdate = true
-      } = options ?? {};
+      // Add transaction ID to metadata
+      const enhancedMetadata = {
+        ...metadata,
+        transactionId
+      };
       
-      // Get current state for transition validation
-      let fromStep: WorkflowStep = 'idle';
-      let expectedTimestamp: string | undefined;
-      
-      if (!skipValidation || conflictStrategy === 'pessimistic') {
-        const currentState = await this.getWorkflowState(workflowId);
-        if (currentState) {
-          fromStep = currentState.currentStep;
-          expectedTimestamp = currentState.timestamp;
-        }
-      }
-      
-      // Use WorkflowOperations service for transition with proper validation
-      if (useAtomicUpdate && (conflictStrategy === 'pessimistic' || conflictStrategy === 'optimistic')) {
-        const result = await workflowOperations.transitionState(
-          workflowId,
-          fromStep,
-          step,
-          {
-            metadata: {
-              ...metadata,
-              transactionId
-            },
-            skipValidation,
-            forceUpdate,
-            expectedTimestamp,
-            logEvent: true,
-            transactionId,
-            conflictStrategy: conflictStrategy as any
-          }
-        );
-        
-        if (result.isFailure()) {
-          throw new Error(result.error.message);
-        }
-        
-        return transactionId;
-      }
-      
-      // Fall back to direct update
-      await workflowRepository.updateWorkflowState(
+      // Use WorkflowManager for state update
+      const updateResult = await workflowManager.updateState(
         workflowId,
         step,
+        enhancedMetadata,
         {
-          ...metadata,
-          transactionId
-        },
-        {
-          skipValidation,
-          forceUpdate,
-          conflictStrategy: conflictStrategy as any
+          skipValidation
         }
       );
       
-      return transactionId;
+      if (updateResult.isFailure()) {
+        return Result.failure(
+          updateResult.error.message,
+          updateResult.error.code,
+          { ...updateResult.error.details, transactionId }
+        );
+      }
+      
+      return Result.success(transactionId);
     } catch (err) {
       const normalizedError = normalizeError(err);
       
@@ -1677,41 +1064,53 @@ export class WorkflowService {
         data: normalizedError.data
       });
       
-      throw new ApplicationError({
-        message: `Failed to update workflow state: ${normalizedError.message}`,
-        code: normalizedError.code || 'WORKFLOW_UPDATE_FAILED',
-        data: {
+      return Result.failure(
+        `Failed to update workflow state: ${normalizedError.message}`,
+        normalizedError.code || 'WORKFLOW_UPDATE_FAILED',
+        {
           workflowId,
           step,
           transactionId,
           originalError: normalizedError
         }
-      });
+      );
     }
   }
 
   /**
-   * Sets workflow to error step with given message
+   * Set workflow error state
+   * @returns Result indicating success or failure
    */
   async setWorkflowError(
     workflowId: string,
     errorMessage: string,
     errorDetails: Record<string, unknown> = {}
-  ): Promise<void> {
+  ): Promise<Result<void>> {
+    if (!workflowId) {
+      return Result.failure(
+        'workflowId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        { errorMessage }
+      );
+    }
+    
     try {
-      if (!workflowId) return;
-      
-      // Get current state before setting error
-      const currentState = await this.getWorkflowState(workflowId);
-      const currentStep = currentState?.currentStep || 'idle';
-      
-      // Use state manager to handle error with proper recording
-      await workflowStateManager.handleError(
+      const result = await workflowManager.handleError(
         workflowId,
         new Error(errorMessage),
-        currentStep,
+        'error',
         errorDetails
       );
+      
+      if (result.isFailure()) {
+        return Result.failure(
+          result.error.message,
+          result.error.code,
+          result.error.details
+        );
+      }
+      
+      return Result.success(undefined);
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to set workflow error', {
@@ -1719,225 +1118,107 @@ export class WorkflowService {
         errorMessage,
         handlerError: normalizedError.message
       });
-      
-      // Don't throw to avoid cascading errors
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'WORKFLOW_ERROR_SET_FAILED',
+        { workflowId, errorMessage }
+      );
     }
   }
 
   /**
-   * Mark a workflow as complete
+   * Reset workflow to initial state
+   * @returns Result indicating success or failure
+   */
+  async resetWorkflow(
+    workflowId: string,
+    initialStep: WorkflowStep = 'idle',
+    metadata: Record<string, unknown> = {}
+  ): Promise<Result<boolean>> {
+    if (!workflowId) {
+      return Result.failure(
+        'workflowId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        { initialStep }
+      );
+    }
+    
+    try {
+      const resetResult = await workflowManager.reset(
+        workflowId,
+        initialStep,
+        metadata
+      );
+      
+      if (resetResult.isFailure()) {
+        return Result.failure(
+          resetResult.error.message,
+          resetResult.error.code,
+          resetResult.error.details
+        );
+      }
+      
+      return Result.success(true);
+    } catch (err) {
+      const normalizedError = normalizeError(err);
+      this.logger.error('Failed to reset workflow', {
+        workflowId,
+        initialStep,
+        error: normalizedError.message
+      });
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'WORKFLOW_RESET_FAILED',
+        { workflowId, initialStep }
+      );
+    }
+  }
+
+  /**
+   * Complete workflow
+   * @returns Result indicating success or failure
    */
   async completeWorkflow(
     workflowId: string,
     completionMetadata: Record<string, unknown> = {}
-  ): Promise<void> {
+  ): Promise<Result<void>> {
+    if (!workflowId) {
+      return Result.failure(
+        'workflowId is required',
+        'WORKFLOW_INVALID_PARAMS',
+        {}
+      );
+    }
+    
     try {
-      if (!workflowId) return;
-      
-      // Use state manager to complete workflow
-      await workflowStateManager.completeWorkflow(
+      const completeResult = await workflowManager.completeWorkflow(
         workflowId,
         completionMetadata
       );
+      
+      if (completeResult.isFailure()) {
+        return Result.failure(
+          completeResult.error.message,
+          completeResult.error.code,
+          completeResult.error.details
+        );
+      }
+      
+      return Result.success(undefined);
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to complete workflow', {
         workflowId,
         error: normalizedError.message
       });
-      throw normalizedError;
-    }
-  }
-
-  /**
-   * Process document from upload through completion (upload → extract → verify → report)
-   * End-to-end workflow orchestration using the workflowCoordinator
-   */
-  async processDocumentToCompletion(
-    workflowId: string,
-    file: File,
-    options: {
-      userId: string;
-      patientId?: string;
-      documentType?: string;
-      autoVerify?: boolean;
-      autoGenerateReport?: boolean;
-      onProgress?: (progress: number, phase: ProcessingPhase, step: string) => void;
-      transactionId?: string;
-    }
-  ): Promise<EndToEndResult> {
-    try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
-      }
-      
-      return await workflowCoordinator.processDocumentToCompletion(
-        workflowId,
-        file,
-        options
+      return Result.failure(
+        normalizedError.message,
+        normalizedError.code || 'WORKFLOW_COMPLETION_FAILED',
+        { workflowId }
       );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to process document to completion', {
-        workflowId,
-        fileName: file.name,
-        userId: options.userId,
-        error: normalizedError.message,
-        stack: normalizedError.stack
-      });
-      
-      // Set workflow to error state
-      await workflowStateManager.handleError(
-        workflowId,
-        normalizedError,
-        'error',
-        {
-          fileName: file.name,
-          userId: options.userId,
-          patientId: options.patientId,
-          phase: ProcessingPhase.ERROR
-        }
-      );
-      
-      return {
-        workflowId,
-        success: false,
-        metadata: {
-          error: normalizedError.message,
-          code: normalizedError.code || 'DOCUMENT_PROCESSING_FAILED',
-          fileName: file.name
-        },
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Process patient interactions through chat and research
-   * Handles the orchestration between chat and research workflows
-   */
-  async processChatAndResearch(
-    workflowId: string,
-    chatId: string,
-    userId: string,
-    patientId: string,
-    initialMessage?: string
-  ): Promise<EndToEndResult> {
-    try {
-      if (!workflowId || !chatId || !userId) {
-        throw new Error('Required parameters missing');
-      }
-      
-      return await workflowCoordinator.processChatAndResearch(
-        workflowId,
-        chatId,
-        userId,
-        patientId,
-        initialMessage
-      );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to process chat and research', {
-        workflowId,
-        chatId,
-        userId,
-        patientId,
-        error: normalizedError.message,
-        stack: normalizedError.stack
-      });
-      
-      // Set workflow to error state
-      await workflowStateManager.handleError(
-        workflowId,
-        normalizedError,
-        'chat_error',
-        {
-          chatId,
-          userId,
-          patientId,
-          phase: ProcessingPhase.ERROR
-        }
-      );
-      
-      return {
-        workflowId,
-        success: false,
-        metadata: {
-          chatId,
-          userId,
-          patientId,
-          error: normalizedError.message,
-          code: normalizedError.code || 'CHAT_RESEARCH_FAILED'
-        },
-        error: normalizedError.message
-      };
-    }
-  }
-  
-  /**
-   * Handle research request from chat
-   * Delegates to workflowCoordinator for research handling
-   */
-  async handleResearchRequest(
-    workflowId: string,
-    query: string,
-    chatId: string,
-    userId: string,
-    options: {
-      patientId?: string;
-      documentId?: string;
-      includeCitations?: boolean;
-      autoGenerateReport?: boolean;
-    } = {}
-  ): Promise<ResearchResult> {
-    try {
-      if (!workflowId || !query || !chatId || !userId) {
-        throw new Error('Required parameters missing');
-      }
-      
-      return await workflowCoordinator.handleResearchRequest(
-        workflowId,
-        query,
-        chatId,
-        userId,
-        options
-      );
-    } catch (err) {
-      const normalizedError = normalizeError(err);
-      this.logger.error('Failed to handle research request', {
-        workflowId,
-        query,
-        chatId,
-        userId,
-        error: normalizedError.message,
-        stack: normalizedError.stack
-      });
-      
-      // Set workflow to error state
-      await workflowStateManager.handleError(
-        workflowId,
-        normalizedError,
-        DomainOnlyWorkflowStep.ERROR,
-        {
-          query,
-          chatId,
-          userId,
-          phase: ProcessingPhase.RESEARCH
-        }
-      );
-      
-      return {
-        researchId: '',
-        query,
-        success: false,
-        metadata: {
-          error: normalizedError.message,
-          code: normalizedError.code || 'RESEARCH_REQUEST_FAILED'
-        },
-        error: normalizedError.message
-      };
     }
   }
 }
 
-export const workflowService = new WorkflowService()
+// Export singleton instance
+export const workflowService = new WorkflowService();

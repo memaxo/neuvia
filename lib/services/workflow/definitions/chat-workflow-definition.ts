@@ -1,18 +1,4 @@
-/**
- * @fileoverview Chat Workflow Definition
- *
- * PHASE 4 IMPLEMENTATION:
- * Defines the state machine for chat interactions, including states, transitions,
- * and effects. This serves as the central definition for how chat workflows
- * operate within the system.
- * 
- * This file has been updated to use the Result pattern and functional composition
- * approach from Phase 4 architecture. It maintains backward compatibility
- * while providing better error handling and state management.
- * 
- * All business logic is delegated to the Chat domain services.
- */
-
+// lib/services/workflow/definitions/chat-workflow-definition.ts
 import { z } from 'zod';
 import { createWorkflowDefinition } from '../coordination/workflow-definition';
 import type { WorkflowAction, StateNode, Transition, WorkflowEffect } from '../coordination/workflow-definition';
@@ -76,31 +62,19 @@ export interface ChatWorkflowContext {
     timestamp: string;
   };
   
-  /** 
-   * Last processed message content (from MESSAGE_PROCESSED transition)
-   * This is stored in context but actual UI message creation is handled by chatService
-   */
+  /** Last processed message content */
   lastProcessedMessage?: string;
   
   /** Metadata for the last processed message */
   lastProcessedMetadata?: Record<string, unknown>;
   
-  /** 
-   * Last research message content (from RESEARCH_COMPLETED transition)
-   * This is stored in context but actual UI message creation is handled by chatService
-   */
+  /** Last research message content */
   lastResearchMessage?: string;
   
-  /** 
-   * Last report message content (from REPORT_COMPLETED transition)
-   * This is stored in context but actual UI message creation is handled by chatService
-   */
+  /** Last report message content */
   lastReportMessage?: string;
   
-  /**
-   * Current user query being processed
-   * This is used for multi-step processing flows
-   */
+  /** Current user query being processed */
   currentQuery?: {
     message: string;
     processedBy: string[];
@@ -201,17 +175,6 @@ const initialChatContext: ChatWorkflowContext = {
   messages: []
 };
 
-// ========================================================================
-// Common Effects for Chat Workflow with Result pattern
-// ========================================================================
-
-/**
- * Effect to add a message to the in-memory workflow context history
- * 
- * This effect only updates the in-memory workflow context.
- * For persisting messages to the database or handling UI, use chatService instead.
- * Returns a Result for better error handling.
- */
 const addMessageToHistory: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   const message = action.payload?.message;
   const role = action.payload?.role || 'user';
@@ -228,7 +191,6 @@ const addMessageToHistory: WorkflowEffect<ChatWorkflowContext> = (context, actio
     const messageId = action.payload?.messageId || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const timestamp = new Date().toISOString();
     
-    // Add to local message history only (not persisting to DB)
     context.messages.push({
       id: messageId,
       role,
@@ -237,7 +199,6 @@ const addMessageToHistory: WorkflowEffect<ChatWorkflowContext> = (context, actio
       metadata: action.payload?.metadata
     });
     
-    // Update last message references
     if (role === 'user') {
       context.lastUserMessage = {
         id: messageId,
@@ -252,14 +213,12 @@ const addMessageToHistory: WorkflowEffect<ChatWorkflowContext> = (context, actio
       };
     }
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       lastMessageAt: timestamp,
       lastMessageBy: role
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
   } catch (error) {
     logger.error('Failed to add message to history', {
@@ -269,10 +228,6 @@ const addMessageToHistory: WorkflowEffect<ChatWorkflowContext> = (context, actio
   }
 };
 
-/**
- * Effect to add an intent to history
- * Returns a Result for better error handling.
- */
 const addIntentToHistory: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   try {
     const intentType = action.payload?.intentType || action.type;
@@ -284,7 +239,6 @@ const addIntentToHistory: WorkflowEffect<ChatWorkflowContext> = (context, action
       timestamp: new Date().toISOString()
     });
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       lastIntent: intentType,
@@ -298,10 +252,6 @@ const addIntentToHistory: WorkflowEffect<ChatWorkflowContext> = (context, action
   }
 };
 
-/**
- * Effect to start a new query processing
- * Returns a Result for better error handling.
- */
 const startQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   const message = action.payload?.message;
   
@@ -325,14 +275,12 @@ const startQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, acti
       currentStep: 'started'
     };
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       processingStartedAt: timestamp,
       status: ChatStatus.PROCESSING
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
   } catch (error) {
     logger.error('Failed to start query processing', {
@@ -342,10 +290,6 @@ const startQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, acti
   }
 };
 
-/**
- * Effect to update query processing
- * Returns a Result for better error handling.
- */
 const updateQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   if (!context.currentQuery) {
     logger.warn('Attempted to update query processing but no query exists', {
@@ -368,7 +312,6 @@ const updateQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, act
       context.currentQuery.currentStep = step;
     }
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       lastProcessorUpdate: timestamp,
@@ -376,7 +319,6 @@ const updateQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, act
       processors: context.currentQuery.processedBy
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
   } catch (error) {
     logger.error('Failed to update query processing', {
@@ -386,15 +328,10 @@ const updateQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context, act
   }
 };
 
-/**
- * Effect to complete query processing
- * Returns a Result for better error handling.
- */
 const completeQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
-    // Store the completed query for history if needed
     if (context.currentQuery) {
       context.completedQueries = context.completedQueries || [];
       context.completedQueries.push({
@@ -402,18 +339,15 @@ const completeQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context) =
         completedAt: timestamp
       });
       
-      // Clear current query
       context.currentQuery = undefined;
     }
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       processingCompletedAt: timestamp,
       status: ChatStatus.ACTIVE
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
   } catch (error) {
     logger.error('Failed to complete query processing', {
@@ -423,9 +357,6 @@ const completeQueryProcessing: WorkflowEffect<ChatWorkflowContext> = (context) =
   }
 };
 
-/**
- * Effect to track errors using Result pattern
- */
 const trackError: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   try {
     const errorMessage = action.payload?.error || 'Unknown error';
@@ -438,7 +369,6 @@ const trackError: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
       timestamp
     };
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       errorAt: timestamp,
@@ -447,7 +377,6 @@ const trackError: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
       status: ChatStatus.ERROR
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.error('Chat workflow error tracked', {
@@ -463,18 +392,12 @@ const trackError: WorkflowEffect<ChatWorkflowContext> = (context, action) => {
   }
 };
 
-/**
- * Effect to clear errors
- * Returns a Result for better error handling.
- */
 const clearError: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
-    // Clear error
     context.error = undefined;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       errorCleared: timestamp,
@@ -482,7 +405,6 @@ const clearError: WorkflowEffect<ChatWorkflowContext> = (context) => {
       errorCode: undefined
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
   } catch (error) {
     logger.error('Failed to clear error', {
@@ -492,24 +414,18 @@ const clearError: WorkflowEffect<ChatWorkflowContext> = (context) => {
   }
 };
 
-/**
- * Effect to activate research mode
- * Returns a Result for better error handling.
- */
 const activateResearchMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isResearchModeActive = true;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       researchModeActivatedAt: timestamp,
       activeMode: 'research'
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Research mode activated', {
@@ -523,24 +439,18 @@ const activateResearchMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   }
 };
 
-/**
- * Effect to deactivate research mode
- * Returns a Result for better error handling.
- */
 const deactivateResearchMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isResearchModeActive = false;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       researchModeDeactivatedAt: timestamp,
       activeMode: undefined
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Research mode deactivated', {
@@ -554,24 +464,18 @@ const deactivateResearchMode: WorkflowEffect<ChatWorkflowContext> = (context) =>
   }
 };
 
-/**
- * Effect to activate verification mode
- * Returns a Result for better error handling.
- */
 const activateVerificationMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isVerificationModeActive = true;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       verificationModeActivatedAt: timestamp,
       activeMode: 'verification'
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Verification mode activated', {
@@ -585,24 +489,18 @@ const activateVerificationMode: WorkflowEffect<ChatWorkflowContext> = (context) 
   }
 };
 
-/**
- * Effect to deactivate verification mode
- * Returns a Result for better error handling.
- */
 const deactivateVerificationMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isVerificationModeActive = false;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       verificationModeDeactivatedAt: timestamp,
       activeMode: undefined
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Verification mode deactivated', {
@@ -616,24 +514,18 @@ const deactivateVerificationMode: WorkflowEffect<ChatWorkflowContext> = (context
   }
 };
 
-/**
- * Effect to activate report mode
- * Returns a Result for better error handling.
- */
 const activateReportMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isReportModeActive = true;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       reportModeActivatedAt: timestamp,
       activeMode: 'report'
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Report mode activated', {
@@ -647,24 +539,18 @@ const activateReportMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   }
 };
 
-/**
- * Effect to deactivate report mode
- * Returns a Result for better error handling.
- */
 const deactivateReportMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   try {
     const timestamp = new Date().toISOString();
     
     context.isReportModeActive = false;
     
-    // Update metadata
     context.metadata = {
       ...context.metadata,
       reportModeDeactivatedAt: timestamp,
       activeMode: undefined
     };
     
-    // Update the lastUpdated timestamp
     context.lastUpdated = timestamp;
     
     logger.info('Report mode deactivated', {
@@ -678,13 +564,6 @@ const deactivateReportMode: WorkflowEffect<ChatWorkflowContext> = (context) => {
   }
 };
 
-// ========================================================================
-// State Definitions
-// ========================================================================
-
-/**
- * idle state - before chat starts
- */
 const idleState: StateNode<ChatWorkflowContext> = {
   id: 'idle',
   type: 'initial',
@@ -694,13 +573,10 @@ const idleState: StateNode<ChatWorkflowContext> = {
       target: 'chat_started',
       effects: [
         (context, action) => {
-          // Set initial properties
           context.chatId = action.payload?.chatId;
           context.userId = action.payload?.userId;
           context.patientId = action.payload?.patientId;
           context.model = action.payload?.model || 'gpt-4';
-          
-          // Set any additional metadata
           Object.entries(action.payload || {}).forEach(([key, value]) => {
             if (!['chatId', 'userId', 'patientId', 'model'].includes(key)) {
               context[key] = value;
@@ -717,9 +593,6 @@ const idleState: StateNode<ChatWorkflowContext> = {
   }
 };
 
-/**
- * chat_started state - chat initialized but no messages yet
- */
 const chatStartedState: StateNode<ChatWorkflowContext> = {
   id: 'chat_started',
   description: 'Chat session initialized',
@@ -755,9 +628,6 @@ const chatStartedState: StateNode<ChatWorkflowContext> = {
   }
 };
 
-/**
- * chat_in_progress state - actively processing a message
- */
 const chatInProgressState: StateNode<ChatWorkflowContext> = {
   id: 'chat_in_progress',
   description: 'Actively processing a chat message',
@@ -782,8 +652,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         updateQueryProcessing,
         completeQueryProcessing,
         (context, action) => {
-          // Store assistant message in context, but do not create UI message directly
-          // (that should be handled by chatService)
           if (action.payload?.assistantMessage) {
             context.lastProcessedMessage = action.payload.assistantMessage;
             context.lastProcessedMetadata = action.payload.metadata;
@@ -792,9 +660,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
           logger.info('Chat message processed - workflow state updated', {
             chatId: context.chatId
           });
-          
-          // NOTE: Actual message creation in UI should be handled by
-          // chatService.createAssistantMessage(chatId, message, metadata) instead
         }
       ]
     },
@@ -806,7 +671,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         updateQueryProcessing,
         activateVerificationMode,
         (context, action) => {
-          // Store verification ID if provided
           if (action.payload?.verificationId) {
             context.verificationId = action.payload.verificationId;
           }
@@ -826,7 +690,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         updateQueryProcessing,
         activateVerificationMode,
         (context, action) => {
-          // Store corrections if provided
           if (action.payload?.corrections) {
             context.corrections = action.payload.corrections;
           }
@@ -845,7 +708,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         addIntentToHistory,
         updateQueryProcessing,
         (context, action) => {
-          // Store rejection reason if provided
           if (action.payload?.reason) {
             context.rejectionReason = action.payload.reason;
           }
@@ -862,10 +724,9 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
       effects: [
         addMessageToHistory,
         addIntentToHistory,
-        updateQueryProcessing,
+        startQueryProcessing,
         activateResearchMode,
         (context, action) => {
-          // Store research query if provided
           if (action.payload?.query) {
             context.researchQuery = action.payload.query;
           }
@@ -884,13 +745,10 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         completeQueryProcessing,
         deactivateResearchMode,
         (context, action) => {
-          // Store research results if provided
           if (action.payload?.researchId) {
             context.researchId = action.payload.researchId;
           }
           
-          // Store assistant message in context, but do not create UI message directly
-          // (that should be handled by chatService)
           if (action.payload?.assistantMessage) {
             context.lastResearchMessage = action.payload.assistantMessage;
           }
@@ -899,9 +757,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
             chatId: context.chatId,
             researchId: context.researchId
           });
-          
-          // NOTE: Actual message creation in UI should be handled by
-          // chatService.handleResearchCompletion(chatId, researchId, content) instead
         }
       ]
     },
@@ -910,10 +765,9 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
       effects: [
         addMessageToHistory,
         addIntentToHistory,
-        updateQueryProcessing,
+        startQueryProcessing,
         activateReportMode,
         (context, action) => {
-          // Set document and patient context if provided
           if (action.payload?.documentId) {
             context.documentId = action.payload.documentId;
           }
@@ -937,13 +791,10 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
         completeQueryProcessing,
         deactivateReportMode,
         (context, action) => {
-          // Store report ID if provided
           if (action.payload?.reportId) {
             context.reportId = action.payload.reportId;
           }
           
-          // Store assistant message in context, but do not create UI message directly
-          // (that should be handled by chatService)
           if (action.payload?.assistantMessage) {
             context.lastReportMessage = action.payload.assistantMessage;
           }
@@ -952,9 +803,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
             chatId: context.chatId,
             reportId: context.reportId
           });
-          
-          // NOTE: Actual message creation in UI should be handled by
-          // chatService.handleReportCompletion(chatId, reportId, content) instead
         }
       ]
     },
@@ -990,9 +838,6 @@ const chatInProgressState: StateNode<ChatWorkflowContext> = {
   }
 };
 
-/**
- * chat_completed state - finished processing the current message
- */
 const chatCompletedState: StateNode<ChatWorkflowContext> = {
   id: 'chat_completed',
   description: 'Chat message processed successfully',
@@ -1063,9 +908,6 @@ const chatCompletedState: StateNode<ChatWorkflowContext> = {
   }
 };
 
-/**
- * chat_error state - error occurred during processing
- */
 const chatErrorState: StateNode<ChatWorkflowContext> = {
   id: 'chat_error',
   type: 'error',
@@ -1094,18 +936,11 @@ const chatErrorState: StateNode<ChatWorkflowContext> = {
   }
 };
 
-// ========================================================================
-// Chat Workflow Definition
-// ========================================================================
-
-/**
- * Chat workflow definition
- */
 export const chatWorkflowDefinition = createWorkflowDefinition<ChatWorkflowContext>({
   id: 'chat-workflow',
   name: 'Chat Processing Workflow',
   description: 'Manages chat message processing and domain workflows',
-  version: '1.1.0', // Updated for Phase 4
+  version: '1.1.0',
   initialState: 'idle',
   domains: ['Chat'],
   context: {
@@ -1119,14 +954,12 @@ export const chatWorkflowDefinition = createWorkflowDefinition<ChatWorkflowConte
     'chat_completed': chatCompletedState,
     'chat_error': chatErrorState
   },
-  
-  // Metadata for workflow definition - Phase 4 Addition
   metadata: {
     version: '1.1.0',
     description: 'Chat processing workflow with Result pattern and improved error handling',
     domain: 'Chat',
     author: 'Neuvia',
-    phase: 'Phase 4',
+    phase: 'standard',
     updatedAt: '2025-03-14',
     features: [
       'Result pattern for error handling',

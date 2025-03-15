@@ -214,15 +214,29 @@ export interface ChatStore {
   processCorrection: (correctionText: string, currentSummary: string, messageId?: string) => Promise<Record<string, unknown>>;
   resetVerification: () => Promise<{ success: boolean }>;
 
-  // Report generation methods
-  startReportGeneration: (reportOptions?: Record<string, unknown>) => void;
+//=============================================================================
+// REPORT GENERATION WORKFLOW ACTIONS
+//=============================================================================
+// These actions manage the report generation workflow
+// They handle creating, formatting, and managing reports
+//=============================================================================
+
+// Initialize report generation process
+startReportGeneration: (reportOptions?: Record<string, unknown>) => {
   completeReportGeneration: (report: Record<string, unknown>) => void;
   generateReport: () => Promise<void>;
   formatReport: (format: Record<string, unknown>) => Promise<void>;
   beginReportGeneration: (reportMetadata?: Record<string, unknown>) => Promise<{ success: boolean }>;
 
-  // Document processing methods
-  processDocument: (
+//=============================================================================
+// DOCUMENT PROCESSING WORKFLOW ACTIONS
+//=============================================================================
+// These actions manage the document processing workflow
+// They handle document upload, parsing, and extraction
+//=============================================================================
+
+// Process a document through the complete workflow pipeline
+processDocument: (
     file: File,
     patientId: string,
     documentType?: string,
@@ -231,8 +245,15 @@ export interface ChatStore {
   uploadDocument: (file: File, patientId: string, documentType?: string) => Promise<Record<string, unknown>>;
   resetDocumentProcessing: () => void;
 
-  // Message sending
-  sendMessage: (
+//=============================================================================
+// MESSAGE INTERACTION ACTIONS
+//=============================================================================
+// These actions handle user message inputs and drive the conversation flow
+// They interpret messages and may trigger workflow transitions
+//=============================================================================
+
+// Send a user message and handle based on current mode
+sendMessage: (
     content: string,
     options?: { isCorrection?: boolean; metadata?: ChatMessageMetadata }
   ) => Promise<void>;
@@ -290,13 +311,25 @@ const errorHandlerFactory = createErrorHandlerFactory();
 
 // Initial chat store state
 const initialState: Omit<ChatStore, 'syncWorkflowState' | 'subscribeToWorkflowUpdates' | 'performResearch'> = {
+  //=============================================================================
+  // UI STATE SECTION
+  //=============================================================================
+  // These properties manage UI-specific concerns like loading indicators, errors,
+  // and the current display mode. They don't directly affect workflow logic.
+  //=============================================================================
   isLoading: false,
   error: null,
   mode: "default",
   chatId: undefined,
   workflowId: undefined,
-  messages: [],
+  messages: [], // UI representation of chat messages
   
+  //=============================================================================
+  // WORKFLOW STATE SECTION
+  //=============================================================================
+  // These properties represent the persistent workflow state that's synchronized
+  // with the database. They drive the business logic and process flow.
+  //=============================================================================
   workflow: {
     currentStep: DomainOnlyWorkflowStep.ERROR,
     progress: 0,
@@ -306,6 +339,12 @@ const initialState: Omit<ChatStore, 'syncWorkflowState' | 'subscribeToWorkflowUp
     timestamp: new Date().toISOString()
   },
   
+  //=============================================================================
+  // DOMAIN-SPECIFIC WORKFLOW STATES
+  //=============================================================================
+  // These sections maintain state for specific workflow domains
+  // Each has its own lifecycle and state machine
+  //=============================================================================
   verification: {
     isInVerificationMode: false,
     currentSummary: null,
@@ -321,6 +360,7 @@ const initialState: Omit<ChatStore, 'syncWorkflowState' | 'subscribeToWorkflowUp
     progress: 0
   },
   
+  // Document processing state (legacy format - maintained for compatibility)
   docProgress: 0,
   isDocProcessing: false,
   extractedDocument: null,
@@ -525,12 +565,28 @@ export const useChatStore = create<ChatStore>()(
           format: {},
         },
         
-        // Basic state updates
+        //=============================================================================
+        // UI ACTION HANDLERS
+        //=============================================================================
+        // These actions manage UI-specific concerns and don't directly interact
+        // with the workflow system or persistent state
+        //=============================================================================
+        
+        // Update loading state (UI-only)
         setLoading: (isLoading) => set({ isLoading }),
         
+        // Set error message (UI-only)
         setError: (error) => set({ error }),
         
+        // Change display mode (UI-only)
         setMode: (mode) => set({ mode }),
+        
+        //=============================================================================
+        // WORKFLOW ACTION HANDLERS
+        //=============================================================================
+        // These actions manage workflow state and typically interact with
+        // both local state and persistent database state
+        //=============================================================================
         
         // Reset the entire chat store to initial state
         resetChat: () => {
@@ -563,7 +619,14 @@ export const useChatStore = create<ChatStore>()(
           });
         },
         
-        // Message methods
+        //=============================================================================
+        // MESSAGE HANDLING ACTIONS
+        //=============================================================================
+        // These actions manage the UI representation of messages
+        // They don't directly affect workflow state but may be triggered by workflow events
+        //=============================================================================
+        
+        // Add a message to the chat UI
         addMessage: (message) => {
           const messageWithId = 'id' in message
             ? message
@@ -575,8 +638,10 @@ export const useChatStore = create<ChatStore>()(
           }));
         },
         
+        // Replace all messages at once
         updateMessages: (messages) => set({ messages }),
         
+        // Update progress indicator on a specific message
         updateMessageProgress: (messageId, progress, phase) => {
           set((state) => {
             const updatedMessages = state.messages.map((msg) =>
@@ -602,7 +667,14 @@ export const useChatStore = create<ChatStore>()(
           });
         },
         
-        // Workflow methods
+        //=============================================================================
+        // WORKFLOW STATE MANAGEMENT ACTIONS
+        //=============================================================================
+        // These actions directly interact with the workflow system and persistent state
+        // They handle transitions between workflow states and synchronization with the database
+        //=============================================================================
+        
+        // Update the current workflow step with optional metadata
         updateWorkflowStep: async (newStep: WorkflowStep, newMetadata?: Record<string, unknown>) => {
           try {
             // Update local state first for UI responsiveness
@@ -716,22 +788,49 @@ export const useChatStore = create<ChatStore>()(
           }));
         },
         
+        /**
+         * Synchronizes the local store state with the workflow state from the database
+         *
+         * STATE SYNCHRONIZATION RESPONSIBILITIES:
+         * 1. WORKFLOW STATE SYNC: Updates core workflow properties from external source
+         * 2. METADATA MERGING: Preserves existing metadata while adding new fields
+         * 3. TIMESTAMP TRACKING: Maintains proper versioning with timestamps
+         *
+         * This function is the primary bridge between the workflow subsystem
+         * and the UI state management system. It ensures that:
+         * - Workflow state changes from database are properly reflected in UI
+         * - Domain-specific states remain coherent
+         * - State transitions are properly tracked
+         *
+         * @param workflowState The workflow state received from external source (typically database)
+         */
         syncWorkflowState: (workflowState) => {
           // Update the workflow state in the store
-          set((state) => ({
-            ...state,
-            workflow: {
+          set((state) => {
+            // Create updated workflow state object
+            const updatedWorkflowState = {
+              // CORE WORKFLOW PROPERTIES: Essential workflow state information
               currentStep: workflowState.currentStep,
               progress: workflowState.progress,
               phase: workflowState.phase || ProcessingPhase.INITIALIZATION,
               error: workflowState.error,
+              
+              // METADATA HANDLING: Merge existing metadata with new metadata
+              // This preserves domain-specific data while adding new fields
               metadata: {
                 ...(state.workflow.metadata || {}),
                 ...(workflowState.metadata || {})
               },
+              
+              // VERSIONING: Track when this state was last updated
               timestamp: workflowState.timestamp
-            }
-          }));
+            };
+            
+            return {
+              ...state,
+              workflow: updatedWorkflowState
+            };
+          });
         },
         
         subscribeToWorkflowUpdates: () => {
@@ -790,8 +889,15 @@ export const useChatStore = create<ChatStore>()(
           };
         },
         
-        // Verification methods
-        startVerification: async (content, options) => {
+        //=============================================================================
+        // VERIFICATION WORKFLOW ACTIONS
+        //=============================================================================
+        // These actions manage the verification-specific workflow
+        // They handle the process of reviewing and correcting document extractions
+        //=============================================================================
+        
+        // Start verification process with content and optional settings
+        startVerification: async (content: string, options?: VerificationOptions) => {
           try {
             // Update mode and state
             set(state => ({
@@ -1980,7 +2086,14 @@ export const useChatStore = create<ChatStore>()(
           get().resetChat();
         },
         
-        // Research methods
+        //=============================================================================
+        // RESEARCH WORKFLOW ACTIONS
+        //=============================================================================
+        // These actions manage the research-specific workflow
+        // They handle query processing and result presentation
+        //=============================================================================
+        
+        // Perform research on a query with optional parameters
         performResearch: async (query: string, options?: ResearchOptions): Promise<ResearchResult> => {
           try {
             // Update state to indicate research is in progress
