@@ -11,6 +11,7 @@ import { WorkflowErrorContextBuilder } from '../error-context'
 import { workflowRepository } from '../infrastructure/workflow-repository'
 import { workflowStateManager } from '../infrastructure/workflow-state-manager'
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source'
+import { workflowOperations } from '../infrastructure/workflow-operations'
 import { workflowTransactionManager } from '../workflow-transaction-manager'
 import { workflowCoordinator } from '../coordination/workflow-coordinator'
 import { 
@@ -225,6 +226,7 @@ export class WorkflowService {
   
   /**
    * Update workflow progress with optional notification
+   * Now uses WorkflowOperations service
    */
   async updateProgress(
     workflowId: string,
@@ -238,8 +240,7 @@ export class WorkflowService {
         throw new Error('workflowId is required');
       }
       
-      // Use state manager to update progress
-      await workflowStateManager.updateProgress(
+      const result = await workflowOperations.updateProgress(
         workflowId,
         progress,
         phase,
@@ -249,7 +250,7 @@ export class WorkflowService {
         }
       );
       
-      return true;
+      return result.isSuccess();
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to update progress', {
@@ -1120,6 +1121,7 @@ export class WorkflowService {
   
   /**
    * Log a workflow event for audit and event sourcing
+   * Now uses WorkflowOperations service
    */
   async logWorkflowEvent(
     workflowId: string,
@@ -1132,13 +1134,15 @@ export class WorkflowService {
         return null;
       }
       
-      // Delegate to event sourcing service
-      return await workflowEventSourcing.appendEvent(
+      // Delegate to WorkflowOperations service
+      const result = await workflowOperations.logEvent(
         workflowId,
         eventType,
         eventData,
-        actorId
+        { actorId }
       );
+      
+      return result.isSuccess() ? result.value : null;
     } catch (err) {
       // Just log error but don't throw since event logging is non-critical
       this.logger.error('Failed to log workflow event', {
@@ -1578,6 +1582,7 @@ export class WorkflowService {
 
   /**
    * Update workflow state
+   * Now uses WorkflowOperations service for state transitions
    */
   async updateWorkflowState(
     workflowId: string,
@@ -1616,45 +1621,28 @@ export class WorkflowService {
         }
       }
       
-      // Use state manager for transition with proper validation
-      if (useAtomicUpdate && conflictStrategy === 'pessimistic') {
-        await workflowStateManager.transitionState(
+      // Use WorkflowOperations service for transition with proper validation
+      if (useAtomicUpdate && (conflictStrategy === 'pessimistic' || conflictStrategy === 'optimistic')) {
+        const result = await workflowOperations.transitionState(
           workflowId,
           fromStep,
           step,
           {
-            ...metadata,
-            transactionId
-          },
-          {
+            metadata: {
+              ...metadata,
+              transactionId
+            },
             skipValidation,
             forceUpdate,
             expectedTimestamp,
             logEvent: true,
-            transactionId
+            transactionId,
+            conflictStrategy: conflictStrategy as any
           }
         );
         
-        return transactionId;
-      }
-      
-      // Handle conflict resolution for optimistic approach
-      if (useAtomicUpdate && conflictStrategy === 'optimistic') {
-        const result = await this.updateWithConflictResolution(
-          workflowId,
-          step,
-          {
-            ...metadata,
-            transactionId
-          },
-          {
-            expectedTimestamp,
-            strategy: forceUpdate ? 'force' : 'merge'
-          }
-        );
-        
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to update workflow state');
+        if (result.isFailure()) {
+          throw new Error(result.error.message);
         }
         
         return transactionId;

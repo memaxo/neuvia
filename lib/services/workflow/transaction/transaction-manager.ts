@@ -9,6 +9,7 @@
 
 import { workflowRepository } from '../infrastructure/workflow-repository';
 import { workflowEventSourcing } from '../infrastructure/workflow-event-source';
+import { workflowStateManager } from '../infrastructure/workflow-state-manager';
 import { normalizeError } from '@/lib/errors';
 import logger from '@/lib/logger';
 import { Result } from '../error/result';
@@ -121,8 +122,13 @@ export class TransactionManager {
       // Update state if step is provided
       if (options.step) {
         try {
-          await workflowRepository.updateWorkflowState(
+          // Use workflowStateManager to transition state
+          const currentState = await workflowRepository.getWorkflowState(workflowId);
+          const fromStep = currentState?.currentStep || 'idle';
+          
+          await workflowStateManager.transitionState(
             workflowId,
+            fromStep,
             options.step,
             {
               ...options.metadata,
@@ -131,7 +137,8 @@ export class TransactionManager {
               domain: options.domainName
             },
             {
-              conflictStrategy: options.conflictStrategy || 'merge'
+              conflictStrategy: options.conflictStrategy || 'merge',
+              logEvent: false // We'll log the event separately
             }
           );
           
@@ -141,7 +148,8 @@ export class TransactionManager {
             'transaction_started',
             {
               transactionId,
-              step: options.step,
+              fromStep,
+              toStep: options.step,
               timestamp: now,
               metadata: options.metadata || {},
               domain: options.domainName
@@ -233,17 +241,16 @@ export class TransactionManager {
         
         // Update workflow state to error if requested
         if (options.errorStep) {
-          await workflowRepository.updateWorkflowState(
+          // Use workflowStateManager to handle error state
+          await workflowStateManager.handleError(
             workflowId,
+            normalizedError,
             options.errorStep,
             {
-              error: normalizedError.message,
-              errorTimestamp: new Date().toISOString(),
               originalStep: options.step,
               transactionId,
               domain: options.domainName
-            },
-            { forceUpdate: true }
+            }
           );
         }
       } catch (loggingError) {
@@ -378,6 +385,7 @@ export class TransactionManager {
   
   /**
    * Update workflow progress
+   * Now using workflowStateManager
    */
   private async updateProgress(
     workflowId: string,
@@ -386,11 +394,14 @@ export class TransactionManager {
     currentStep?: WorkflowStep
   ): Promise<void> {
     try {
-      await workflowRepository.updateProgress(
+      await workflowStateManager.updateProgress(
         workflowId,
         progress,
         phase,
-        currentStep
+        { 
+          currentStep,
+          notifyUsers: true
+        }
       );
     } catch (error) {
       this.logger.warn('Failed to update progress', {

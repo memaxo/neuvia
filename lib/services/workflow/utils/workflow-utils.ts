@@ -1,7 +1,13 @@
-import type { ProcessingPhase, WorkflowStep } from '@/lib/types/workflow';
+import type { ProcessingPhase, WorkflowStep, DomainOnlyWorkflowStep } from '@/lib/types/workflow';
+import type { Database } from '@/lib/types/database';
 
 /**
- * Format an error message with workflow context
+ * Consolidated Workflow Utilities
+ * This file includes common helper functions and the WorkflowStepMapper class.
+ */
+
+/**
+ * Format an error message with workflow context.
  */
 export function formatWorkflowError(
   message: string,
@@ -16,7 +22,7 @@ export function formatWorkflowError(
 }
 
 /**
- * Calculate overall progress based on multi-stage workflow
+ * Calculate overall progress based on multi-stage workflow.
  */
 export function calculateOverallProgress(
   stages: { weight: number; progress: number }[]
@@ -31,7 +37,7 @@ export function calculateOverallProgress(
 }
 
 /**
- * Safely sanitize workflow data for logging
+ * Safely sanitize workflow data for logging.
  */
 export function sanitizeForLogging(data: unknown): unknown {
   if (data === null || data === undefined) {
@@ -75,7 +81,7 @@ export function sanitizeForLogging(data: unknown): unknown {
 }
 
 /**
- * Get phase label for logging and display
+ * Get a human-readable label for a processing phase.
  */
 export function getPhaseLabel(phase: ProcessingPhase): string {
   switch (phase) {
@@ -117,7 +123,7 @@ export function getPhaseLabel(phase: ProcessingPhase): string {
 }
 
 /**
- * Map a workflow step to a phase (best guess)
+ * Map a workflow step to a default processing phase.
  */
 export function getDefaultPhaseForStep(step: WorkflowStep): ProcessingPhase {
   switch (step) {
@@ -150,14 +156,14 @@ export function getDefaultPhaseForStep(step: WorkflowStep): ProcessingPhase {
 }
 
 /**
- * Generate a unique transaction ID
+ * Generate a unique transaction ID.
  */
 export function generateTransactionId(): string {
   return `tx-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**
- * Check if a value is truly empty (null, undefined, empty string, or empty object/array)
+ * Check if a value is truly empty (null, undefined, empty string, or empty object/array).
  */
 export function isEmpty(value: unknown): boolean {
   if (value === null || value === undefined) {
@@ -177,4 +183,101 @@ export function isEmpty(value: unknown): boolean {
   }
   
   return false;
+}
+
+/**
+ * WorkflowStepMapper provides mappings between domain workflow steps and database workflow steps.
+ */
+export class WorkflowStepMapper {
+  // Map from domain steps to DB steps
+  private static readonly domainToDbMap = new Map<WorkflowStep, Database['public']['Enums']['workflow_step']>([
+    ['idle', 'idle'],
+    ['uploading', 'uploading'],
+    ['extracting', 'extracting'],
+    ['verification', 'verification'],
+    ['report_generation', 'report_generation'],
+    ['complete', 'complete'],
+    ['verification_pending', 'verification_pending'],
+    ['verification_in_progress', 'verification_in_progress'],
+    ['verification_completed', 'verification_completed'],
+    ['verification_failed', 'verification_failed'],
+    ['chat_started', 'chat_started'],
+    ['chat_in_progress', 'chat_in_progress'],
+    ['chat_completed', 'chat_completed'],
+    ['chat_error', 'chat_error'],
+    [DomainOnlyWorkflowStep.ERROR, 'chat_error'],
+    [DomainOnlyWorkflowStep.RESEARCH, 'chat_in_progress'],
+    [DomainOnlyWorkflowStep.REPORT_PRESENTATION, 'report_generation']
+  ]);
+
+  // Domain-specific error step mappings
+  private static readonly domainErrorMap = new Map<string, WorkflowStep>([
+    ['chat', 'chat_error'],
+    ['verification', 'verification_failed'],
+    ['document', DomainOnlyWorkflowStep.ERROR],
+    ['report', DomainOnlyWorkflowStep.ERROR],
+    ['research', DomainOnlyWorkflowStep.ERROR]
+  ]);
+
+  // Map from DB steps to domain steps (inverse mapping)
+  private static readonly dbToDomainMap = new Map<Database['public']['Enums']['workflow_step'], WorkflowStep>(
+    Array.from(WorkflowStepMapper.domainToDbMap.entries()).map(([k, v]) => [v, k])
+  );
+
+  /**
+   * Convert domain workflow step to DB step.
+   */
+  static toDatabaseStep(step: WorkflowStep): Database['public']['Enums']['workflow_step'] {
+    return this.domainToDbMap.get(step) || 'idle';
+  }
+
+  /**
+   * Convert DB step to domain workflow step.
+   */
+  static toDomainStep(dbStep: Database['public']['Enums']['workflow_step']): WorkflowStep {
+    return this.dbToDomainMap.get(dbStep) || 'idle';
+  }
+
+  /**
+   * Get the appropriate domain-specific error step.
+   */
+  static getDomainErrorStep(domain: string): WorkflowStep {
+    const normalizedDomain = domain.toLowerCase();
+    return this.domainErrorMap.get(normalizedDomain) || DomainOnlyWorkflowStep.ERROR;
+  }
+
+  /**
+   * Determine if a step belongs to a specific domain.
+   */
+  static isStepInDomain(step: WorkflowStep, domain: string): boolean {
+    const normalizedDomain = domain.toLowerCase();
+    switch (normalizedDomain) {
+      case 'chat':
+        return step.startsWith('chat_');
+      case 'verification':
+        return step.startsWith('verification_');
+      case 'document':
+        return step === 'uploading' || step === 'extracting';
+      case 'report':
+        return step === 'report_generation' || step === DomainOnlyWorkflowStep.REPORT_PRESENTATION;
+      case 'research':
+        return step === DomainOnlyWorkflowStep.RESEARCH;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Get the domain name from a workflow step.
+   */
+  static getDomainFromStep(step: WorkflowStep): string | null {
+    if (step.startsWith('chat_')) return 'chat';
+    if (step.startsWith('verification_')) return 'verification';
+    if (step === 'uploading' || step === 'extracting') return 'document';
+    if (step === 'report_generation' || step === DomainOnlyWorkflowStep.REPORT_PRESENTATION) return 'report';
+    if (step === DomainOnlyWorkflowStep.RESEARCH) return 'research';
+    if (step === DomainOnlyWorkflowStep.ERROR) return null;
+    if (step === 'idle' || step === 'complete') return null;
+    return null;
+  }
 }
