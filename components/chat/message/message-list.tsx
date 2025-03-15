@@ -3,7 +3,7 @@
 import type { Message } from '@/lib/chat/types'
 import { useEffect, useRef } from 'react'
 import { Message as ChatMessage } from './message'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 
 // Props now optional since we can use store directly
 interface ChatMessageListProps {

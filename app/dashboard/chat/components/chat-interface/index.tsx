@@ -8,7 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 // Internal components
 import { useToast } from '@/components/ui/use-toast'
-import { useChatStore, useErrorHandler } from '@/stores/chat-store'
+import { useChatStore, useErrorHandler } from '@/lib/stores/chat-store'
 import { WorkflowStatusDisplay } from '@/components/chat/workflow/workflow-status-display'
 import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
 import { UnifiedDocumentUploader } from '@/components/upload/unified-document-uploader'

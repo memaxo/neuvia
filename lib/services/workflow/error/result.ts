@@ -328,6 +328,22 @@ export class Result<T> {
       };
     }
   }
+  
+  /**
+   * Handle this result with the provided handler function if it's a failure
+   * This allows for integration with the unified error handler
+   *
+   * @param handler Function that handles the error
+   * @returns This result (for chaining)
+   */
+  public async handleErrorWith(
+    handler: (error: ResultError) => Promise<void>
+  ): Promise<Result<T>> {
+    if (this.isFailure() && this._error) {
+      await handler(this._error);
+    }
+    return this;
+  }
 }
 
 /**

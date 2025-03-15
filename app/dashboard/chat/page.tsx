@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation'
 import { Suspense } from 'react'
 
-import { ChatProvider } from '@/stores/chat-store'
+import { ChatProvider } from '@/lib/stores/chat-store'
 
 import { ChatErrorBoundary } from './components/chat-error-boundary'
 import { ChatInterface } from './components/chat-interface'

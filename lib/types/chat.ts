@@ -1,3 +1,4 @@
+// lib/types/chat.ts
 /**
  * @fileoverview Canonical chat and message types for the application
  * 
@@ -104,18 +105,19 @@ export interface Message {
 }
 
 /**
- * Metadata for chat messages with comprehensive typing
+ * Metadata for chat messages with comprehensive typing.
  * 
+ * Uniform naming convention: use "messageType" to indicate the message's type.
+ *
  * @example
- * ```ts
  * // Regular chat message metadata
  * const metadata: ChatMessageMetadata = {
- *   type: ChatMessageType.CHAT
+ *   messageType: ChatMessageType.CHAT
  * };
  * 
  * // Verification message metadata
  * const verificationMetadata: ChatMessageMetadata = {
- *   type: ChatMessageType.VERIFICATION,
+ *   messageType: ChatMessageType.VERIFICATION,
  *   verificationMetadata: {
  *     verificationStatus: VerificationStatusType.PENDING,
  *     originalSummaryId: '123',
@@ -124,11 +126,10 @@ export interface Message {
  *     corrections: []
  *   }
  * };
- * ```
  */
 export interface ChatMessageMetadata {
   /** Message type for specialized handling */
-  type: ChatMessageType;
+  messageType: ChatMessageType;
   
   /** Associated document ID if relevant */
   documentId?: UUID;
@@ -165,7 +166,7 @@ export interface ChatMessageMetadata {
 }
 
 /**
- * Full chat message interface with metadata
+ * Full chat message interface with metadata.
  */
 export interface ChatMessage extends Message {
   /** Message type to differentiate handling */
@@ -176,7 +177,7 @@ export interface ChatMessage extends Message {
 }
 
 /**
- * Serialized chat message for API operations
+ * Serialized chat message for API operations.
  */
 export interface SerializedChatMessage {
   /** Unique message identifier */
@@ -203,7 +204,7 @@ export interface SerializedChatMessage {
 // ==========================================================================
 
 /**
- * Verification state within a chat session
+ * Verification state within a chat session.
  */
 export interface VerificationState {
   /** Whether verification is active */
@@ -220,7 +221,7 @@ export interface VerificationState {
 }
 
 /**
- * Workflow state within a chat session
+ * Workflow state within a chat session.
  */
 export interface WorkflowState {
   /** Current workflow step */
@@ -246,7 +247,7 @@ export interface WorkflowState {
 }
 
 /**
- * Chat session state for managing ongoing conversations
+ * Chat session state for managing ongoing conversations.
  */
 export interface ChatSessionState {
   /** Unique chat session identifier */
@@ -278,7 +279,7 @@ export interface ChatSessionState {
 }
 
 /**
- * Chat state management actions
+ * Chat state management actions.
  */
 export type ChatAction =
   | { type: 'ADD_MESSAGE'; message: ChatMessage }
@@ -289,7 +290,7 @@ export type ChatAction =
   | { type: 'RESET_STATE' };
 
 /**
- * Chat state for global state management
+ * Chat state for global state management.
  */
 export interface ChatState {
   /** All chat sessions */
@@ -310,7 +311,7 @@ export interface ChatState {
 // ==========================================================================
 
 /**
- * Chat context methods for React context
+ * Chat context methods for React context.
  */
 export interface ChatContextMethods {
   /** Add a message to the current chat */
@@ -333,7 +334,7 @@ export interface ChatContextMethods {
 }
 
 /**
- * Chat context value for React context
+ * Chat context value for React context.
  */
 export interface ChatContextValue {
   /** Current chat state */
@@ -348,7 +349,7 @@ export interface ChatContextValue {
 // ==========================================================================
 
 /**
- * Type guard to check if a message is a chat message
+ * Type guard to check if a message is a chat message.
  */
 export function isChatMessage(message: unknown): message is ChatMessage {
   if (!message || typeof message !== 'object') return false;
@@ -363,7 +364,7 @@ export function isChatMessage(message: unknown): message is ChatMessage {
 }
 
 /**
- * Type guard for verifying a specific message type
+ * Type guard for verifying a specific message type.
  */
 export function isMessageOfType<T extends ChatMessageType>(
   message: ChatMessage,
@@ -373,7 +374,7 @@ export function isMessageOfType<T extends ChatMessageType>(
 }
 
 /**
- * Check if a message has verification metadata
+ * Check if a message has verification metadata.
  */
 export function hasVerificationMetadata(
   message: ChatMessage
@@ -385,125 +386,120 @@ export function hasVerificationMetadata(
 }
 
 /**
- * Create a user message
+ * Create a message with standardized ID generation and proper metadata.
+ *
+ * This is the centralized function that all message creation in the app should use.
+ * All message factory functions ultimately call this method to ensure consistency.
+ *
+ * @param role Message role (user, assistant, system)
+ * @param content Message content
+ * @param type Message type for categorization
+ * @param additionalMetadata Optional additional metadata
+ * @returns A properly formatted ChatMessage
+ */
+export function createMessage(
+  role: 'user' | 'assistant' | 'system',
+  content: string,
+  type: ChatMessageType,
+  additionalMetadata?: Partial<ChatMessageMetadata>
+): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    type,
+    metadata: {
+      messageType: type,
+      ...(additionalMetadata || {})
+    }
+  };
+}
+
+/**
+ * Create a user message.
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns A properly formatted user message
  */
 export function createUserMessage(
   content: string,
   metadata?: Partial<ChatMessageMetadata>
 ): ChatMessage {
-  return {
-    id: `user-${Date.now()}`,
-    role: 'user',
-    content,
-    type: ChatMessageType.CHAT,
-    createdAt: new Date().toISOString(),
-    ...(metadata ? { metadata: { ...metadata, type: ChatMessageType.CHAT } } : {})
-  };
+  return createMessage('user', content, ChatMessageType.CHAT, metadata);
 }
 
 /**
- * Create an assistant message
+ * Create an assistant message.
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns A properly formatted assistant message
  */
 export function createAssistantMessage(
   content: string,
   metadata?: Partial<ChatMessageMetadata>
 ): ChatMessage {
-  return {
-    id: `assistant-${Date.now()}`,
-    role: 'assistant',
-    content,
-    type: ChatMessageType.CHAT,
-    createdAt: new Date().toISOString(),
-    ...(metadata ? { metadata: { ...metadata, type: ChatMessageType.CHAT } } : {})
-  };
+  return createMessage('assistant', content, ChatMessageType.CHAT, metadata);
 }
 
 /**
- * Create a system message
+ * Create a system message.
+ * @param content Message content
+ * @param metadata Optional message metadata
+ * @returns A properly formatted system message
  */
 export function createSystemMessage(
   content: string,
   metadata?: Partial<ChatMessageMetadata>
 ): ChatMessage {
-  return {
-    id: `system-${Date.now()}`,
-    role: 'system',
-    content,
-    type: ChatMessageType.SYSTEM,
-    createdAt: new Date().toISOString(),
-    ...(metadata ? { metadata: { ...metadata, type: ChatMessageType.SYSTEM } } : {})
-  };
+  return createMessage('system', content, ChatMessageType.SYSTEM, metadata);
 }
 
 /**
- * Create a verification message
+ * Create a verification message.
  */
 export function createVerificationMessage(
   content: string,
   verificationMetadata: VerificationMetadata,
   items?: VerificationItem[]
 ): ChatMessage {
-  return {
-    id: `verification-${Date.now()}`,
-    role: 'assistant',
-    content,
-    type: ChatMessageType.VERIFICATION,
-    createdAt: new Date().toISOString(),
-    metadata: {
-      type: ChatMessageType.VERIFICATION,
-      verificationMetadata,
-      ...(items ? { verificationItems: items } : {})
-    }
-  };
+  return createMessage('assistant', content, ChatMessageType.VERIFICATION, {
+    verificationMetadata,
+    ...(items ? { verificationItems: items } : {})
+  });
 }
 
 /**
- * Create an error message
+ * Create an error message.
  */
 export function createErrorMessage(
   content: string,
   error?: Error | string
 ): ChatMessage {
-  return {
-    id: `error-${Date.now()}`,
-    role: 'system',
-    content,
-    type: ChatMessageType.ERROR,
-    createdAt: new Date().toISOString(),
-    metadata: {
-      type: ChatMessageType.ERROR,
-      error: error instanceof Error ? error.message : error
-    }
-  };
+  return createMessage('system', content, ChatMessageType.ERROR, {
+    error: error instanceof Error ? error.message : error
+  });
 }
 
 /**
- * Create a progress message
+ * Create a progress message.
  */
 export function createProgressMessage(
   content: string,
   progress: number,
   phase: ProcessingPhase
 ): ChatMessage {
-  return {
-    id: `progress-${Date.now()}`,
-    role: 'system',
-    content,
-    type: ChatMessageType.PROGRESS,
-    createdAt: new Date().toISOString(),
-    metadata: {
-      type: ChatMessageType.PROGRESS,
-      progress: {
-        value: progress,
-        phase,
-        startedAt: new Date().toISOString()
-      }
+  return createMessage('system', content, ChatMessageType.PROGRESS, {
+    progress: {
+      value: progress,
+      phase,
+      startedAt: new Date().toISOString()
     }
-  };
+  });
 }
 
 /**
- * Factory function to create a type guard for specific message types
+ * Factory function to create a type guard for specific message types.
  */
 export function createMessageTypeGuard<T extends ChatMessageType>(type: T) {
   return (message: ChatMessage): message is ChatMessage & { type: T } => {

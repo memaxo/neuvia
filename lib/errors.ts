@@ -116,26 +116,72 @@ export class SystemError extends ApplicationError {
 
 /**
  * Helper function to safely handle unknown errors and convert to ApplicationError
+ *
+ * This function centralizes error normalization to ensure consistent error handling
+ * across the application. It converts any error type into an ApplicationError with
+ * standardized properties.
  */
 export function normalizeError(error: unknown): ApplicationError {
+  // If already an ApplicationError, return as is
   if (error instanceof ApplicationError) {
-    return error
+    return error;
   }
 
+  // Check if it's a ResultError (from Result pattern)
+  if (typeof error === 'object' && error !== null &&
+      'message' in error && 'code' in error) {
+    const resultError = error as { message: string; code: string; details?: Record<string, unknown> };
+    return new ApplicationError({
+      message: resultError.message,
+      code: resultError.code,
+      data: resultError.details || { originalError: error }
+    });
+  }
+
+  // Handle standard Error objects
   if (error instanceof Error) {
     return new ApplicationError({
       message: error.message,
       cause: error,
       code: (error as any).code || 'UNKNOWN_ERROR',
-      data: { originalStack: error.stack }
-    })
+      data: {
+        originalStack: error.stack,
+        originalName: error.name,
+        // Capture any custom properties
+        ...(Object.entries(error).reduce((acc, [key, value]) => {
+          if (key !== 'message' && key !== 'stack' && key !== 'name') {
+            acc[key] = value;
+          }
+          return acc;
+        }, {} as Record<string, unknown>))
+      }
+    });
   }
 
+  // Handle primitive types and other objects
   return new ApplicationError({
     message: String(error),
     code: 'UNKNOWN_ERROR',
     data: { originalError: error }
-  })
+  });
+}
+
+/**
+ * Convert an ApplicationError to a standard ResultError format
+ * This allows bridging between the exception and Result patterns
+ */
+export function errorToResultError(error: unknown): {
+  message: string;
+  code: string;
+  details?: Record<string, unknown>
+} {
+  const normalized = normalizeError(error);
+  
+  return {
+    message: normalized.message,
+    code: normalized.code || 'UNKNOWN_ERROR',
+    details: normalized.data
+  };
 }
 
 /**

@@ -47,7 +47,7 @@ import {
 
 import { UnifiedDocumentUploader } from '@/components/upload/unified-document-uploader'
 import { useDocumentUpload, useDocumentProcess } from '@/lib/api/client/hooks'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 
 // Type definitions - since the imported types may not be available
 type DocumentCategory =

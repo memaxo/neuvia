@@ -10,7 +10,7 @@
  * - ErrorCategorizer: Determines the category of an error
  * - ErrorRecovery: Strategies for recovering from different error types
  * - ErrorNotifier: Infrastructure for notifying about errors and recovery attempts
- * - UnifiedErrorHandler: The main error handling service
+ * - errorHandler: The main error handling service
  */
 
 import { normalizeError } from '@/lib/errors';
@@ -1026,8 +1026,8 @@ class ErrorRecovery {
 /**
  * The unified error handler service
  */
-export class UnifiedErrorHandler {
-  private readonly logger = logger.withMetadata({ module: 'UnifiedErrorHandler' });
+export class errorHandler {
+  private readonly logger = logger.withMetadata({ module: 'errorHandler' });
   private readonly recovery: ErrorRecovery;
   private notifier: ((error: unknown, context: ErrorContext) => Promise<void>) | null = null;
 
@@ -1040,6 +1040,25 @@ export class UnifiedErrorHandler {
    */
   public setNotifier(notifier: (error: unknown, context: ErrorContext) => Promise<void>): void {
     this.notifier = notifier;
+  }
+
+  /**
+   * Directly convert a Result failure to an error context
+   * This provides a bridge between the Result pattern and the unified error handler
+   */
+  public createContextFromResult(
+    result: ResultError,
+    workflowStep?: WorkflowStep,
+    additionalContext: Partial<ErrorContext> = {}
+  ): ErrorContext {
+    return {
+      errorMessage: result.message,
+      errorCode: result.code,
+      workflowStep: workflowStep || DomainOnlyWorkflowStep.ERROR,
+      timestamp: new Date().toISOString(),
+      details: result.details || {},
+      ...additionalContext
+    };
   }
 
   /**
@@ -1256,4 +1275,48 @@ export class UnifiedErrorHandler {
 }
 
 // Export singleton instance
-export const unifiedErrorHandler = new UnifiedErrorHandler();
+export const errorHandler = new errorHandler();
+
+/**
+ * Utility function to handle a Result failure with the unified error handler
+ *
+ * @param result The Result object that failed
+ * @param workflowId The workflow ID associated with the operation
+ * @param currentStep The current workflow step
+ * @param context Additional error context
+ * @returns Promise resolving to the original error result for chaining
+ */
+export async function handleResultFailure<T>(
+  result: Result<T>,
+  workflowId?: string,
+  currentStep?: WorkflowStep,
+  context: Partial<ErrorContext> = {}
+): Promise<Result<T>> {
+  if (result.isSuccess()) {
+    return result;
+  }
+
+  // Create error context from Result failure
+  const errorContext: ErrorContext = {
+    workflowId,
+    workflowStep: currentStep,
+    errorMessage: result.error.message,
+    errorCode: result.error.code,
+    timestamp: new Date().toISOString(),
+    ...context
+  };
+
+  // Handle the error through unified error handler
+  await errorHandler.handleError(
+    result.error,
+    errorContext,
+    {
+      log: true,
+      updateWorkflowState: !!workflowId,
+      notify: true
+    }
+  );
+
+  // Return the original result for chaining
+  return result;
+}

@@ -87,8 +87,12 @@ export function getPhaseLabel(phase: ProcessingPhase): string {
   switch (phase) {
     case ProcessingPhase.UPLOAD:
       return 'Uploading';
+    case ProcessingPhase.UPLOADING:
+      return 'Uploading';
     case ProcessingPhase.EXTRACTION:
       return 'Extracting Content';
+    case ProcessingPhase.EXTRACTION_COMPLETED:
+      return 'Extraction Complete';
     case ProcessingPhase.VERIFICATION:
       return 'Verifying';
     case ProcessingPhase.VERIFICATION_PENDING:
@@ -109,6 +113,8 @@ export function getPhaseLabel(phase: ProcessingPhase): string {
       return 'Generating Report';
     case ProcessingPhase.REPORT_FORMATTING:
       return 'Formatting Report';
+    case ProcessingPhase.REPORT_PREVIEW:
+      return 'Previewing Report';
     case ProcessingPhase.RESEARCH:
       return 'Researching';
     case ProcessingPhase.CHAT_PROCESSING:
@@ -117,6 +123,10 @@ export function getPhaseLabel(phase: ProcessingPhase): string {
       return 'Completing';
     case ProcessingPhase.CORRECTION:
       return 'Processing Correction';
+    case ProcessingPhase.ANALYSIS:
+      return 'Analyzing';
+    case ProcessingPhase.ERROR:
+      return 'Error';
     default:
       return 'Processing';
   }
@@ -127,29 +137,35 @@ export function getPhaseLabel(phase: ProcessingPhase): string {
  */
 export function getDefaultPhaseForStep(step: WorkflowStep): ProcessingPhase {
   switch (step) {
-    case 'uploading':
-      return ProcessingPhase.UPLOAD;
-    case 'extracting':
+    case WorkflowSteps.UPLOADING:
+      return ProcessingPhase.UPLOADING;
+    case WorkflowSteps.EXTRACTING:
       return ProcessingPhase.EXTRACTION;
-    case 'verification':
-    case 'verification_pending':
+    case WorkflowSteps.VERIFICATION:
+    case WorkflowSteps.VERIFICATION_PENDING:
       return ProcessingPhase.VERIFICATION_PENDING;
-    case 'verification_in_progress':
+    case WorkflowSteps.VERIFICATION_IN_PROGRESS:
       return ProcessingPhase.VERIFICATION_PROCESSING;
-    case 'verification_completed':
+    case WorkflowSteps.VERIFICATION_COMPLETED:
       return ProcessingPhase.VERIFICATION_COMPLETION;
-    case 'verification_failed':
+    case WorkflowSteps.VERIFICATION_FAILED:
       return ProcessingPhase.VERIFICATION_REJECTION;
-    case 'report_generation':
+    case WorkflowSteps.REPORT_GENERATION:
       return ProcessingPhase.REPORT_GENERATION;
-    case 'chat_started':
-    case 'chat_in_progress':
+    case WorkflowSteps.CHAT_STARTED:
+    case WorkflowSteps.CHAT_IN_PROGRESS:
       return ProcessingPhase.CHAT_PROCESSING;
-    case 'complete':
+    case WorkflowSteps.COMPLETE:
       return ProcessingPhase.COMPLETION;
-    case 'error':
-    case 'chat_error':
-      return ProcessingPhase.PROCESSING;
+    case WorkflowSteps.ERROR:
+    case WorkflowSteps.CHAT_ERROR:
+      return ProcessingPhase.ERROR;
+    case WorkflowSteps.DOCUMENT_ANALYSIS:
+      return ProcessingPhase.ANALYSIS;
+    case WorkflowSteps.REPORT_PRESENTATION:
+      return ProcessingPhase.REPORT_PREVIEW;
+    case WorkflowSteps.RESEARCH:
+      return ProcessingPhase.RESEARCH;
     default:
       return ProcessingPhase.PROCESSING;
   }
@@ -191,40 +207,47 @@ export function isEmpty(value: unknown): boolean {
 export class WorkflowStepMapper {
   // Map from domain steps to DB steps
   private static readonly domainToDbMap = new Map<WorkflowStep, Database['public']['Enums']['workflow_step']>([
-    ['idle', 'idle'],
-    ['uploading', 'uploading'],
-    ['extracting', 'extracting'],
-    ['verification', 'verification'],
-    ['report_generation', 'report_generation'],
-    ['complete', 'complete'],
-    ['verification_pending', 'verification_pending'],
-    ['verification_in_progress', 'verification_in_progress'],
-    ['verification_completed', 'verification_completed'],
-    ['verification_failed', 'verification_failed'],
-    ['chat_started', 'chat_started'],
-    ['chat_in_progress', 'chat_in_progress'],
-    ['chat_completed', 'chat_completed'],
-    ['chat_error', 'chat_error'],
-    [DomainOnlyWorkflowStep.ERROR, 'chat_error'],
-    [DomainOnlyWorkflowStep.RESEARCH, 'chat_in_progress'],
-    [DomainOnlyWorkflowStep.REPORT_PRESENTATION, 'report_generation'],
-    [DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS, 'document_analysis'],
-    [DomainOnlyWorkflowStep.DOCUMENT_FORMATTING, 'document_formatting'],
-    [DomainOnlyWorkflowStep.DOCUMENT_INDEXING, 'document_indexing'],
-    [DomainOnlyWorkflowStep.DOCUMENT_PREVIEW, 'document_preview'],
-    [DomainOnlyWorkflowStep.VERIFICATION_CORRECTION, 'verification_correction'],
-    [DomainOnlyWorkflowStep.VERIFICATION_REVIEW, 'verification_review'],
-    [DomainOnlyWorkflowStep.RECOVERABLE_ERROR, 'recoverable_error'],
-    [DomainOnlyWorkflowStep.PERMANENT_ERROR, 'permanent_error']
-]);
+    // Core workflow steps (DB-backed)
+    [WorkflowSteps.IDLE, 'idle'],
+    [WorkflowSteps.UPLOADING, 'uploading'],
+    [WorkflowSteps.EXTRACTING, 'extracting'],
+    [WorkflowSteps.VERIFICATION, 'verification'],
+    [WorkflowSteps.REPORT_GENERATION, 'report_generation'],
+    [WorkflowSteps.COMPLETE, 'complete'],
+    
+    // Verification-specific steps (DB-backed)
+    [WorkflowSteps.VERIFICATION_PENDING, 'verification_pending'],
+    [WorkflowSteps.VERIFICATION_IN_PROGRESS, 'verification_in_progress'],
+    [WorkflowSteps.VERIFICATION_COMPLETED, 'verification_completed'],
+    [WorkflowSteps.VERIFICATION_FAILED, 'verification_failed'],
+    
+    // Chat-specific steps (DB-backed)
+    [WorkflowSteps.CHAT_STARTED, 'chat_started'],
+    [WorkflowSteps.CHAT_IN_PROGRESS, 'chat_in_progress'],
+    [WorkflowSteps.CHAT_COMPLETED, 'chat_completed'],
+    [WorkflowSteps.CHAT_ERROR, 'chat_error'],
+    
+    // Domain-only steps (mapped to appropriate DB steps)
+    [WorkflowSteps.ERROR, 'chat_error'],
+    [WorkflowSteps.RESEARCH, 'chat_in_progress'],
+    [WorkflowSteps.REPORT_PRESENTATION, 'report_generation'],
+    [WorkflowSteps.DOCUMENT_ANALYSIS, 'document_analysis'],
+    [WorkflowSteps.DOCUMENT_FORMATTING, 'document_formatting'],
+    [WorkflowSteps.DOCUMENT_INDEXING, 'document_indexing'],
+    [WorkflowSteps.DOCUMENT_PREVIEW, 'document_preview'],
+    [WorkflowSteps.VERIFICATION_CORRECTION, 'verification_correction'],
+    [WorkflowSteps.VERIFICATION_REVIEW, 'verification_review'],
+    [WorkflowSteps.RECOVERABLE_ERROR, 'recoverable_error'],
+    [WorkflowSteps.PERMANENT_ERROR, 'permanent_error']
+  ]);
 
   // Domain-specific error step mappings
   private static readonly domainErrorMap = new Map<string, WorkflowStep>([
-    ['chat', 'chat_error'],
-    ['verification', 'verification_failed'],
-    ['document', DomainOnlyWorkflowStep.ERROR],
-    ['report', DomainOnlyWorkflowStep.ERROR],
-    ['research', DomainOnlyWorkflowStep.ERROR]
+    ['chat', WorkflowSteps.CHAT_ERROR],
+    ['verification', WorkflowSteps.VERIFICATION_FAILED],
+    ['document', WorkflowSteps.ERROR],
+    ['report', WorkflowSteps.ERROR],
+    ['research', WorkflowSteps.ERROR]
   ]);
 
   // Map from DB steps to domain steps (inverse mapping)
@@ -243,7 +266,7 @@ export class WorkflowStepMapper {
    * Convert DB step to domain workflow step.
    */
   static toDomainStep(dbStep: Database['public']['Enums']['workflow_step']): WorkflowStep {
-    return this.dbToDomainMap.get(dbStep) || 'idle';
+    return this.dbToDomainMap.get(dbStep) || WorkflowSteps.IDLE;
   }
 
   /**
@@ -251,7 +274,7 @@ export class WorkflowStepMapper {
    */
   static getDomainErrorStep(domain: string): WorkflowStep {
     const normalizedDomain = domain.toLowerCase();
-    return this.domainErrorMap.get(normalizedDomain) || DomainOnlyWorkflowStep.ERROR;
+    return this.domainErrorMap.get(normalizedDomain) || WorkflowSteps.ERROR;
   }
 
   /**
@@ -265,11 +288,11 @@ export class WorkflowStepMapper {
       case 'verification':
         return step.startsWith('verification_');
       case 'document':
-        return step === 'uploading' || step === 'extracting';
+        return step === WorkflowSteps.UPLOADING || step === WorkflowSteps.EXTRACTING;
       case 'report':
-        return step === 'report_generation' || step === DomainOnlyWorkflowStep.REPORT_PRESENTATION;
+        return step === WorkflowSteps.REPORT_GENERATION || step === WorkflowSteps.REPORT_PRESENTATION;
       case 'research':
-        return step === DomainOnlyWorkflowStep.RESEARCH;
+        return step === WorkflowSteps.RESEARCH;
       default:
         return false;
     }
@@ -281,11 +304,11 @@ export class WorkflowStepMapper {
   static getDomainFromStep(step: WorkflowStep): string | null {
     if (step.startsWith('chat_')) return 'chat';
     if (step.startsWith('verification_')) return 'verification';
-    if (step === 'uploading' || step === 'extracting') return 'document';
-    if (step === 'report_generation' || step === DomainOnlyWorkflowStep.REPORT_PRESENTATION) return 'report';
-    if (step === DomainOnlyWorkflowStep.RESEARCH) return 'research';
-    if (step === DomainOnlyWorkflowStep.ERROR) return null;
-    if (step === 'idle' || step === 'complete') return null;
+    if (step === WorkflowSteps.UPLOADING || step === WorkflowSteps.EXTRACTING) return 'document';
+    if (step === WorkflowSteps.REPORT_GENERATION || step === WorkflowSteps.REPORT_PRESENTATION) return 'report';
+    if (step === WorkflowSteps.RESEARCH) return 'research';
+    if (step === WorkflowSteps.ERROR) return null;
+    if (step === WorkflowSteps.IDLE || step === WorkflowSteps.COMPLETE) return null;
     return null;
   }
 }

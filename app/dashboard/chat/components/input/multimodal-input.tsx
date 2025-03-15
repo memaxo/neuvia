@@ -1,7 +1,7 @@
 'use client'
 
 import { type Attachment, ChatInput } from '@/components/chat/input/ChatInput'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import { useState } from 'react'
 
 export function MultimodalInput() {

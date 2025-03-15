@@ -8,41 +8,58 @@ import type { VerificationOptions } from '@/lib/processing/types/verification'
 import type { WorkflowStep } from '@/lib/workflow/types'
 
 /**
- * Type-safe action creators for chat actions
+ * Type-safe action creators for chat actions.
+ *
+ * All action creators follow a consistent structure:
+ * {
+ *   type: string,
+ *   payload: { data: { ... } },
+ *   meta: { errorCode?: string }
+ * }
+ *
+ * Error codes follow the same naming conventions as in the error modules.
  */
 export const chatActions = {
   initializeChat: (chatId: string): ChatAction => ({
     type: 'INITIALIZE_CHAT',
-    payload: { chatId },
+    payload: { data: { chatId } },
+    meta: {}
   }),
 
   resetChat: (): ChatAction => ({
     type: 'RESET_CHAT',
+    payload: { data: {} },
+    meta: {}
   }),
 
   setLoading: (isLoading: boolean): ChatAction => ({
     type: 'SET_LOADING',
-    payload: { isLoading },
+    payload: { data: { isLoading } },
+    meta: {}
   }),
 
-  setError: (error: string | null): ChatAction => ({
+  setError: (error: string | null, errorCode?: string): ChatAction => ({
     type: 'SET_ERROR',
-    payload: { error },
+    payload: { data: { error } },
+    meta: { errorCode: errorCode || '' }
   }),
 
   addMessage: (message: Message | Omit<Message, 'id'>): ChatAction => ({
     type: 'ADD_MESSAGE',
-    payload: { message },
+    payload: { data: { message } },
+    meta: {}
   }),
 
   updateMessages: (messages: Message[]): ChatAction => ({
     type: 'UPDATE_MESSAGES',
-    payload: { messages },
+    payload: { data: { messages } },
+    meta: {}
   }),
 
   setMode: (mode: ChatMode): ChatAction => ({
     type: 'SET_MODE',
-    payload: { mode },
+    payload: { data: { mode } },
+    meta: {}
   }),
 
   startVerification: (
@@ -50,27 +67,32 @@ export const chatActions = {
     options?: VerificationOptions
   ): ChatAction => ({
     type: 'START_VERIFICATION',
-    payload: { content, options },
+    payload: { data: { content, options } },
+    meta: {}
   }),
 
   submitCorrection: (correction: string): ChatAction => ({
     type: 'SUBMIT_CORRECTION',
-    payload: { correction },
+    payload: { data: { correction } },
+    meta: {}
   }),
 
   completeVerification: (isApproved: boolean): ChatAction => ({
     type: 'COMPLETE_VERIFICATION',
-    payload: { isApproved },
+    payload: { data: { isApproved } },
+    meta: {}
   }),
 
   startReportGeneration: (reportOptions?: ReportOptions): ChatAction => ({
     type: 'START_REPORT_GENERATION',
-    payload: { reportOptions },
+    payload: { data: { reportOptions } },
+    meta: {}
   }),
 
   completeReportGeneration: (report: any): ChatAction => ({
     type: 'COMPLETE_REPORT_GENERATION',
-    payload: { report },
+    payload: { data: { report } },
+    meta: {}
   }),
 
   updateProgress: (
@@ -79,11 +101,13 @@ export const chatActions = {
     phase: string
   ): ChatAction => ({
     type: 'UPDATE_PROGRESS',
-    payload: { messageId, progress, phase },
+    payload: { data: { messageId, progress, phase } },
+    meta: {}
   }),
 
   updateWorkflowStep: (step: WorkflowStep): ChatAction => ({
     type: 'UPDATE_WORKFLOW_STEP',
-    payload: { step },
+    payload: { data: { step } },
+    meta: {}
   }),
 }

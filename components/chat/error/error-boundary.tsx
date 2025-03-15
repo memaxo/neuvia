@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import { workflowErrorHandler, useWorkflowErrorHandler } from '@/lib/errors/workflow-error-handler'
 import type { WorkflowStep } from '@/lib/workflow/types'
 import { apiClient } from '@/lib/api/client/api-client'

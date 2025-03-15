@@ -81,7 +81,7 @@ export class WorkflowManager {
 
       // Map DB data to domain model
       return Result.success({
-        currentStep: data.current_step as WorkflowStep,
+        currentStep: WorkflowStepMapper.toDomainStep(data.current_step),
         progress: typeof data.metadata?.progress === 'number' ? data.metadata.progress : 0,
         phase: typeof data.metadata?.phase === 'string'
           ? data.metadata.phase as ProcessingPhase
@@ -356,7 +356,7 @@ export class WorkflowManager {
       const { data, error } = await this.supabase
         .from('workflow_states')
         .update({
-          current_step: toStep,
+          current_step: WorkflowStepMapper.toDatabaseStep(toStep),
           metadata: enrichedMetadata,
           updated_at: now,
         })

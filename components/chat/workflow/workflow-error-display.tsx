@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useMemo } from 'react'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import { 
   AlertCircle, 
   RefreshCw, 

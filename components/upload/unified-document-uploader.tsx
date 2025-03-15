@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, CheckCircle, FileText, X } from 'lucide-react'
 import React, { useCallback, useState, useEffect } from 'react'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 
 // Import workflow components
 import { WorkflowProgressTracker } from '@/components/chat/workflow/workflow-progress-tracker'

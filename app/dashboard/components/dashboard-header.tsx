@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { WorkflowIndicator } from '@/components/chat/workflow/workflow-indicator'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 
 import { NotificationCenter } from './notification-center'
 

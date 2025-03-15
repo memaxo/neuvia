@@ -1,6 +1,6 @@
 'use client'
 
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { useMemo, useEffect, useState } from 'react'

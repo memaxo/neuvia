@@ -122,10 +122,28 @@ export function useBaseWorkflow(options: UseBaseWorkflowOptions = {}): UseBaseWo
   // REALTIME SUBSCRIPTION: Keeps local state in sync with database
   const [subscriptionChannel, setSubscriptionChannel] = useState<RealtimeChannel | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
-
-  // Our error handler
-  const errorHandler = useWorkflowErrorHandler()
+// Handle workflow error
+const handleError = useCallback((error: Error | string | ResultError, options: ErrorHandlerOptions = {}) => {
+  let errorMessage: string;
+  let errorCode: string = 'UNKNOWN_ERROR';
+  let errorDetails: Record<string, unknown> = {};
+  
+  // Handle different error types
+  if (typeof error === 'string') {
+    errorMessage = error;
+  } else if (isResultError(error)) {
+    // It's a ResultError from the Result pattern
+    errorMessage = error.message;
+    errorCode = error.code;
+    errorDetails = error.details || {};
+  } else {
+    // It's a regular Error object
+    errorMessage = error.message;
+    errorCode = (error as any).code || 'UNKNOWN_ERROR';
+    errorDetails = { originalError: error };
+  }
+  
+  const { preserveState = false } = options;
 
   /**
    * Load or create the workflow row in DB, then set local state.

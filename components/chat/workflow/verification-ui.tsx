@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import React, { useCallback } from 'react'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'

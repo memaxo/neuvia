@@ -19,12 +19,18 @@ import type { Database } from '@/lib/types/database'
 /**
  * DB-defined workflow steps from the Database schema.
  * These match `Database['public']['Enums']['workflow_step']`.
+ *
+ * IMPORTANT: When adding new steps to the database enum, they must be added here
+ * to maintain consistency across the system.
  */
 export type DbWorkflowStep = Database['public']['Enums']['workflow_step']
 
 /**
  * Additional domain-only workflow steps not stored in the DB enum.
  * Use these for app-level logic that doesn't map directly to the DB step enum.
+ *
+ * These steps are used only in application logic and are mapped to DB steps
+ * when persisting to the database.
  */
 export enum DomainOnlyWorkflowStep {
   // Report presentation step
@@ -53,28 +59,152 @@ export enum DomainOnlyWorkflowStep {
 }
 
 /**
- * A union of DB-backed steps and any domain-only steps that do not appear in the DB enum.
- * Use `toDbWorkflowStep(...)` and `fromDbWorkflowStep(...)` to safely convert
- * between domain steps and DB enum values.
+ * A union of DB-backed steps and domain-only steps.
+ * This is the canonical type to use throughout the application.
+ *
+ * Use `WorkflowStepMapper.toDatabaseStep(...)` and `WorkflowStepMapper.toDomainStep(...)`
+ * to safely convert between domain steps and DB enum values when needed.
  */
 export type WorkflowStep = DbWorkflowStep | DomainOnlyWorkflowStep
 
-// Common workflow step constants for shared usage
-export const WORKFLOW_STEP_IDLE: WorkflowStep = 'idle';
-export const WORKFLOW_STEP_UPLOADING: WorkflowStep = 'uploading';
-export const WORKFLOW_STEP_EXTRACTION: WorkflowStep = 'extracting';
-export const WORKFLOW_STEP_VERIFICATION: WorkflowStep = 'verification';
-export const WORKFLOW_STEP_VERIFICATION_PENDING: WorkflowStep = 'verification_pending';
-export const WORKFLOW_STEP_VERIFICATION_IN_PROGRESS: WorkflowStep = 'verification_in_progress';
-export const WORKFLOW_STEP_VERIFICATION_COMPLETED: WorkflowStep = 'verification_completed';
-export const WORKFLOW_STEP_VERIFICATION_FAILED: WorkflowStep = 'verification_failed';
-export const WORKFLOW_STEP_REPORT_GENERATION: WorkflowStep = 'report_generation';
-export const WORKFLOW_STEP_CHAT_STARTED: WorkflowStep = 'chat_started';
-export const WORKFLOW_STEP_CHAT_IN_PROGRESS: WorkflowStep = 'chat_in_progress';
-export const WORKFLOW_STEP_CHAT_COMPLETED: WorkflowStep = 'chat_completed';
-export const WORKFLOW_STEP_CHAT_ERROR: WorkflowStep = 'chat_error';
+// ==========================================================================
+// Canonical Workflow Step Constants
+// ==========================================================================
 
+/**
+ * Canonical workflow step constants for shared usage across the application.
+ * Always use these constants instead of string literals to ensure type safety
+ * and consistency.
+ */
+export const WorkflowSteps = {
+  // Core workflow steps
+  IDLE: 'idle' as const satisfies WorkflowStep,
+  UPLOADING: 'uploading' as const satisfies WorkflowStep,
+  EXTRACTING: 'extracting' as const satisfies WorkflowStep,
+  VERIFICATION: 'verification' as const satisfies WorkflowStep,
+  REPORT_GENERATION: 'report_generation' as const satisfies WorkflowStep,
+  COMPLETE: 'complete' as const satisfies WorkflowStep,
+  
+  // Verification-specific steps
+  VERIFICATION_PENDING: 'verification_pending' as const satisfies WorkflowStep,
+  VERIFICATION_IN_PROGRESS: 'verification_in_progress' as const satisfies WorkflowStep,
+  VERIFICATION_COMPLETED: 'verification_completed' as const satisfies WorkflowStep,
+  VERIFICATION_FAILED: 'verification_failed' as const satisfies WorkflowStep,
+  
+  // Chat-specific steps
+  CHAT_STARTED: 'chat_started' as const satisfies WorkflowStep,
+  CHAT_IN_PROGRESS: 'chat_in_progress' as const satisfies WorkflowStep,
+  CHAT_COMPLETED: 'chat_completed' as const satisfies WorkflowStep,
+  CHAT_ERROR: 'chat_error' as const satisfies WorkflowStep,
+  
+  // Domain-only steps
+  REPORT_PRESENTATION: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
+  RESEARCH: DomainOnlyWorkflowStep.RESEARCH,
+  RESEARCH_ANALYSIS: DomainOnlyWorkflowStep.RESEARCH_ANALYSIS,
+  RESEARCH_QUERY: DomainOnlyWorkflowStep.RESEARCH_QUERY,
+  RESEARCH_SUMMARIZATION: DomainOnlyWorkflowStep.RESEARCH_SUMMARIZATION,
+  DOCUMENT_ANALYSIS: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
+  DOCUMENT_FORMATTING: DomainOnlyWorkflowStep.DOCUMENT_FORMATTING,
+  DOCUMENT_INDEXING: DomainOnlyWorkflowStep.DOCUMENT_INDEXING,
+  DOCUMENT_PREVIEW: DomainOnlyWorkflowStep.DOCUMENT_PREVIEW,
+  VERIFICATION_CORRECTION: DomainOnlyWorkflowStep.VERIFICATION_CORRECTION,
+  VERIFICATION_REVIEW: DomainOnlyWorkflowStep.VERIFICATION_REVIEW,
+  ERROR: DomainOnlyWorkflowStep.ERROR,
+  RECOVERABLE_ERROR: DomainOnlyWorkflowStep.RECOVERABLE_ERROR,
+  PERMANENT_ERROR: DomainOnlyWorkflowStep.PERMANENT_ERROR,
+} as const;
 
+// Type to represent all possible workflow step values
+export type WorkflowStepValue = typeof WorkflowSteps[keyof typeof WorkflowSteps];
+
+/**
+ * Safely convert a string to a WorkflowStep
+ * @param step String representation of a workflow step
+ * @returns A validated WorkflowStep or 'idle' as fallback
+ */
+export function toWorkflowStep(step: string): WorkflowStep {
+  // Check if it's a value in the WorkflowSteps object
+  const allSteps = Object.values(WorkflowSteps);
+  if (allSteps.includes(step as WorkflowStepValue)) {
+    return step as WorkflowStep;
+  }
+  
+  // Check if it's a DbWorkflowStep
+  const dbSteps = Object.values(DbWorkflowStep);
+  if (dbSteps.includes(step as DbWorkflowStep)) {
+    return step as WorkflowStep;
+  }
+  
+  // Check if it's a DomainOnlyWorkflowStep
+  const domainSteps = Object.values(DomainOnlyWorkflowStep);
+  if (domainSteps.includes(step as DomainOnlyWorkflowStep)) {
+    return step as WorkflowStep;
+  }
+  
+  // Default to idle
+  console.warn(`Unknown workflow step: ${step}, defaulting to '${WorkflowSteps.IDLE}'`);
+  return WorkflowSteps.IDLE;
+}
+
+/**
+ * Check if a workflow step is valid
+ * @param step Step to validate
+ * @returns Whether the step is valid
+ */
+export function isValidWorkflowStep(step: string): boolean {
+  return Object.values(WorkflowSteps).includes(step as WorkflowStepValue) ||
+         Object.values(DbWorkflowStep).includes(step as DbWorkflowStep) ||
+         Object.values(DomainOnlyWorkflowStep).includes(step as DomainOnlyWorkflowStep);
+}
+
+/**
+ * Get a display-friendly name for a workflow step
+ * @param step The workflow step
+ * @returns Human-readable step name
+ */
+export function getWorkflowStepDisplayName(step: WorkflowStep): string {
+  const displayNames: Record<WorkflowStep, string> = {
+    // Core steps
+    [WorkflowSteps.IDLE]: 'Idle',
+    [WorkflowSteps.UPLOADING]: 'Uploading',
+    [WorkflowSteps.EXTRACTING]: 'Extracting',
+    [WorkflowSteps.VERIFICATION]: 'Verification',
+    [WorkflowSteps.REPORT_GENERATION]: 'Report Generation',
+    [WorkflowSteps.COMPLETE]: 'Complete',
+    
+    // Verification-specific steps
+    [WorkflowSteps.VERIFICATION_PENDING]: 'Verification Pending',
+    [WorkflowSteps.VERIFICATION_IN_PROGRESS]: 'Verification In Progress',
+    [WorkflowSteps.VERIFICATION_COMPLETED]: 'Verification Completed',
+    [WorkflowSteps.VERIFICATION_FAILED]: 'Verification Failed',
+    
+    // Chat-specific steps
+    [WorkflowSteps.CHAT_STARTED]: 'Chat Started',
+    [WorkflowSteps.CHAT_IN_PROGRESS]: 'Chat In Progress',
+    [WorkflowSteps.CHAT_COMPLETED]: 'Chat Completed',
+    [WorkflowSteps.CHAT_ERROR]: 'Chat Error',
+    
+    // Domain-only steps
+    [WorkflowSteps.REPORT_PRESENTATION]: 'Report Presentation',
+    [WorkflowSteps.RESEARCH]: 'Research',
+    [WorkflowSteps.RESEARCH_ANALYSIS]: 'Research Analysis',
+    [WorkflowSteps.RESEARCH_QUERY]: 'Research Query',
+    [WorkflowSteps.RESEARCH_SUMMARIZATION]: 'Research Summarization',
+    [WorkflowSteps.DOCUMENT_ANALYSIS]: 'Document Analysis',
+    [WorkflowSteps.DOCUMENT_FORMATTING]: 'Document Formatting',
+    [WorkflowSteps.DOCUMENT_INDEXING]: 'Document Indexing',
+    [WorkflowSteps.DOCUMENT_PREVIEW]: 'Document Preview',
+    [WorkflowSteps.VERIFICATION_CORRECTION]: 'Verification Correction',
+    [WorkflowSteps.VERIFICATION_REVIEW]: 'Verification Review',
+    [WorkflowSteps.ERROR]: 'Error',
+    [WorkflowSteps.RECOVERABLE_ERROR]: 'Recoverable Error',
+    [WorkflowSteps.PERMANENT_ERROR]: 'Permanent Error',
+  };
+  
+  return displayNames[step] || String(step).replace(/_/g, ' ').split(' ').map(word =>
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ');
+}
 
 // ==========================================================================
 // Core Workflow Types
@@ -93,14 +223,19 @@ export enum ProcessingPhase {
   VERIFICATION = 'verification',
   VERIFICATION_PENDING = 'verification_pending',
   VERIFICATION_COMPLETION = 'verification_completion',
+  VERIFICATION_PROCESSING = 'verification_processing',
+  VERIFICATION_REJECTION = 'verification_rejection',
   CORRECTION = 'correction',
   RESEARCH = 'research',
   REPORT_GENERATION = 'report_generation',
   REPORT_FORMATTING = 'report_formatting',
   REPORT_PREVIEW = 'report_preview',
+  PROCESSING = 'processing',
+  FINALIZATION = 'finalization',
   CHAT_PROCESSING = 'chat_processing',
   COMPLETION = 'completion',
   ERROR = 'error',
+  UPLOAD = 'upload',
 }
 
 /**
@@ -246,19 +381,18 @@ export function isVerificationFailed(
 /**
  * Convert a WorkflowStep into the closest matching VerificationStatus.
  * By default, we treat non-verification steps as 'pending'.
- * @deprecated Consider using mappers for consistent bidirectional conversion
  */
 export function workflowStepToVerificationStatus(step: WorkflowStep): VerificationStatus {
   switch (step) {
-    case 'verification_in_progress':
+    case WorkflowSteps.VERIFICATION_IN_PROGRESS:
       return VerificationStatus.inProgress
-    case 'verification_completed':
+    case WorkflowSteps.VERIFICATION_COMPLETED:
       return VerificationStatus.completed
-    case 'verification_failed':
+    case WorkflowSteps.VERIFICATION_FAILED:
       return VerificationStatus.failed
-    case 'verification_pending':
+    case WorkflowSteps.VERIFICATION_PENDING:
       return VerificationStatus.pending
-    case 'verification':
+    case WorkflowSteps.VERIFICATION:
       // Legacy step
       return VerificationStatus.inProgress
     default:
@@ -267,20 +401,19 @@ export function workflowStepToVerificationStatus(step: WorkflowStep): Verificati
 }
 
 /**
- * Convert a VerificationStatus to the corresponding WorkflowStep if applicable.
- * @deprecated Consider using mappers for consistent bidirectional conversion
+ * Convert a VerificationStatus to the corresponding WorkflowStep.
  */
 export function verificationStatusToWorkflowStep(status: VerificationStatus): WorkflowStep {
   switch (status) {
     case VerificationStatus.inProgress:
-      return 'verification_in_progress'
+      return WorkflowSteps.VERIFICATION_IN_PROGRESS
     case VerificationStatus.completed:
-      return 'verification_completed'
+      return WorkflowSteps.VERIFICATION_COMPLETED
     case VerificationStatus.failed:
-      return 'verification_failed'
+      return WorkflowSteps.VERIFICATION_FAILED
     case VerificationStatus.pending:
     default:
-      return 'verification_pending'
+      return WorkflowSteps.VERIFICATION_PENDING
   }
 }
 
@@ -289,304 +422,307 @@ export function verificationStatusToWorkflowStep(status: VerificationStatus): Wo
 // ==========================================================================
 
 /**
- * All allowed workflow transitions in the application
- * This forms the basis of our state machine validation
+ * All allowed workflow transitions in the application.
+ * This forms the basis of our state machine validation.
+ *
+ * When adding new workflow steps, make sure to update this array with
+ * the appropriate transitions.
  */
 export const ALLOWED_TRANSITIONS: WorkflowTransition[] = [
   // Initial state transitions
   {
-    from: 'idle',
-    to: 'uploading',
+    from: WorkflowSteps.IDLE,
+    to: WorkflowSteps.UPLOADING,
     allowData: true,
     description: 'Start document upload',
   },
   {
-    from: 'idle',
-    to: 'chat_started',
+    from: WorkflowSteps.IDLE,
+    to: WorkflowSteps.CHAT_STARTED,
     allowData: true,
     description: 'Start chat without document',
   },
   {
-    from: 'idle',
-    to: DomainOnlyWorkflowStep.RESEARCH,
+    from: WorkflowSteps.IDLE,
+    to: WorkflowSteps.RESEARCH,
     allowData: true,
     description: 'Start research mode',
   },
 
   // Upload flow
   {
-    from: 'uploading',
-    to: 'extracting',
+    from: WorkflowSteps.UPLOADING,
+    to: WorkflowSteps.EXTRACTING,
     allowData: true,
     description: 'Document uploaded, starting extraction',
   },
   {
-    from: 'uploading',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.UPLOADING,
+    to: WorkflowSteps.ERROR,
     allowData: true,
     description: 'Upload failed',
   },
   {
-    from: 'extracting',
-    to: 'verification',
+    from: WorkflowSteps.EXTRACTING,
+    to: WorkflowSteps.VERIFICATION,
     allowData: true,
     description: 'Extraction complete, ready for verification',
   },
   {
-    from: 'extracting',
-    to: 'verification_pending',
+    from: WorkflowSteps.EXTRACTING,
+    to: WorkflowSteps.VERIFICATION_PENDING,
     allowData: true,
     description: 'Extraction complete, waiting for verification',
   },
   {
-    from: 'extracting',
-    to: 'complete',
+    from: WorkflowSteps.EXTRACTING,
+    to: WorkflowSteps.COMPLETE,
     allowData: true,
     description: 'Extraction complete, skipping verification',
   },
   {
-    from: 'extracting',
-    to: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
+    from: WorkflowSteps.EXTRACTING,
+    to: WorkflowSteps.DOCUMENT_ANALYSIS,
     allowData: true,
     description: 'Analyzing extracted document content',
   },
   {
-    from: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
-    to: 'verification_pending',
+    from: WorkflowSteps.DOCUMENT_ANALYSIS,
+    to: WorkflowSteps.VERIFICATION_PENDING,
     allowData: true,
     description: 'Analysis complete, ready for verification',
   },
   {
-    from: DomainOnlyWorkflowStep.DOCUMENT_ANALYSIS,
-    to: 'complete',
+    from: WorkflowSteps.DOCUMENT_ANALYSIS,
+    to: WorkflowSteps.COMPLETE,
     allowData: true,
     description: 'Analysis complete, skipping verification',
   },
 
   // Verification flow
   {
-    from: 'verification',
-    to: 'verification_pending',
+    from: WorkflowSteps.VERIFICATION,
+    to: WorkflowSteps.VERIFICATION_PENDING,
     allowData: true,
     description: 'Preparing verification',
   },
   {
-    from: 'verification_pending',
-    to: 'verification_in_progress',
+    from: WorkflowSteps.VERIFICATION_PENDING,
+    to: WorkflowSteps.VERIFICATION_IN_PROGRESS,
     allowData: true,
     description: 'User reviewing verification',
   },
   {
-    from: 'verification_in_progress',
-    to: 'verification_completed',
+    from: WorkflowSteps.VERIFICATION_IN_PROGRESS,
+    to: WorkflowSteps.VERIFICATION_COMPLETED,
     allowData: true,
     description: 'User completed verification',
   },
   {
-    from: 'verification_in_progress',
-    to: 'verification_failed',
+    from: WorkflowSteps.VERIFICATION_IN_PROGRESS,
+    to: WorkflowSteps.VERIFICATION_FAILED,
     allowData: true,
     description: 'Verification rejected',
   },
   {
-    from: 'verification_completed',
-    to: 'report_generation',
+    from: WorkflowSteps.VERIFICATION_COMPLETED,
+    to: WorkflowSteps.REPORT_GENERATION,
     allowData: true,
     description: 'Starting report generation',
   },
   {
-    from: 'verification_failed',
-    to: 'verification_in_progress',
+    from: WorkflowSteps.VERIFICATION_FAILED,
+    to: WorkflowSteps.VERIFICATION_IN_PROGRESS,
     allowData: true,
     description: 'Retry verification',
   },
 
   // Report generation flow
   {
-    from: 'report_generation',
-    to: 'complete',
+    from: WorkflowSteps.REPORT_GENERATION,
+    to: WorkflowSteps.COMPLETE,
     allowData: true,
     description: 'Report generated successfully',
   },
   {
-    from: 'report_generation',
-    to: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
+    from: WorkflowSteps.REPORT_GENERATION,
+    to: WorkflowSteps.REPORT_PRESENTATION,
     allowData: true,
     description: 'Showing generated report',
   },
   {
-    from: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
-    to: 'complete',
+    from: WorkflowSteps.REPORT_PRESENTATION,
+    to: WorkflowSteps.COMPLETE,
     allowData: true,
     description: 'Workflow complete',
   },
 
   // Chat flow
   {
-    from: 'chat_started',
-    to: 'chat_in_progress',
+    from: WorkflowSteps.CHAT_STARTED,
+    to: WorkflowSteps.CHAT_IN_PROGRESS,
     allowData: true,
     description: 'Processing chat message',
   },
   {
-    from: 'chat_in_progress',
-    to: 'chat_completed',
+    from: WorkflowSteps.CHAT_IN_PROGRESS,
+    to: WorkflowSteps.CHAT_COMPLETED,
     allowData: true,
     description: 'Chat message processed',
   },
   {
-    from: 'chat_completed',
-    to: 'chat_in_progress',
+    from: WorkflowSteps.CHAT_COMPLETED,
+    to: WorkflowSteps.CHAT_IN_PROGRESS,
     allowData: true,
     description: 'Processing another message',
   },
 
   // Research flow
   {
-    from: DomainOnlyWorkflowStep.RESEARCH,
-    to: 'report_generation',
+    from: WorkflowSteps.RESEARCH,
+    to: WorkflowSteps.REPORT_GENERATION,
     allowData: true,
     description: 'Research complete, generating report',
   },
 
   // Complete state can transition back to several states for new operations
   {
-    from: 'complete',
-    to: 'idle',
+    from: WorkflowSteps.COMPLETE,
+    to: WorkflowSteps.IDLE,
     description: 'Reset workflow',
   },
   {
-    from: 'complete',
-    to: 'chat_in_progress',
+    from: WorkflowSteps.COMPLETE,
+    to: WorkflowSteps.CHAT_IN_PROGRESS,
     allowData: true,
     description: 'Continue with chat after completion',
   },
   {
-    from: 'complete',
-    to: 'uploading',
+    from: WorkflowSteps.COMPLETE,
+    to: WorkflowSteps.UPLOADING,
     allowData: true,
     description: 'Upload new document after completion',
   },
 
   // Error recovery paths
   {
-    from: DomainOnlyWorkflowStep.ERROR,
-    to: 'idle',
+    from: WorkflowSteps.ERROR,
+    to: WorkflowSteps.IDLE,
     description: 'Reset after error',
   },
   {
-    from: DomainOnlyWorkflowStep.ERROR,
-    to: 'uploading',
+    from: WorkflowSteps.ERROR,
+    to: WorkflowSteps.UPLOADING,
     allowData: true,
     description: 'Retry upload after error',
   },
   {
-    from: DomainOnlyWorkflowStep.ERROR,
-    to: 'extracting',
+    from: WorkflowSteps.ERROR,
+    to: WorkflowSteps.EXTRACTING,
     allowData: true,
     description: 'Retry extraction after error',
   },
   {
-    from: DomainOnlyWorkflowStep.ERROR,
-    to: 'verification',
+    from: WorkflowSteps.ERROR,
+    to: WorkflowSteps.VERIFICATION,
     allowData: true,
     description: 'Return to verification after error',
   },
   {
-    from: DomainOnlyWorkflowStep.ERROR,
-    to: 'report_generation',
+    from: WorkflowSteps.ERROR,
+    to: WorkflowSteps.REPORT_GENERATION,
     allowData: true,
     description: 'Retry report generation after error',
   },
 
   // Any state can transition to error
   {
-    from: 'idle',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.IDLE,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error in idle state',
   },
   {
-    from: 'uploading',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.UPLOADING,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during upload',
   },
   {
-    from: 'extracting',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.EXTRACTING,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during extraction',
   },
   {
-    from: 'verification',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.VERIFICATION,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during verification',
   },
   {
-    from: 'verification_pending',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.VERIFICATION_PENDING,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error in verification pending',
   },
   {
-    from: 'verification_in_progress',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.VERIFICATION_IN_PROGRESS,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during verification process',
   },
   {
-    from: 'verification_completed',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.VERIFICATION_COMPLETED,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error after verification completion',
   },
   {
-    from: 'verification_failed',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.VERIFICATION_FAILED,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error after verification failed',
   },
   {
-    from: 'report_generation',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.REPORT_GENERATION,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during report generation',
   },
   {
-    from: 'complete',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.COMPLETE,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error in completed state',
   },
   {
-    from: 'chat_started',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.CHAT_STARTED,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error starting chat',
   },
   {
-    from: 'chat_in_progress',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.CHAT_IN_PROGRESS,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during chat',
   },
   {
-    from: 'chat_completed',
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.CHAT_COMPLETED,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error after chat completion',
   },
   {
-    from: DomainOnlyWorkflowStep.RESEARCH,
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.RESEARCH,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during research',
   },
   {
-    from: DomainOnlyWorkflowStep.REPORT_PRESENTATION,
-    to: DomainOnlyWorkflowStep.ERROR,
+    from: WorkflowSteps.REPORT_PRESENTATION,
+    to: WorkflowSteps.ERROR,
     requireData: true,
     description: 'Error during report presentation',
   },

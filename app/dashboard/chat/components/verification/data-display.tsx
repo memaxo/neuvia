@@ -1,6 +1,6 @@
 'use client'
 
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import type { VerificationItem } from '@/lib/processing/types/verification'
 
 interface DataItem {

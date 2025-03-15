@@ -1,13 +1,11 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
-import {
-  type WorkflowStep,
-  type ProcessingPhase
-} from '@/lib/types/workflow'
+import type { WorkflowStep, ProcessingPhase } from '@/lib/types/workflow'
 import { ApplicationError, normalizeError } from '@/lib/errors'
 import { workflowManager } from './workflow-manager'
 import logger from '@/lib/logger'
 import { Result } from '@/lib/services/workflow/error/result'
+import { WorkflowStepMapper } from '../utils/workflow-utils'
 
 /**
  * Options for document processing
@@ -103,13 +101,17 @@ export class WorkflowService {
     phase: ProcessingPhase,
     currentStep?: WorkflowStep,
     notifyUsers: boolean = false
-  ): Promise<boolean> {
+  ): Promise<Result<boolean>> {
+    if (!workflowId) {
+      return Result.failure(
+        'workflowId is required',
+        'WORKFLOW_PROGRESS_UPDATE_FAILED',
+        { workflowId, progress, phase: phase.toString() }
+      );
+    }
+    
     try {
-      if (!workflowId) {
-        throw new Error('workflowId is required');
-      }
-      
-      return await workflowManager.updateProgress(
+      const updateResult = await workflowManager.updateProgress(
         workflowId,
         progress,
         phase,
@@ -118,6 +120,12 @@ export class WorkflowService {
           notifyUsers 
         }
       );
+      
+      if (updateResult.isFailure()) {
+        return updateResult;
+      }
+      
+      return Result.success(true);
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to update progress', {
@@ -126,17 +134,20 @@ export class WorkflowService {
         phase: phase.toString(),
         error: normalizedError.message
       });
-      return false;
+      
+      return Result.failure(
+        `Failed to update progress: ${normalizedError.message}`,
+        normalizedError.code || 'WORKFLOW_PROGRESS_UPDATE_FAILED',
+        { workflowId, progress, phase: phase.toString() }
+      );
     }
   }
   
   /**
-   * Document processing methods
-   */
-  
-  /**
-   * Process document upload
-   * @returns Result containing document processing result
+   * Process document upload.
+   * Standardizes state updates using local constants for domain steps.
+   * Uses the Result pattern consistently.
+   * @returns Result containing document processing result.
    */
   async processDocumentUpload(
     workflowId: string,
@@ -144,14 +155,16 @@ export class WorkflowService {
     options: DocumentProcessingOptions
   ): Promise<Result<DocumentProcessingResult>> {
     try {
-      // Update state to uploading
+      // Standardize state update: define domain step constant
+      const uploadingStep: WorkflowStep = 'uploading';
+      const now = new Date().toISOString();
       const updateResult = await workflowManager.updateState(
         workflowId,
-        'uploading',
+        uploadingStep,
         {
           fileName: file.name,
           fileSize: file.size,
-          uploadStartedAt: new Date().toISOString(),
+          uploadStartedAt: now,
           userId: options.userId,
           patientId: options.patientId
         }
@@ -211,10 +224,11 @@ export class WorkflowService {
       const documentId = result.documentId;
       const processingTime = Date.now() - startTime;
       
-      // Update state after upload
+      // Standardize state update: define extracting step constant
+      const extractingStep: WorkflowStep = 'extracting';
       const extractingResult = await workflowManager.updateState(
         workflowId,
-        'extracting',
+        extractingStep,
         {
           documentId,
           uploadTime: processingTime,
@@ -240,20 +254,17 @@ export class WorkflowService {
       });
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Update to error state
-      await workflowManager.handleError(
-      // Return error result using Result pattern
       return Result.failure(
         normalizedError.message,
         normalizedError.code || 'DOCUMENT_UPLOAD_FAILED',
         { documentId: '', fileName: file.name, fileSize: file.size }
       );
-          userId: options.userId
-        }
-      /**
-   * Extract document content
-   * @returns Result containing document processing result
+    }
+  }
+  
+  /**
+   * Extract document content.
+   * Uses standardized state updates for 'extracting' and 'complete' steps.
    */
   async extractDocumentContent(
     workflowId: string,
@@ -264,10 +275,11 @@ export class WorkflowService {
     }
   ): Promise<Result<DocumentProcessingResult>> {
     try {
-      // Update state to extracting
+      // Standardize state update: define extracting step constant
+      const extractingStep: WorkflowStep = 'extracting';
       const updateResult = await workflowManager.updateState(
         workflowId,
-        'extracting',
+        extractingStep,
         {
           documentId,
           extractionStartedAt: new Date().toISOString(),
@@ -296,8 +308,6 @@ export class WorkflowService {
       
       if (!response.ok) {
         const errorText = await response.text();
-        
-        // Update to error state
         await workflowManager.handleError(
           workflowId,
           new Error(`Extraction failed: ${errorText}`),
@@ -307,7 +317,6 @@ export class WorkflowService {
             phase: ProcessingPhase.EXTRACTION
           }
         );
-        
         return Result.failure(
           `Extraction failed: ${errorText}`,
           'DOCUMENT_EXTRACTION_FAILED',
@@ -318,10 +327,11 @@ export class WorkflowService {
       const result = await response.json();
       const processingTime = Date.now() - startTime;
       
-      // Update to complete state
+      // Standardize state update: define complete step constant
+      const completeStep: WorkflowStep = 'complete';
       const completeResult = await workflowManager.updateState(
         workflowId,
-        'complete',
+        completeStep,
         {
           documentId,
           extractionTime: processingTime,
@@ -339,7 +349,6 @@ export class WorkflowService {
       
       onProgress(100, ProcessingPhase.COMPLETION);
       
-      // Return successful result
       return Result.success({
         documentId,
         content: result.text,
@@ -349,8 +358,6 @@ export class WorkflowService {
       });
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Update to error state
       await workflowManager.handleError(
         workflowId,
         normalizedError,
@@ -360,8 +367,6 @@ export class WorkflowService {
           phase: ProcessingPhase.EXTRACTION
         }
       );
-      
-      // Return error result using Result pattern
       return Result.failure(
         normalizedError.message,
         normalizedError.code || 'DOCUMENT_EXTRACTION_FAILED',
@@ -369,34 +374,21 @@ export class WorkflowService {
       );
     }
   }
-        }
-      );
-      
-      // Return error result
-      return {
-        documentId,
-        success: false,
-        error: normalizedError.message
-      };
-    }
-  }
   
   /**
-   * Verification methods
-   */
-  
-  /**
-   * Initialize verification process
+   * Initialize verification process.
+   * Uses standardized state updates with 'verification_pending' and 'verification_in_progress' steps.
    */
   async initiateVerification(
     workflowId: string,
     options: VerificationOptions
   ): Promise<VerificationResult> {
     try {
-      // Update to verification_pending
+      // Standardize state update: define verification_pending step constant
+      const verificationPendingStep: WorkflowStep = 'verification_pending';
       await workflowManager.updateState(
         workflowId,
-        'verification_pending',
+        verificationPendingStep,
         {
           documentId: options.documentId,
           userId: options.userId,
@@ -408,9 +400,7 @@ export class WorkflowService {
       const onProgress = options.onProgress || (() => {});
       onProgress(10, ProcessingPhase.VERIFICATION_PENDING);
       
-      // If we have document text, generate summary
       if (options.documentText) {
-        // Prepare request
         const response = await fetch('/api/verification/initiate', {
           method: 'POST',
           headers: {
@@ -430,10 +420,11 @@ export class WorkflowService {
         const result = await response.json();
         const verificationId = result.summaryId;
         
-        // Update to verification_in_progress
+        // Standardize state update: define verification_in_progress step constant
+        const verificationInProgressStep: WorkflowStep = 'verification_in_progress';
         await workflowManager.updateState(
           workflowId,
-          'verification_in_progress',
+          verificationInProgressStep,
           {
             verificationId,
             documentId: options.documentId,
@@ -445,7 +436,6 @@ export class WorkflowService {
         
         onProgress(100, ProcessingPhase.VERIFICATION_PENDING);
         
-        // Return successful result
         return {
           verificationId,
           documentId: options.documentId,
@@ -455,17 +445,15 @@ export class WorkflowService {
           }
         };
       } else if (options.documentId) {
-        // Just update the state if document ID provided but no text
         await workflowManager.updateState(
           workflowId,
-          'verification_pending',
+          verificationPendingStep,
           {
             documentId: options.documentId,
             awaitingDocument: true
           }
         );
         
-        // Return pending result
         return {
           documentId: options.documentId,
           success: true,
@@ -478,8 +466,6 @@ export class WorkflowService {
       }
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Update to error state
       await workflowManager.handleError(
         workflowId,
         normalizedError,
@@ -489,8 +475,6 @@ export class WorkflowService {
           phase: ProcessingPhase.VERIFICATION
         }
       );
-      
-      // Return error result
       return {
         documentId: options.documentId,
         success: false,
@@ -500,28 +484,26 @@ export class WorkflowService {
   }
   
   /**
-   * Process verification correction
+   * Process verification correction.
+   * Uses standardized state update with 'verification_in_progress' step.
    */
   async processVerificationCorrection(
     workflowId: string,
     correction: CorrectionData
   ): Promise<VerificationResult> {
     try {
-      // Validate input
       if (!correction.correctionText || !correction.currentSummary) {
         throw new Error('Correction text and current summary are required');
       }
       
-      // Get current state
-      const state = await workflowManager.getState(workflowId);
-      if (!state) {
+      const stateResult = await workflowManager.getState(workflowId);
+      if (stateResult.isFailure() || !stateResult.value) {
         throw new Error('Workflow state not found');
       }
       
-      const verificationId = state.metadata?.verificationId as string;
-      const documentId = state.metadata?.documentId as string;
+      const verificationId = stateResult.value.metadata?.verificationId as string;
+      const documentId = stateResult.value.metadata?.documentId as string;
       
-      // Call correction API
       const response = await fetch('/api/verification/correct', {
         method: 'POST',
         headers: {
@@ -541,31 +523,28 @@ export class WorkflowService {
       }
       
       const result = await response.json();
+      const currentCorrectionCount = (stateResult.value.metadata?.correctionCount as number) || 0;
       
-      // Get current correction count
-      const correctionCount = (state.metadata?.correctionCount as number) || 0;
-      
-      // Update workflow state
+      const verificationInProgressStep: WorkflowStep = 'verification_in_progress';
       await workflowManager.updateState(
         workflowId,
-        'verification_in_progress',
+        verificationInProgressStep,
         {
           verificationId,
           documentId,
           summary: result.summary,
-          correctionCount: correctionCount + 1,
+          correctionCount: currentCorrectionCount + 1,
           correctionTimestamp: new Date().toISOString()
         }
       );
       
-      // Return successful result
       return {
         verificationId,
         documentId,
         success: true,
         metadata: {
           summary: result.summary,
-          correctionCount: correctionCount + 1
+          correctionCount: currentCorrectionCount + 1
         }
       };
     } catch (err) {
@@ -574,8 +553,6 @@ export class WorkflowService {
         workflowId,
         error: normalizedError.message
       });
-      
-      // Return error result
       return {
         success: false,
         error: normalizedError.message
@@ -584,30 +561,30 @@ export class WorkflowService {
   }
   
   /**
-   * Complete verification
+   * Complete verification.
+   * Uses standardized state update with 'verification_completed' step.
    */
   async completeVerification(
     workflowId: string,
     verifiedBy: string
   ): Promise<VerificationResult> {
     try {
-      // Get current state
-      const state = await workflowManager.getState(workflowId);
-      if (!state) {
+      const stateResult = await workflowManager.getState(workflowId);
+      if (stateResult.isFailure() || !stateResult.value) {
         throw new Error('Workflow state not found');
       }
       
-      const verificationId = state.metadata?.verificationId as string;
-      const documentId = state.metadata?.documentId as string;
+      const verificationId = stateResult.value.metadata?.verificationId as string;
+      const documentId = stateResult.value.metadata?.documentId as string;
       
       if (!verificationId) {
         throw new Error('Verification ID not found in workflow state');
       }
       
-      // Update to completed
+      const verificationCompletedStep: WorkflowStep = 'verification_completed';
       await workflowManager.updateState(
         workflowId,
-        'verification_completed',
+        verificationCompletedStep,
         {
           verificationId,
           documentId,
@@ -616,7 +593,6 @@ export class WorkflowService {
         }
       );
       
-      // Return successful result
       return {
         verificationId,
         documentId,
@@ -629,8 +605,6 @@ export class WorkflowService {
       };
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Update to error state
       await workflowManager.handleError(
         workflowId,
         normalizedError,
@@ -639,8 +613,6 @@ export class WorkflowService {
           phase: ProcessingPhase.VERIFICATION_COMPLETION
         }
       );
-      
-      // Return error result
       return {
         success: false,
         error: normalizedError.message
@@ -649,21 +621,18 @@ export class WorkflowService {
   }
   
   /**
-   * Report generation methods
-   */
-  
-  /**
-   * Generate report
+   * Generate report.
+   * Uses standardized state update with 'report_generation' and 'complete' steps.
    */
   async generateReport(
     workflowId: string,
     options: ReportGenerationOptions
   ): Promise<ReportGenerationResult> {
     try {
-      // Update to report_generation
+      const reportGenerationStep: WorkflowStep = 'report_generation';
       await workflowManager.updateState(
         workflowId,
-        'report_generation',
+        reportGenerationStep,
         {
           documentId: options.documentId,
           patientId: options.patientId,
@@ -672,11 +641,9 @@ export class WorkflowService {
         }
       );
       
-      // Track progress
       const onProgress = options.onProgress || (() => {});
       onProgress(10, ProcessingPhase.REPORT_GENERATION);
       
-      // Call report generation API
       const response = await fetch('/api/reports/generate', {
         method: 'POST',
         headers: {
@@ -697,10 +664,10 @@ export class WorkflowService {
       const result = await response.json();
       const reportId = result.reportId;
       
-      // Update to complete
+      const completeStep: WorkflowStep = 'complete';
       await workflowManager.updateState(
         workflowId,
-        'complete',
+        completeStep,
         {
           reportId,
           documentId: options.documentId,
@@ -711,7 +678,6 @@ export class WorkflowService {
       
       onProgress(100, ProcessingPhase.COMPLETION);
       
-      // Return successful result
       return {
         reportId,
         title: result.title,
@@ -722,8 +688,6 @@ export class WorkflowService {
       };
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Update to error state
       await workflowManager.handleError(
         workflowId,
         normalizedError,
@@ -734,8 +698,6 @@ export class WorkflowService {
           phase: ProcessingPhase.REPORT_GENERATION
         }
       );
-      
-      // Return error result
       return {
         documentId: options.documentId,
         patientId: options.patientId,
@@ -746,7 +708,8 @@ export class WorkflowService {
   }
   
   /**
-   * Format report
+   * Format report.
+   * Uses standardized state update with 'complete' step.
    */
   async formatReport(
     workflowId: string,
@@ -758,7 +721,6 @@ export class WorkflowService {
         throw new Error('Report ID is required');
       }
       
-      // Call format API
       const response = await fetch(`/api/reports/${reportId}/format`, {
         method: 'POST',
         headers: {
@@ -774,10 +736,10 @@ export class WorkflowService {
       
       const result = await response.json();
       
-      // Update format in workflow state
+      const completeStep: WorkflowStep = 'complete';
       await workflowManager.updateState(
         workflowId,
-        'complete',
+        completeStep,
         {
           reportId,
           format,
@@ -785,7 +747,6 @@ export class WorkflowService {
         }
       );
       
-      // Return successful result
       return {
         reportId,
         title: result.title,
@@ -800,8 +761,6 @@ export class WorkflowService {
         format,
         error: normalizedError.message
       });
-      
-      // Return error result
       return {
         reportId,
         success: false,
@@ -811,11 +770,7 @@ export class WorkflowService {
   }
   
   /**
-   * Workflow state management methods
-   */
-  
-  /**
-   * Get workflow state
+   * Get workflow state.
    */
   async getWorkflowState(
     workflowId: string
@@ -829,7 +784,6 @@ export class WorkflowService {
   } | null> {
     try {
       if (!workflowId) return null;
-      
       return await workflowManager.getState(workflowId);
     } catch (err) {
       const normalizedError = normalizeError(err);
@@ -842,27 +796,7 @@ export class WorkflowService {
   }
   
   /**
-   * Get or create workflow for user
-   */
-  async getOrCreateWorkflowForUser(
-    userId: string,
-    chatId: string | null,
-    initialStep?: WorkflowStep,
-    initialMetadata?: Record<string, unknown>
-  ): Promise<{ id: string; data: Record<string, unknown> }> {
-    try {
-      if (!userId) {
-        throw new Error('userId is required');
-      }
-      
-      const { id, state } = await
-===
-    </search>
-    <content>
-===
-  /**
-   * Get or create workflow for user
-   * @returns Result containing workflow data
+   * Get or create workflow for user.
    */
   async getOrCreateWorkflowForUser(
     userId: string,
@@ -896,7 +830,6 @@ export class WorkflowService {
       
       const { id, state } = result.value;
       
-      // Convert to expected format
       return Result.success({
         id,
         data: {
@@ -923,10 +856,9 @@ export class WorkflowService {
       );
     }
   }
-
+  
   /**
-   * Load workflow state for user
-   * @returns Result containing workflow state or null if not found
+   * Load workflow state for user.
    */
   async loadWorkflowStateForUser(userId: string, chatId?: string | null) {
     if (!userId) {
@@ -939,7 +871,7 @@ export class WorkflowService {
     
     try {
       const result = await workflowManager.loadStateForUser(userId, chatId);
-      return result; // Already returns a Result
+      return result;
     } catch (err) {
       const normalizedError = normalizeError(err);
       this.logger.error('Failed to load workflow state for user', {
@@ -954,9 +886,9 @@ export class WorkflowService {
       );
     }
   }
-
+  
   /**
-   * Subscribe to workflow for user
+   * Subscribe to workflow for user.
    */
   subscribeToWorkflowForUser(
     userId: string,
@@ -971,9 +903,9 @@ export class WorkflowService {
       { onStatusChange }
     );
   }
-
+  
   /**
-   * Subscribe to workflow changes
+   * Subscribe to workflow changes.
    */
   subscribeToWorkflowChanges(
     workflowId: string,
@@ -986,24 +918,24 @@ export class WorkflowService {
       { onStatusChange }
     );
   }
-
+  
   /**
-   * Unsubscribe from channel
+   * Unsubscribe from channel.
    */
   unsubscribeFromChannel(channel: RealtimeChannel): void {
     workflowManager.unsubscribeFromChannel(channel);
   }
-
+  
   /**
-   * Get client ID
+   * Get client ID.
    */
   getClientId(): string {
     return workflowManager.getClientId();
   }
-
+  
   /**
-   * Update workflow state
-   * @returns Result containing transaction ID
+   * Update workflow state.
+   * Uses the Result pattern and ensures transaction ID is returned.
    */
   async updateWorkflowState(
     workflowId: string,
@@ -1025,21 +957,16 @@ export class WorkflowService {
     
     try {
       const { skipValidation = false } = options ?? {};
-      
-      // Add transaction ID to metadata
       const enhancedMetadata = {
         ...metadata,
         transactionId
       };
       
-      // Use WorkflowManager for state update
       const updateResult = await workflowManager.updateState(
         workflowId,
         step,
         enhancedMetadata,
-        {
-          skipValidation
-        }
+        { skipValidation }
       );
       
       if (updateResult.isFailure()) {
@@ -1053,8 +980,6 @@ export class WorkflowService {
       return Result.success(transactionId);
     } catch (err) {
       const normalizedError = normalizeError(err);
-      
-      // Enhanced error logging
       this.logger.error('Failed to update workflow state', {
         workflowId,
         step,
@@ -1063,23 +988,16 @@ export class WorkflowService {
         stack: normalizedError.stack,
         data: normalizedError.data
       });
-      
       return Result.failure(
         `Failed to update workflow state: ${normalizedError.message}`,
         normalizedError.code || 'WORKFLOW_UPDATE_FAILED',
-        {
-          workflowId,
-          step,
-          transactionId,
-          originalError: normalizedError
-        }
+        { workflowId, step, transactionId, originalError: normalizedError }
       );
     }
   }
-
+  
   /**
-   * Set workflow error state
-   * @returns Result indicating success or failure
+   * Set workflow error state.
    */
   async setWorkflowError(
     workflowId: string,
@@ -1125,29 +1043,28 @@ export class WorkflowService {
       );
     }
   }
-
+  
   /**
-   * Reset workflow to initial state
-   * @returns Result indicating success or failure
+   * Reset workflow to initial state.
    */
   async resetWorkflow(
     workflowId: string,
     initialStep: WorkflowStep = 'idle',
     metadata: Record<string, unknown> = {}
   ): Promise<Result<boolean>> {
-    if (!workflowId) {
-      return Result.failure(
-        'workflowId is required',
-        'WORKFLOW_INVALID_PARAMS',
-        { initialStep }
-      );
-    }
-    
     try {
+      const resetMetadata = {
+        ...metadata,
+        resetAt: new Date().toISOString(),
+        resetBy: metadata.userId || 'system',
+        progress: 0,
+        error: null
+      };
+      
       const resetResult = await workflowManager.reset(
         workflowId,
         initialStep,
-        metadata
+        resetMetadata
       );
       
       if (resetResult.isFailure()) {
@@ -1167,16 +1084,15 @@ export class WorkflowService {
         error: normalizedError.message
       });
       return Result.failure(
-        normalizedError.message,
+        `Failed to reset workflow: ${normalizedError.message}`,
         normalizedError.code || 'WORKFLOW_RESET_FAILED',
         { workflowId, initialStep }
       );
     }
   }
-
+  
   /**
-   * Complete workflow
-   * @returns Result indicating success or failure
+   * Complete workflow.
    */
   async completeWorkflow(
     workflowId: string,

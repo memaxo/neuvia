@@ -7,6 +7,10 @@ import { createContext, type ReactNode } from "react";
 // Import proper types from the application's type files
 import {
   ChatMessageType,
+  createMessage,
+  createUserMessage,
+  createAssistantMessage,
+  createSystemMessage,
   type ChatMessage,
   type ChatMessageMetadata,
 } from "@/lib/types/chat";
@@ -310,6 +314,10 @@ const createErrorHandlerFactory = () => {
 const errorHandlerFactory = createErrorHandlerFactory();
 
 // Initial chat store state
+// The following state is divided into two main areas:
+// • UI State: Handles chat messages, loading indicators, errors, and display modes.
+// • Workflow State Management: Manages persistent workflow state (steps, progress, metadata)
+// This separation helps keep UI logic distinct from domain-specific workflow operations.
 const initialState: Omit<ChatStore, 'syncWorkflowState' | 'subscribeToWorkflowUpdates' | 'performResearch'> = {
   //=============================================================================
   // UI STATE SECTION
@@ -628,14 +636,18 @@ export const useChatStore = create<ChatStore>()(
         
         // Add a message to the chat UI
         addMessage: (message) => {
-          const messageWithId = 'id' in message
-            ? message
-            : { ...message, id: crypto.randomUUID() };
-            
-          set((state) => ({
-            ...state,
-            messages: [...state.messages, messageWithId as ChatMessage],
-          }));
+          try {
+            const messageWithId = 'id' in message
+              ? message
+              : { ...message, id: crypto.randomUUID() };
+            set((state) => ({
+              ...state,
+              messages: [...state.messages, messageWithId as ChatMessage],
+            }));
+          } catch (error) {
+            const normalized = normalizeError(error);
+            moduleLogger.error('Failed to add message', { error: normalized.message });
+          }
         },
         
         // Replace all messages at once
@@ -643,28 +655,32 @@ export const useChatStore = create<ChatStore>()(
         
         // Update progress indicator on a specific message
         updateMessageProgress: (messageId, progress, phase) => {
-          set((state) => {
-            const updatedMessages = state.messages.map((msg) =>
-              msg.id === messageId
-                ? {
-                    ...msg,
-                    metadata: {
-                      ...msg.metadata,
-                      progress: {
-                        ...msg.metadata?.progress,
-                        value: progress,
-                        phase,
+          try {
+            set((state) => {
+              const updatedMessages = state.messages.map((msg) =>
+                msg.id === messageId
+                  ? {
+                      ...msg,
+                      metadata: {
+                        ...msg.metadata,
+                        progress: {
+                          ...msg.metadata?.progress,
+                          value: progress,
+                          phase,
+                        },
                       },
-                    },
-                  }
-                : msg
-            );
-            
-            return {
-              ...state,
-              messages: updatedMessages as ChatMessage[]
-            };
-          });
+                    }
+                  : msg
+              );
+              return {
+                ...state,
+                messages: updatedMessages as ChatMessage[]
+              };
+            });
+          } catch (error) {
+            const normalized = normalizeError(error);
+            moduleLogger.error('Failed to update message progress', { messageId, error: normalized.message });
+          }
         },
         
         //=============================================================================
@@ -1865,6 +1881,10 @@ export const useChatStore = create<ChatStore>()(
           const store = get();
           const { isCorrection = false, metadata = {} } = options;
           
+          // Import error handling utilities
+          const { handleResultFailure } = await import('@/lib/services/workflow/error/workflow-error-handler');
+          const { Result } = await import('@/lib/services/workflow/error/result');
+          
           try {
             // Don't allow empty messages
             if (!content || content.trim() === '') {
@@ -1879,18 +1899,7 @@ export const useChatStore = create<ChatStore>()(
             } = store;
             
             // Add the user message to the chat
-            const userMessage: ChatMessage = {
-              id: crypto.randomUUID(),
-              role: 'user',
-              content,
-              createdAt: new Date().toISOString(),
-              type: ChatMessageType.CHAT,
-              metadata: {
-                type: ChatMessageType.CHAT,
-                isCorrection,
-                ...metadata
-              }
-            };
+const userMessage = createUserMessage(content, { isCorrection, ...metadata });
             
             store.addMessage(userMessage);
             
@@ -1968,10 +1977,19 @@ export const useChatStore = create<ChatStore>()(
             // Handle errors
             console.error('Error sending message:', error);
             
-            // Handle error with error handler
-            errorHandler.handleError(error, {
-              domain: 'general',
-              details: { message: content, isCorrection: options.isCorrection }
+            // Handle error with Result pattern + error handler
+            const errorResult = Result.fromError(error);
+            handleResultFailure(
+              errorResult,
+              store.workflowId,
+              store.workflow.currentStep,
+              {
+                domain: 'chat',
+                operation: 'sendMessage',
+                input: { message: content, isCorrection: options.isCorrection }
+              }
+            ).catch(handlerError => {
+              console.error('Error handler failed:', handlerError);
             });
           }
         },
@@ -2037,47 +2055,35 @@ export const useChatStore = create<ChatStore>()(
           };
         },
         
-        // Helper methods
-        addSystemMessage: (content, type, metadata) => {
-          const messageType = type ? (type as ChatMessageType) : ChatMessageType.SYSTEM;
-          const message: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "system",
-            content,
-            createdAt: new Date().toISOString(),
-            type: messageType,
-            metadata: metadata ? { type: messageType, ...metadata } : { type: messageType },
-          };
+        // Helper methods that use the centralized message creation utilities from lib/types/chat.ts
+        addSystemMessage: (content: string, type?: ChatMessageType, metadata?: Record<string, unknown>) => {
+          // Import and use the standardized message creation functions
+          const { createSystemMessage } = require('@/lib/types/chat');
+          const messageType = type || ChatMessageType.SYSTEM;
+          const message = createSystemMessage(content, {
+            ...metadata,
+            type: messageType
+          });
           get().addMessage(message);
           return message;
         },
         
-        postSummaryMessage: (summary) => {
-          const message: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: summary,
-            createdAt: new Date().toISOString(),
-            type: ChatMessageType.SUMMARY,
-            metadata: {
-              type: ChatMessageType.SUMMARY
-            }
-          };
+        postSummaryMessage: (summary: string) => {
+          // Import and use the standardized message creation functions
+          const { createAssistantMessage } = require('@/lib/types/chat');
+          const message = createAssistantMessage(summary, {
+            type: ChatMessageType.SUMMARY
+          });
           get().addMessage(message);
           return message;
         },
         
-        updateSummaryAfterCorrection: (newSummary) => {
-          const message: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: "assistant", 
-            content: newSummary,
-            createdAt: new Date().toISOString(),
-            type: ChatMessageType.SUMMARY,
-            metadata: {
-              type: ChatMessageType.SUMMARY
-            }
-          };
+        updateSummaryAfterCorrection: (newSummary: string) => {
+          // Import and use the standardized message creation functions
+          const { createAssistantMessage } = require('@/lib/types/chat');
+          const message = createAssistantMessage(newSummary, {
+            type: ChatMessageType.SUMMARY
+          });
           get().addMessage(message);
           return message;
         },

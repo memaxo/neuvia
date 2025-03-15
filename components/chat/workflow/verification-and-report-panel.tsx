@@ -2,7 +2,7 @@
 
 import { DocumentPreview } from '@/components/chat/document-preview'
 import { Button } from '@/components/ui/button'
-import { useChatStore } from '@/stores/chat-store'
+import { useChatStore } from '@/lib/stores/chat-store'
 import type { ProcessingPhase, WorkflowStep } from '@/lib/workflow/types'
 import { useCallback } from 'react'
 // Import specialized workflow hooks

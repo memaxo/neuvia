@@ -17,6 +17,7 @@ import type { UUID } from '@/lib/types/base'
 import { CHAT_ERROR_CODES } from '@/lib/errors/error-codes'
 import { ProcessingPhase } from '@/lib/types/workflow'
 import logger from '@/lib/logger'
+import { Result } from '../workflow/error/result'
 
 /**
  * Database representation of a chat message
@@ -95,21 +96,21 @@ export class ChatService {
    * 
    * @param userId The user ID to associate with this chat
    * @param initialMetadata Optional initial metadata for the chat
-   * @returns Promise resolving to the new chat ID, or null if creation failed
-   * @throws {SystemError} If the creation fails
+   * @returns Promise resolving to Result containing the new chat ID
    */
   async createChat(
     userId: string,
     initialMetadata: Record<string, unknown> = {}
-  ): Promise<UUID | null> {
+  ): Promise<Result<UUID>> {
+    if (!userId) {
+      return Result.failure(
+        'User ID is required to create a chat',
+        CHAT_ERROR_CODES.CREATION_FAILED,
+        { userId }
+      );
+    }
+    
     try {
-      if (!userId) {
-        throw new ValidationError({
-          message: 'User ID is required to create a chat',
-          code: CHAT_ERROR_CODES.CREATION_FAILED
-        });
-      }
-      
       const timestamp = new Date().toISOString();
       
       const { data, error } = await this.supabase
@@ -126,34 +127,35 @@ export class ChatService {
         .single();
 
       if (error) {
-        throw new SystemError({
-          message: `Error creating chat: ${error.message}`,
-          code: CHAT_ERROR_CODES.CREATION_FAILED,
-          cause: error,
-          data: { userId }
-        });
+        return Result.failure(
+          `Error creating chat: ${error.message}`,
+          CHAT_ERROR_CODES.CREATION_FAILED,
+          { userId, supabaseError: error }
+        );
       }
 
       if (!data) {
-        throw new SystemError({
-          message: 'Chat creation did not return data',
-          code: CHAT_ERROR_CODES.CREATION_FAILED,
-          data: { userId }
-        });
+        return Result.failure(
+          'Chat creation did not return data',
+          CHAT_ERROR_CODES.CREATION_FAILED,
+          { userId }
+        );
       }
 
-      return data.id as UUID;
+      return Result.success(data.id as UUID);
     } catch (error) {
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
+      const normalizedError = normalizeError(error);
       
-      throw new SystemError({
-        message: `Failed to create chat: ${error instanceof Error ? error.message : String(error)}`,
-        code: CHAT_ERROR_CODES.CREATION_FAILED,
-        cause: error,
-        data: { userId }
+      this.logger.error('Failed to create chat', {
+        userId,
+        error: normalizedError.message
       });
+      
+      return Result.failure(
+        `Failed to create chat: ${normalizedError.message}`,
+        normalizedError.code || CHAT_ERROR_CODES.CREATION_FAILED,
+        { userId, originalError: normalizedError }
+      );
     }
   }
 
@@ -194,25 +196,17 @@ export class ChatService {
    * @throws {ValidationError} If the message is invalid
    * @throws {SystemError} If the save operation fails
    */
-  async saveMessage(message: Message, chatId: UUID): Promise<UUID | null> {
-    try {
-      if (!chatId) {
-        throw new ValidationError({
-          message: 'Chat ID is required to save a message',
-          code: CHAT_ERROR_CODES.MESSAGE_FAILED
-        });
-      }
-      
-      // Validate message
-      const validationError = this.getMessageValidationErrors(message);
-      if (validationError) {
-        throw new ValidationError({
-          message: validationError,
-          code: CHAT_ERROR_CODES.MESSAGE_FAILED,
-          data: { chatId }
-        });
-      }
-
+  async saveMessage(message: Message, chatId: UUID): Promise<Result<UUID>> {
+    if (!chatId) {
+      return Result.failure('Chat ID is required to save a message', CHAT_ERROR_CODES.MESSAGE_FAILED);
+    }
+    
+    const validationError = this.getMessageValidationErrors(message);
+    if (validationError) {
+      return Result.failure(validationError, CHAT_ERROR_CODES.MESSAGE_FAILED, { chatId });
+    }
+    
+    return Result.tryAsync(async () => {
       const { data, error } = await this.supabase
         .from('chat_messages')
         .insert({
@@ -224,16 +218,17 @@ export class ChatService {
         })
         .select('id')
         .single();
-
+      
       if (error) {
         throw new SystemError({
-          message: `Error saving message: ${error.message}`,
+            const normalizedError = normalizeError(error);
+            console.error('Error sending message:', normalizedError.message);
           code: CHAT_ERROR_CODES.MESSAGE_FAILED,
           cause: error,
           data: { chatId }
         });
       }
-
+      
       if (!data) {
         throw new SystemError({
           message: 'Message save did not return data',
@@ -241,28 +236,14 @@ export class ChatService {
           data: { chatId }
         });
       }
-
-      // Update chat's last activity timestamp
-      try {
-        await this.updateChatLastActivity(chatId);
-      } catch (activityError) {
-        // Log but don't fail the operation if updating activity fails
-        console.warn('Failed to update chat activity:', activityError);
-      }
-
-      return data.id as UUID;
-    } catch (error) {
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
       
-      throw new SystemError({
-        message: `Failed to save message: ${error instanceof Error ? error.message : String(error)}`,
-        code: CHAT_ERROR_CODES.MESSAGE_FAILED,
-        cause: error,
-        data: { chatId }
+      // Update chat's last activity timestamp; ignore errors if update fails
+      this.updateChatLastActivity(chatId).catch(activityError => {
+        console.warn('Failed to update chat activity:', activityError);
       });
-    }
+      
+      return data.id as UUID;
+    });
   }
 
   /**
@@ -372,19 +353,18 @@ export class ChatService {
    * Get all messages for a chat
    * 
    * @param chatId The chat ID to get messages for
-   * @returns Promise resolving to an array of messages
-   * @throws {NotFoundError} If the chat doesn't exist
-   * @throws {SystemError} If fetching fails
+   * @returns Promise resolving to Result containing an array of messages
    */
-  async getChatMessages(chatId: UUID): Promise<Message[]> {
-    try {
-      if (!chatId) {
-        throw new ValidationError({
-          message: 'Chat ID is required to get messages',
-          code: 'CHAT_MESSAGES_MISSING_CHAT_ID'
-        });
-      }
+  async getChatMessages(chatId: UUID): Promise<Result<Message[]>> {
+    if (!chatId) {
+      return Result.failure(
+        'Chat ID is required to get messages',
+        'CHAT_MESSAGES_MISSING_CHAT_ID',
+        { chatId }
+      );
+    }
 
+    try {
       // First check if chat exists
       const { data: chatData, error: chatError } = await this.supabase
         .from('chats')
@@ -393,21 +373,19 @@ export class ChatService {
         .single();
         
       if (chatError && chatError.code === 'PGRST116') {
-        throw new NotFoundError({
-          message: `Chat with ID ${chatId} not found`,
-          resource: 'Chat',
-          code: 'CHAT_NOT_FOUND',
-          data: { chatId }
-        });
+        return Result.failure(
+          `Chat with ID ${chatId} not found`,
+          'CHAT_NOT_FOUND',
+          { chatId, resource: 'Chat' }
+        );
       }
       
       if (chatError) {
-        throw new SystemError({
-          message: `Error checking chat existence: ${chatError.message}`,
-          code: 'CHAT_FETCH_ERROR',
-          cause: chatError,
-          data: { chatId }
-        });
+        return Result.failure(
+          `Error checking chat existence: ${chatError.message}`,
+          'CHAT_FETCH_ERROR',
+          { chatId, supabaseError: chatError }
+        );
       }
 
       const { data, error } = await this.supabase
@@ -417,27 +395,42 @@ export class ChatService {
         .order('created_at', { ascending: true });
 
       if (error) {
-        throw new SystemError({
-          message: `Error fetching chat messages: ${error.message}`,
-          code: 'CHAT_MESSAGES_FETCH_FAILED',
-          cause: error,
-          data: { chatId }
-        });
+        return Result.failure(
+          `Error fetching chat messages: ${error.message}`,
+          'CHAT_MESSAGES_FETCH_FAILED',
+          { chatId, supabaseError: error }
+        );
       }
 
-      return (data || []).map(msg => this.dbMessageToMessage(msg as DbChatMessage));
+      const messages = (data || []).map(msg => this.dbMessageToMessage(msg as DbChatMessage));
+      return Result.success(messages);
     } catch (error) {
-      if (error instanceof ApplicationError) {
-        throw error;
-      }
+      const normalizedError = normalizeError(error);
       
-      throw new SystemError({
-        message: `Failed to fetch chat messages: ${error instanceof Error ? error.message : String(error)}`,
-        code: 'CHAT_MESSAGES_FETCH_FAILED',
-        cause: error,
-        data: { chatId }
+      this.logger.error('Failed to fetch chat messages', {
+        chatId,
+        error: normalizedError.message
       });
+      
+      return Result.failure(
+        `Failed to fetch chat messages: ${normalizedError.message}`,
+        normalizedError.code || 'CHAT_MESSAGES_FETCH_FAILED',
+        { chatId, originalError: normalizedError }
+      );
     }
+  }
+  
+  /**
+   * Legacy method to maintain backward compatibility
+   * @deprecated Use getChatMessages() which returns Result<Message[]>
+   */
+  async fetchChatMessagesLegacy(chatId: UUID): Promise<Message[]> {
+    return wrapWithResult(
+      () => this.getChatMessages(chatId),
+      `Failed to fetch chat messages for chat ${chatId}`,
+      'CHAT_MESSAGES_FETCH_FAILED',
+      { chatId }
+    );
   }
 
   /**
@@ -958,15 +951,17 @@ export class ChatService {
     content: string,
     role: 'user' | 'assistant' | 'system' | 'function',
     metadata?: MessageMetadata
-  ): ChatMessage {
-    return {
-      id: crypto.randomUUID(),
-      content,
-      role,
-      createdAt: new Date(),
-      metadata
-    };
-  }
+): ChatMessage {
+    if (role === 'user') {
+      return createUserMessage(content, metadata);
+    } else if (role === 'assistant') {
+      return createAssistantMessage(content, metadata);
+    } else if (role === 'system') {
+      return createSystemMessage(content, metadata);
+    } else {
+      return createMessage(role, content, ChatMessageType.CHAT, metadata);
+    }
+}
   
   /**
    * Update a message's progress
@@ -1023,29 +1018,24 @@ export class ChatService {
   async addSystemNotification(
     chatId: UUID,
     content: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, any>
   ): Promise<UUID | null> {
     try {
-      const message: Message = {
-        id: crypto.randomUUID(),
-        role: 'system',
-        content,
-        createdAt: new Date(),
-        metadata: {
-          type: 'system',
-          ...metadata
-        }
-      };
-      
-      return await this.saveMessage(message, chatId);
+      // Use the unified system message creation function from lib/types/chat.ts
+      const { createSystemMessage } = await import('@/lib/types/chat');
+      const message = createSystemMessage(content, {
+        ...metadata
+      });
+      await this.saveMessage(message, chatId);
+      return message.id;
     } catch (error) {
       this.logger.error('Failed to add system notification', {
         chatId,
         error: error instanceof Error ? error.message : String(error)
       });
-      
       return null;
     }
+  }
   }
   
   /**
@@ -1064,32 +1054,8 @@ export class ChatService {
     phase: string
   ): Promise<UUID | null> {
     try {
-      const message: Message = {
-        id: crypto.randomUUID(),
-        role: 'system',
-        content,
-        createdAt: new Date(),
-        metadata: {
-          type: 'progress',
-          progress: {
-            value: progress,
-            phase,
-            startedAt: new Date().toISOString()
-          }
-        }
-      };
-      
-      return await this.saveMessage(message, chatId);
-    } catch (error) {
-      this.logger.error('Failed to add progress message', {
-        chatId,
-        progress,
-        phase,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      
-      return null;
-    }
+        const userMessage = createUserMessage(content, { isCorrection, ...metadata });
+        store.addMessage(userMessage);
   }
   
   /**
@@ -1327,41 +1293,23 @@ export class ChatService {
       }
 
       // Add processing message
-      const processingMessageId = crypto.randomUUID();
-      await this.saveMessage({
-        id: processingMessageId,
-        role: 'system',
-        content: 'Processing your corrections...',
-        createdAt: new Date(),
-        metadata: {
-          type: 'progress',
-          progress: {
-            value: 0,
-            phase: 'correction_processing'
-          }
-        }
-      }, chatId as UUID);
+        import { createProgressMessage } from '@/lib/types/chat';
+        const processingMessage = createProgressMessage('Processing your corrections...', 0, 'correction_processing');
+        await this.saveMessage(processingMessage, chatId as UUID);
 
       // Update verification with corrections
       // This would normally call your verification service
       await this.updateMessageProgress(processingMessageId, 50, 'correction_verification');
 
       // Add confirmation message with summary of changes
-      const summaryMessageId = crypto.randomUUID();
-      await this.saveMessage({
-        id: summaryMessageId,
-        role: 'assistant',
-        content: `I've updated the information with your corrections:\n\n${
-          Object.entries(corrections)
-            .map(([field, value]) => `- ${field}: ${value}`)
-            .join('\n')
-        }`,
-        createdAt: new Date(),
-        metadata: {
-          type: 'summary',
-          correctionData: corrections
-        }
-      }, chatId as UUID);
+      import { createMessage, ChatMessageType } from '@/lib/types/chat';
+      const summaryContent = `I've updated the information with your corrections:\n\n${
+        Object.entries(corrections)
+          .map(([field, value]) => `- ${field}: ${value}`)
+          .join('\n')
+      }`;
+      const summaryMessage = createMessage('assistant', summaryContent, ChatMessageType.SUMMARY, { correctionData: corrections });
+      await this.saveMessage(summaryMessage, chatId as UUID);
 
       // Update processing message to complete
       await this.updateMessageProgress(processingMessageId, 100, 'correction_complete');
@@ -1378,9 +1326,10 @@ export class ChatService {
         error: error instanceof Error ? error.message : String(error)
       });
 
+      const normalizedError = normalizeError(error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: normalizedError.message
       };
     }
   }
@@ -1497,7 +1446,7 @@ export class ChatService {
           id: messageId,
           role: 'assistant',
           content: `Here's a summary of the generated report:\n\n${summary}`,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
           metadata: {
             type: 'report',
             reportId
@@ -1538,7 +1487,7 @@ export class ChatService {
         id: messageId,
         role: 'assistant',
         content: findings || 'Research completed. Here are the findings:',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
         metadata: {
           type: 'research',
           researchId,
@@ -1576,7 +1525,7 @@ export class ChatService {
         id: messageId,
         role: 'system',
         content: `Processing your ${phase} request...`,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
         metadata: {
           type: 'progress',
           progress: {
@@ -2130,6 +2079,40 @@ export class ChatService {
         error: error instanceof Error ? error.message : String(error)
       };
     }
+  }
+}
+
+/**
+ * Utility to handle Result pattern consistently
+ *
+ * This utility can be used to transition from exception-based to Result-based methods
+ * while maintaining backward compatibility.
+ */
+export async function wrapWithResult<T>(
+  operation: () => Promise<Result<T>>,
+  errorMessage: string,
+  errorCode: string,
+  context?: Record<string, unknown>
+): Promise<T> {
+  const result = await operation();
+  
+  if (result.isSuccess()) {
+    return result.value;
+  }
+  
+  // Convert Result.failure to exception for backward compatibility
+  if (isResultError(result.error)) {
+    throw new ApplicationError({
+      message: result.error.message,
+      code: result.error.code,
+      data: result.error.details || context || {}
+    });
+  } else {
+    throw new ApplicationError({
+      message: errorMessage,
+      code: errorCode,
+      data: context || {}
+    });
   }
 }
 
