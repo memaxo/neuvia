@@ -2,67 +2,52 @@
  * Document Services Module
  * 
  * This file exports document-related services with clear separation of concerns:
- * - DocumentExtractionService: Handles text extraction from documents
- * - DocumentStorageService: Manages document storage and retrieval
- * - DocumentAnalysisService: Performs analysis and categorization
+ * - Extraction: Handles text extraction from documents
+ * - Chunking: Divides documents into manageable chunks
+ * - Analysis: Performs document type detection, section extraction, and key point identification
+ * - Storage: Manages document storage and retrieval with database operations, metadata handling, 
+ *           and content formatting
+ * 
+ * NOTE: Refactored to align with LangGraph architecture - services have been
+ * modularized and separated from workflow orchestration logic.
+ * 
+ * The modular approach makes these services more composable:
+ * - DocumentSectionService: Detects and extracts document sections
+ * - DocumentTypeService: Identifies document types and categories
+ * - KeyPointService: Extracts important points from document content
+ * - DocumentDatabaseService: Performs core database operations
+ * - DocumentMetadataService: Handles metadata operations
+ * - DocumentFormatterService: Manages content formatting and document conversion
+ * - DocumentStatusService: Manages document status updates
  */
 
+// Import the document service for backward compatibility
 import { documentService } from './document-service'
-import { DocumentExtractionService } from './extraction-service'
-import { DocumentStorageService } from './storage-service'
-import { DocumentAnalysisService } from './analysis-service'
 
-// Import component modules
+// Re-export all services from their respective modules
+export * from './extraction'
+export * from './chunking'
+export * from './analysis'
+export * from './storage'
+
+// Import utilities
 import { SectionDetector } from './utils/section-detection'
-import {
-  ChunkingStrategy,
-  ChunkingOptions,
-  ChunkingStrategyFactory,
-  SemanticChunkingStrategy,
-  PageBasedChunkingStrategy,
-  SectionBasedChunkingStrategy
-} from './chunking/chunking-strategies'
-import {
-  DocumentExtractor,
-  ExtractorFactory,
-  EnhancedExtractionOptions,
-  OcrDocumentExtractor,
-  PlainTextExtractor
-} from './extractors/extractor-factory'
+export { SectionDetector }
 
-// Export the service implementations
+// Import singletons
+import { extractionService, ocrService } from './extraction'
+import { chunkingService } from './chunking'
+import analysisServices from './analysis'
+import storageServices from './storage'
+
+// Export singletons for easy imports
 export {
-  // Legacy service (full implementation)
-  documentService,
-  
-  // New specialized services
-  DocumentExtractionService,
-  DocumentStorageService,
-  DocumentAnalysisService,
-  
-  // Utilities
-  SectionDetector,
-  
-  // Chunking strategies
-  ChunkingStrategy,
-  ChunkingOptions,
-  ChunkingStrategyFactory,
-  SemanticChunkingStrategy,
-  PageBasedChunkingStrategy,
-  SectionBasedChunkingStrategy,
-  
-  // Extractors
-  DocumentExtractor,
-  ExtractorFactory,
-  EnhancedExtractionOptions,
-  OcrDocumentExtractor,
-  PlainTextExtractor
+  extractionService,
+  ocrService,
+  chunkingService,
+  analysisServices,
+  storageServices
 }
-
-// Create singleton instances
-export const extractionService = new DocumentExtractionService()
-export const storageService = new DocumentStorageService()
-export const analysisService = new DocumentAnalysisService()
 
 // Default export for backward compatibility
 export default documentService

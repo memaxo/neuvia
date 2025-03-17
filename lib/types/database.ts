@@ -967,40 +967,61 @@ export type Database = {
       }
       workflow_states: {
         Row: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
         }
         Insert: {
+          auto_archive?: boolean | null
           chat_id?: string | null
           correction_history?: Json | null
           created_at?: string
           current_step?: Database["public"]["Enums"]["workflow_step"]
           current_summary_id?: string | null
+          expires_at?: string | null
           id?: string
           last_message_id?: string | null
           metadata?: Json | null
+          parent_thread_id?: string | null
+          thread_id?: string | null
+          thread_metadata?: Json | null
+          thread_name?: string | null
+          thread_status?: string | null
           updated_at?: string
           user_id?: string | null
           verification_metadata?: Json | null
         }
         Update: {
+          auto_archive?: boolean | null
           chat_id?: string | null
           correction_history?: Json | null
           created_at?: string
           current_step?: Database["public"]["Enums"]["workflow_step"]
           current_summary_id?: string | null
+          expires_at?: string | null
           id?: string
           last_message_id?: string | null
           metadata?: Json | null
+          parent_thread_id?: string | null
+          thread_id?: string | null
+          thread_metadata?: Json | null
+          thread_name?: string | null
+          thread_status?: string | null
           updated_at?: string
           user_id?: string | null
           verification_metadata?: Json | null
@@ -1019,6 +1040,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "messages"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_states_parent_thread_id_fkey"
+            columns: ["parent_thread_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_states"
+            referencedColumns: ["thread_id"]
           },
         ]
       }
@@ -1062,20 +1090,34 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_workflow_thread: {
+        Args: {
+          p_thread_id: string
+          p_permanent?: boolean
+        }
+        Returns: boolean
+      }
       begin_report_generation: {
         Args: {
           p_user_id: string
           p_report_metadata?: Json
         }
         Returns: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
@@ -1108,24 +1150,46 @@ export type Database = {
         }
         Returns: boolean
       }
+      cleanup_expired_threads: {
+        Args: {
+          p_older_than_days?: number
+          p_auto_archive_only?: boolean
+        }
+        Returns: number
+      }
       complete_verification: {
         Args: {
           p_user_id: string
           p_final_summary_id: string
         }
         Returns: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
         }
+      }
+      fork_workflow_thread: {
+        Args: {
+          p_thread_id: string
+          p_new_thread_name?: string
+          p_thread_metadata?: Json
+        }
+        Returns: string
       }
       get_latest_document_extraction: {
         Args: {
@@ -1218,14 +1282,21 @@ export type Database = {
           p_chat_id: string
         }
         Returns: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
@@ -1330,14 +1401,21 @@ export type Database = {
           p_last_message_id: string
         }
         Returns: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
@@ -1348,18 +1426,31 @@ export type Database = {
           p_user_id: string
         }
         Returns: {
+          auto_archive: boolean | null
           chat_id: string | null
           correction_history: Json | null
           created_at: string
           current_step: Database["public"]["Enums"]["workflow_step"]
           current_summary_id: string | null
+          expires_at: string | null
           id: string
           last_message_id: string | null
           metadata: Json | null
+          parent_thread_id: string | null
+          thread_id: string | null
+          thread_metadata: Json | null
+          thread_name: string | null
+          thread_status: string | null
           updated_at: string
           user_id: string | null
           verification_metadata: Json | null
         }
+      }
+      restore_workflow_thread: {
+        Args: {
+          p_thread_id: string
+        }
+        Returns: boolean
       }
       set_limit: {
         Args: {
@@ -1414,14 +1505,21 @@ export type Database = {
               p_metadata?: Json
             }
             Returns: {
+              auto_archive: boolean | null
               chat_id: string | null
               correction_history: Json | null
               created_at: string
               current_step: Database["public"]["Enums"]["workflow_step"]
               current_summary_id: string | null
+              expires_at: string | null
               id: string
               last_message_id: string | null
               metadata: Json | null
+              parent_thread_id: string | null
+              thread_id: string | null
+              thread_metadata: Json | null
+              thread_name: string | null
+              thread_status: string | null
               updated_at: string
               user_id: string | null
               verification_metadata: Json | null
@@ -1436,14 +1534,21 @@ export type Database = {
               p_last_message_id?: string
             }
             Returns: {
+              auto_archive: boolean | null
               chat_id: string | null
               correction_history: Json | null
               created_at: string
               current_step: Database["public"]["Enums"]["workflow_step"]
               current_summary_id: string | null
+              expires_at: string | null
               id: string
               last_message_id: string | null
               metadata: Json | null
+              parent_thread_id: string | null
+              thread_id: string | null
+              thread_metadata: Json | null
+              thread_name: string | null
+              thread_status: string | null
               updated_at: string
               user_id: string | null
               verification_metadata: Json | null

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { GeminiOCRClient, OCRPageSchema, OCRDocumentSchema } from '@/lib/services/document/gemini-ocr-client';
+import { GeminiOCRClient, OCRPageSchema, OCRDocumentSchema } from '@/lib/services/document/extraction/ocr/gemini-ocr-client';
 
 // Mock the GoogleGenerativeAI
 jest.mock('@google/generative-ai', () => {

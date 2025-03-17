@@ -4,7 +4,7 @@
 import type { NextRequest } from 'next/server'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'
 import { ApplicationError } from '@/lib/errors'
-import { reportService } from '@/lib/services/report/report-service'
+import { reportStorageService } from '@/lib/services/report'
 
 /**
  * GET handler for retrieving a report
@@ -23,14 +23,21 @@ export async function GET(
       })
     }
     
-    // Get the report
-    const report = await reportService.getReport(reportId)
+    // Get the report from storage service
+    const reportData = await reportStorageService.getReport(reportId)
     
-    if (!report) {
-      return apiError({
-        message: 'Report not found',
-        status: 404
-      })
+    // Convert to API response format
+    const report = {
+      id: reportData.report.id,
+      title: reportData.report.title,
+      content: JSON.stringify(reportData.report.sections),
+      format: 'json',
+      createdAt: reportData.report.createdAt,
+      patientId: reportData.report.patientId,
+      generatedBy: reportData.report.createdBy || '',
+      detailLevel: reportData.report.reportType,
+      metadata: reportData.report.metadata,
+      downloadUrl: null
     }
     
     // Return success response

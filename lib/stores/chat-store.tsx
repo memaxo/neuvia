@@ -16,35 +16,40 @@ import {
   type ChatMessage,
   type ChatMessageMetadata,
 } from "@/lib/types/chat";
-import type {
-  WorkflowStep,
-  WorkflowState,
-  ProcessingPhase,
-  MessageMetadata as WorkflowMessageMetadata
-} from "@/lib/types/workflow";
-import { 
-  DomainOnlyWorkflowStep,
-  ProcessingPhase as PhaseEnum,
-} from "@/lib/types/workflow";
-import { VerificationStatus } from "@/lib/types/verification";
-import type { VerificationItem, VerificationResult } from "@/lib/types/verification";
 import type { ResearchOptions, ResearchResult } from "@/lib/types/research";
 import { EVENT_TYPES } from "@/lib/types/events";
 import type { DocumentProcessedEventPayload, DocumentStatusEventPayload } from "@/lib/types/events";
 import { normalizeError, ApplicationError } from "@/lib/errors";
 import logger from "@/lib/logger";
 
-// Direct domain service imports
+// Domain service imports
 import { documentService } from "@/lib/services/document/document-service";
-import { verificationService } from "@/lib/services/verification/verification-service";
 import { reportService } from "@/lib/services/report/report-service";
 import { perplexityService } from "@/lib/services/perplexity/perplexity-service";
-import { workflowService } from "@/lib/services/workflow/core/workflow-service";
-import { chatService } from "@/lib/services/chat/chat-service";
-
-// Use error handler from the chat error utility
-import { ChatWorkflowErrorHandler } from "@/lib/workflow/services/chat-workflow-error-handler";
 import { eventService } from "@/lib/services/event-service";
+
+// LangGraph and RAG specific imports
+import { 
+  createInitialWorkflowState, 
+  type WorkflowState,
+  type WorkflowProgress 
+} from "@/lib/workflow/state/workflow-state";
+import { 
+  createSupabaseCheckpointer, 
+  type SupabaseCheckpointer,
+  type ThreadListOptions,
+  type ThreadMetadata,
+  ThreadStatus
+} from "@/lib/workflow/checkpointer/supabase-checkpointer";
+import { createSupervisorWorkflow } from "@/lib/workflow/graphs/supervisor-workflow";
+import { 
+  ragRetrievalService, 
+  ragMemoryService 
+} from "@/lib/services/rag";
+import type { DocumentChunk, DocumentSource } from "@/lib/types/rag";
+
+// Error handling
+import { ChatWorkflowErrorHandler } from "@/lib/workflow/services/chat-workflow-error-handler";
 
 
 // =============================================================================
@@ -54,22 +59,15 @@ import { eventService } from "@/lib/services/event-service";
 /**
  * Simple enumeration for high-level chat mode.
  */
-export type ChatMode = "default" | "verification" | "research";
+export type ChatMode = "default" | "research";
 
 /**
- * Verification state for the UI store only.
+ * RAG context information
  */
-interface VerificationState {
-  isInVerificationMode: boolean;
-  currentSummary: string | null;
-  verificationStatus: VerificationStatus | string;
-  verificationItems: VerificationItem[];
-  summaryVersions: Array<{
-    id: string;
-    content: string;
-    timestamp: string;
-    userId?: string;
-  }>;
+interface RagContext {
+  retrievedChunks: DocumentChunk[];
+  sources: DocumentSource[];
+  lastQuery?: string;
 }
 
 /**
@@ -83,24 +81,29 @@ interface ResearchState {
 }
 
 /**
- * Combined store interface for the chat UI.
+ * Combined store interface for the chat UI built around LangGraph.
  */
 export interface ChatStore {
+  // Core identifiers
+  threadId?: string;  // LangGraph thread ID - primary identifier
+  patientId?: string; // Current patient context
+  userId?: string;    // Current user
+  chatId?: string;    // Legacy identifier (will be removed)
+
   // UI states
   isLoading: boolean;
   error: string | null;
   mode: ChatMode;
-  chatId?: string;
-  workflowId?: string;
 
-  // The local in-memory list of messages
+  // Chat UI
   messages: ChatMessage[];
-
-  // Overall workflow state (phase, progress, etc.), but we keep it minimal here
-  workflow: WorkflowState;
-
-  // Verification
-  verification: VerificationState;
+  
+  // LangGraph Integration
+  workflowState?: WorkflowState;
+  checkpointer: SupabaseCheckpointer;
+  
+  // RAG Context
+  ragContext?: RagContext;
 
   // Research
   research: ResearchState;
@@ -110,7 +113,7 @@ export interface ChatStore {
   isDocProcessing: boolean;
   extractedDocument: Record<string, unknown> | null;
 
-  // Basic report generation status
+  // Report generation status
   reportGeneration?: {
     isComplete: boolean;
     format: Record<string, unknown>;
@@ -119,32 +122,48 @@ export interface ChatStore {
 
   // ============ Actions ============
 
+  // Core workflow actions
+  initializeWorkflow: (patientId: string, userId: string) => Promise<string>;
+  sendToWorkflow: (content: string) => Promise<void>;
+  continueWorkflow: (action: string) => Promise<void>;
+  handleWorkflowError: (error: any, context: any) => void;
+  
   // UI state management
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
   setMode: (mode: ChatMode) => void;
-  resetChat: () => void;
+  resetChat: (options?: { threadId?: string }) => Promise<void>;
 
   // Message management
   addMessage: (message: ChatMessage | Omit<ChatMessage, "id">) => void;
   updateMessages: (messages: ChatMessage[]) => void;
   updateMessageProgress: (messageId: string, progress: number, phase: string) => void;
+  clearMessages: () => void;
+  addSystemMessage: (
+    content: string,
+    type?: ChatMessageType,
+    metadata?: Record<string, unknown>
+  ) => ChatMessage;
 
-  // Workflow state
-  updateWorkflowStep: (step: WorkflowStep, metadata?: Record<string, unknown>) => Promise<void>;
-  updateProgress: (progress: number, phase?: ProcessingPhase) => void;
-  syncWorkflowState: (state: WorkflowState) => void;
-  subscribeToWorkflowUpdates: () => () => void;
+  // State synchronization
+  syncMessagesFromWorkflow: (state: WorkflowState) => void;
+  updateWorkflowProgress: (progress: WorkflowProgress) => void;
+  
+  // LangGraph Checkpointing and Thread Management
+  saveCheckpoint: () => Promise<void>;
+  loadCheckpoint: (threadId: string) => Promise<boolean>;
+  listCheckpoints: (options?: ThreadListOptions) => Promise<WorkflowState[]>;
+  forkThread: (options?: { name?: string; metadata?: ThreadMetadata }) => Promise<string>;
+  pauseThread: () => Promise<boolean>;
+  completeThread: () => Promise<boolean>;
+  archiveThread: (permanent?: boolean) => Promise<boolean>;
+  restoreThread: (threadId: string) => Promise<boolean>;
+  
+  // RAG Integration
+  clearRagContext: () => void;
+  updateRagContext: (context: RagContext) => void;
 
-  // Verification
-  startVerification: (content: string, items?: VerificationItem[]) => Promise<void>;
-  submitCorrection: (correction: string) => void;
-  completeVerification: (isApproved: boolean) => Promise<VerificationResult>;
-  handleCorrectionMessage: (correction: string) => Promise<void>;
-  confirmVerification: () => Promise<VerificationResult>;
-  resetVerification: () => Promise<{ success: boolean }>;
-
-  // Basic domain or doc pipeline (calls domainCoordinator under the hood)
+  // Document processing
   processDocument: (
     file: File,
     patientId: string,
@@ -152,24 +171,14 @@ export interface ChatStore {
   ) => Promise<Record<string, unknown>>;
   resetDocumentProcessing: () => void;
 
-  // Simplified message sending for UI
+  // Simplified message sending for UI (wraps sendToWorkflow)
   sendMessage: (
     content: string,
-    options?: { isCorrection?: boolean; metadata?: ChatMessageMetadata }
+    options?: { metadata?: ChatMessageMetadata }
   ) => Promise<void>;
 
-  // Subscribes to domain events (document status, processed, etc.)
+  // Event subscriptions
   subscribeToEvents: () => () => void;
-
-  // Helper methods to add messages in a standardized way
-  addSystemMessage: (
-    content: string,
-    type?: ChatMessageType,
-    metadata?: Record<string, unknown>
-  ) => ChatMessage;
-  postSummaryMessage: (summary: string) => ChatMessage;
-  updateSummaryAfterCorrection: (newSummary: string) => ChatMessage;
-  clearMessages: () => void;
 
   // Research
   performResearch: (query: string, options?: ResearchOptions) => Promise<ResearchResult>;
@@ -230,34 +239,40 @@ export const useChatStore = create<ChatStore>()(
     /**
      * Build store's base structure. We'll fill in references after definition.
      */
+    // Create the checkpointer instance
+    const checkpointer = createSupabaseCheckpointer();
+    
     const store: ChatStore = {
+      // =========================
+      // Core IDs
+      // =========================
+      threadId: undefined,
+      patientId: undefined,
+      userId: undefined,
+      chatId: undefined,
+
       // =========================
       // UI State
       // =========================
       isLoading: false,
       error: null,
       mode: "default",
-      chatId: undefined,
-      workflowId: undefined,
-
       messages: [],
-      workflow: {
-        currentStep: DomainOnlyWorkflowStep.IDLE,
-        progress: 0,
-        phase: PhaseEnum.INITIALIZATION,
-        error: null,
-        metadata: {},
-        timestamp: new Date().toISOString(),
-      },
+      
+      // =========================
+      // LangGraph Integration
+      // =========================
+      workflowState: undefined,
+      checkpointer,
+      
+      // =========================
+      // RAG Context
+      // =========================
+      ragContext: undefined,
 
-      verification: {
-        isInVerificationMode: false,
-        currentSummary: null,
-        verificationStatus: VerificationStatus.pending,
-        verificationItems: [],
-        summaryVersions: [],
-      },
-
+      // =========================
+      // Research
+      // =========================
       research: {
         query: null,
         result: null,
@@ -265,10 +280,16 @@ export const useChatStore = create<ChatStore>()(
         progress: 0,
       },
 
+      // =========================
+      // Document Processing
+      // =========================
       docProgress: 0,
       isDocProcessing: false,
       extractedDocument: null,
 
+      // =========================
+      // Report Generation
+      // =========================
       reportGeneration: {
         isComplete: false,
         format: {},
@@ -425,27 +446,29 @@ export const useChatStore = create<ChatStore>()(
         }
       },
       
-      resetChat: () => {
+      resetChat: async (options) => {
+        // If we have an active thread and it's not being replaced, 
+        // mark it as completed before clearing
+        const currentThreadId = get().threadId;
+        if (currentThreadId && (!options?.threadId || options.threadId !== currentThreadId)) {
+          try {
+            // Only try to complete if we're not switching to a new thread
+            if (!options?.threadId) {
+              await get().completeThread();
+            }
+          } catch (error) {
+            console.error('Error completing thread during reset:', error);
+          }
+        }
+        
         set({
           isLoading: false,
           error: null,
+          threadId: undefined,
           mode: "default",
           messages: [],
-          workflow: {
-            currentStep: DomainOnlyWorkflowStep.IDLE,
-            progress: 0,
-            phase: PhaseEnum.INITIALIZATION,
-            error: null,
-            metadata: {},
-            timestamp: new Date().toISOString(),
-          },
-          verification: {
-            isInVerificationMode: false,
-            currentSummary: null,
-            verificationStatus: VerificationStatus.pending,
-            verificationItems: [],
-            summaryVersions: [],
-          },
+          workflowState: undefined,
+          ragContext: undefined,
           research: {
             query: null,
             result: null,
@@ -460,6 +483,11 @@ export const useChatStore = create<ChatStore>()(
             format: {},
           },
         });
+        
+        // If a threadId is provided, try to restore from checkpoint
+        if (options?.threadId) {
+          await get().loadCheckpoint(options.threadId);
+        }
       },
 
       // =========================
@@ -588,51 +616,83 @@ export const useChatStore = create<ChatStore>()(
             ...workflowState,
           },
         }));
+        
+        // Save checkpoint after state update if we have a threadId
+        // We use setTimeout to avoid blocking the UI and make this non-blocking
+        if (get().threadId) {
+          setTimeout(() => {
+            get().saveCheckpoint().catch(err => {
+              console.error('Error auto-saving checkpoint:', err);
+            });
+          }, 0);
+        }
       },
 
       subscribeToWorkflowUpdates: () => {
-        const workflowId = get().workflowId;
-        if (!workflowId) {
-          return () => {}; // No-op if we don't have a workflow ID
+        // First attempt to subscribe to LangGraph updates through checkpointer
+        const threadId = get().threadId;
+        if (threadId) {
+          // Set up a subscription for changes to the LangGraph workflow state
+          try {
+            const unsubscribe = get().checkpointer.subscribe(threadId, (state) => {
+              if (state && state.threadId) {
+                // Update the LangGraph state in the store
+                set({ langGraphState: state });
+                
+                // Sync messages from the workflow state
+                get().syncMessagesFromWorkflow(state);
+              }
+            });
+            return unsubscribe;
+          } catch (error) {
+            console.error('Error setting up LangGraph subscription:', error);
+            // Fall back to legacy workflow subscription
+          }
         }
         
-        // Directly use workflowService
-        const channel = workflowService.subscribeToWorkflowChanges(
-          workflowId,
-          (payload) => {
-            // Extract workflow state from payload
-            const newData = payload.new;
-            
-            if (newData && typeof newData === 'object') {
-              const workflowState = {
-                currentStep: newData.current_step as WorkflowStep,
-                progress: typeof newData.metadata?.progress === 'number'
-                  ? newData.metadata.progress : 0,
-                phase: newData.metadata?.phase as ProcessingPhase || PhaseEnum.PROCESSING,
-                error: newData.metadata?.error as string || null,
-                metadata: newData.metadata || {},
-                timestamp: newData.updated_at || new Date().toISOString()
-              };
+        // Legacy workflow subscription as fallback
+        const workflowId = get().workflowId;
+        if (workflowId) {
+          // Directly use workflowService
+          const channel = workflowService.subscribeToWorkflowChanges(
+            workflowId,
+            (payload) => {
+              // Extract workflow state from payload
+              const newData = payload.new;
               
-              // Sync the workflow state to our local store
-              get().syncWorkflowState(workflowState);
-              
-              // Handle error states
-              if (workflowState.error &&
-                  (workflowState.currentStep === DomainOnlyWorkflowStep.ERROR ||
-                   workflowState.currentStep === 'error')) {
-                get().addSystemMessage(
-                  `Workflow error: ${workflowState.error}`,
-                  ChatMessageType.ERROR
-                );
+              if (newData && typeof newData === 'object') {
+                const workflowState = {
+                  currentStep: newData.current_step as WorkflowStep,
+                  progress: typeof newData.metadata?.progress === 'number'
+                    ? newData.metadata.progress : 0,
+                  phase: newData.metadata?.phase as ProcessingPhase || PhaseEnum.PROCESSING,
+                  error: newData.metadata?.error as string || null,
+                  metadata: newData.metadata || {},
+                  timestamp: newData.updated_at || new Date().toISOString()
+                };
+                
+                // Sync the workflow state to our local store
+                get().syncWorkflowState(workflowState);
+                
+                // Handle error states
+                if (workflowState.error &&
+                    (workflowState.currentStep === DomainOnlyWorkflowStep.ERROR ||
+                     workflowState.currentStep === 'error')) {
+                  get().addSystemMessage(
+                    `Workflow error: ${workflowState.error}`,
+                    ChatMessageType.ERROR
+                  );
+                }
               }
             }
-          }
-        );
+          );
+          
+          return () => {
+            workflowService.unsubscribeFromChannel(channel);
+          };
+        }
         
-        return () => {
-          workflowService.unsubscribeFromChannel(channel);
-        };
+        return () => {}; // No-op if we don't have any ID
       },
 
       // =========================
@@ -999,11 +1059,11 @@ export const useChatStore = create<ChatStore>()(
           return { success: false };
         }
       },
-    processDocument: async (
+      processDocument: async (
         file: File,
         patientId: string,
         documentType?: string
-      ) => Promise<Record<string, unknown>> => {
+      ) => {
         try {
           set({ isLoading: true, isDocProcessing: true, docProgress: 0 });
           
@@ -1020,6 +1080,17 @@ export const useChatStore = create<ChatStore>()(
           );
           get().addMessage(msg);
           
+          // Initialize workflow if needed
+          if (!get().threadId) {
+            const userId = get().userId || crypto.randomUUID();
+            await get().initializeWorkflow(patientId, userId);
+          }
+          
+          // Set patientId if not already set
+          if (!get().patientId) {
+            set({ patientId });
+          }
+          
           // Directly call documentService
           const result = await documentService.processDocument(file, {
             patientId,
@@ -1034,7 +1105,7 @@ export const useChatStore = create<ChatStore>()(
             },
             metadata: {
               uploadedBy: get().userId,
-              workflowId: get().workflowId,
+              threadId: get().threadId,
             }
           });
           
@@ -1052,13 +1123,30 @@ export const useChatStore = create<ChatStore>()(
               { isCompleted: true }
             );
             
-            // If we have workflow ID, update the workflow step
-            if (get().workflowId) {
-              await get().updateWorkflowStep('verification_pending', {
+            // Update workflow state
+            if (get().threadId && get().workflowState) {
+              const currentState = get().workflowState;
+              const updatedState = {
+                ...currentState,
                 documentId: result.id,
-                extractedAt: new Date().toISOString(),
-                fileName: file.name
-              });
+                extractedData: {
+                  text: result.extractedData?.text || '',
+                  structuredData: result.extractedData || {},
+                  extractedAt: new Date().toISOString(),
+                },
+                progress: {
+                  ...currentState.progress,
+                  currentStep: 'document_processed',
+                  percentage: 100,
+                }
+              };
+              
+              // Update state and save checkpoint
+              set({ workflowState: updatedState });
+              await get().saveCheckpoint();
+              
+              // Continue the workflow to process the document
+              await get().continueWorkflow('process_document');
             }
           } else {
             throw new ApplicationError({
@@ -1110,26 +1198,13 @@ export const useChatStore = create<ChatStore>()(
         try {
           if (!content || !content.trim()) return;
           
-          const { isCorrection = false, metadata } = options || {};
+          const { metadata } = options || {};
           
-          // Add user message
-          get().addMessage(createUserMessage(content, { ...metadata, isCorrection }));
+          // Add user message to UI
+          get().addMessage(createUserMessage(content, { ...metadata }));
           
           // Branch by mode
           const mode = get().mode;
-          
-          // Process verification mode messages
-          if (mode === "verification") {
-            const contentLower = content.toLowerCase().trim();
-            
-            if (contentLower === "confirm") {
-              await get().confirmVerification();
-            } else {
-              // treat as correction
-              get().submitCorrection(content);
-            }
-            return;
-          }
           
           // Process research mode messages
           if (mode === "research") {
@@ -1141,16 +1216,8 @@ export const useChatStore = create<ChatStore>()(
             return;
           }
           
-          // Default mode - handle based on intent
+          // Default mode - determine action
           const contentLower = content.toLowerCase().trim();
-          
-          // Report generation intent
-          if (contentLower.includes("generate report") ||
-              contentLower.includes("create report") ||
-              contentLower === "report") {
-            await get().generateReport();
-            return;
-          }
           
           // Research intent
           if (contentLower.includes("research") ||
@@ -1160,40 +1227,21 @@ export const useChatStore = create<ChatStore>()(
             return;
           }
           
-          // Otherwise, handle as a regular chat message
-          // In a real implementation, you would call your AI service here
+          // Handle via LangGraph workflow
+          if (get().threadId) {
+            await get().sendToWorkflow(content);
+            return;
+          } 
           
-          // For now, just simulate an AI response
-          set({ isLoading: true });
+          // No active thread - create one
+          const userId = get().userId || crypto.randomUUID();
+          const patientId = get().patientId || 'default';
           
-          try {
-            // Call chatService for a response or your AI service
-            const response = await chatService.generateAssistantResponse(content, {
-              workflowId: get().workflowId || '',
-              chatId: get().chatId || '',
-              context: {
-                isResearchModeActive: mode === "research",
-                isVerificationModeActive: mode === "verification",
-                isReportModeActive: false,
-                patientId: get().patientId
-              },
-              model: "default",
-              patientId: get().patientId,
-              documentId: get().extractedDocument?.id,
-              userId: get().userId
-            });
-            
-            // Add the assistant message
-            get().addMessage(createAssistantMessage(response));
-            
-          } catch (aiError) {
-            get().addSystemMessage(
-              `Error getting response: ${normalizeError(aiError).message}`,
-              ChatMessageType.ERROR
-            );
-          }
+          // Initialize workflow first
+          const threadId = await get().initializeWorkflow(patientId, userId);
           
-          set({ isLoading: false });
+          // Then send the message to the new workflow
+          await get().sendToWorkflow(content);
           
         } catch (err) {
           ephemeralErrorHandler.handleError(err, {
@@ -1201,6 +1249,13 @@ export const useChatStore = create<ChatStore>()(
             step: "sendMessage",
             content,
           });
+          
+          get().setLoading(false);
+          
+          get().addSystemMessage(
+            `Error processing message: ${normalizeError(err).message}`,
+            ChatMessageType.ERROR
+          );
         }
       },
 
@@ -1208,14 +1263,52 @@ export const useChatStore = create<ChatStore>()(
       // Subscribe to domain events
       // =========================
       subscribeToEvents: () => {
-        const unsubDocumentStatus = eventService.subscribe(EVENT_TYPES.DOCUMENT_STATUS, (payload: DocumentStatusEventPayload) => {
-          set({ docProgress: payload.status.progress ?? 0 });
-          const progs = get().messages.filter((m) => m.metadata?.isProgress && !m.metadata?.isCompleted);
-          if (progs.length > 0) {
-            const lastProg = progs[progs.length - 1];
-            get().updateMessageProgress(lastProg.id, payload.status.progress ?? 0, payload.status.phase ?? "processing");
+        // Document status updates
+        const unsubDocumentStatus = eventService.subscribe(
+          EVENT_TYPES.DOCUMENT_STATUS, 
+          (payload: DocumentStatusEventPayload) => {
+            set({ docProgress: payload.status.progress ?? 0 });
+            
+            // Update progress messages in the UI
+            const progs = get().messages.filter((m) => m.metadata?.isProgress && !m.metadata?.isCompleted);
+            if (progs.length > 0) {
+              const lastProg = progs[progs.length - 1];
+              get().updateMessageProgress(
+                lastProg.id, 
+                payload.status.progress ?? 0, 
+                payload.status.phase ?? "processing"
+              );
+            }
+            
+            // Update workflow state with progress if available
+            if (get().workflowState && get().threadId) {
+              const currentState = get().workflowState;
+              const updatedState = {
+                ...currentState,
+                progress: {
+                  ...currentState.progress,
+                  percentage: payload.status.progress ?? 0,
+                  phase: payload.status.phase ?? currentState.progress?.phase
+                },
+                documentProcessingStatus: {
+                  status: payload.status.status,
+                  progress: payload.status.progress ?? 0,
+                  phase: payload.status.phase,
+                  updatedAt: new Date().toISOString()
+                }
+              };
+              
+              set({ workflowState: updatedState });
+              
+              // Save checkpoint without blocking UI
+              setTimeout(() => {
+                get().saveCheckpoint().catch(console.error);
+              }, 0);
+            }
           }
-        });
+        );
+        
+        // Document completed processing
         const unsubDocumentProcessed = eventService.subscribe(
           EVENT_TYPES.DOCUMENT_PROCESSED,
           (payload: DocumentProcessedEventPayload) => {
@@ -1224,17 +1317,118 @@ export const useChatStore = create<ChatStore>()(
               docProgress: 100,
               isDocProcessing: false,
             });
-            get().addSystemMessage(`Document processed: ${payload.document.fileName}`, ChatMessageType.SYSTEM, {
-              isProgress: true,
-              isCompleted: true,
-            });
+            
+            get().addSystemMessage(
+              `Document processed: ${payload.document.fileName}`, 
+              ChatMessageType.SYSTEM, 
+              {
+                isProgress: true,
+                isCompleted: true,
+              }
+            );
+            
+            // Update workflow state with document data
+            if (get().threadId && get().workflowState) {
+              const currentState = get().workflowState;
+              const updatedState = {
+                ...currentState,
+                documentId: payload.document.id,
+                extractedData: {
+                  text: payload.document.text || '',
+                  structuredData: payload.document,
+                  extractedAt: new Date().toISOString()
+                },
+                progress: {
+                  ...currentState.progress,
+                  currentStep: 'document_processed',
+                  percentage: 100,
+                  phase: 'document_complete'
+                }
+              };
+              
+              set({ workflowState: updatedState });
+              
+              // Save checkpoint and continue workflow
+              setTimeout(async () => {
+                try {
+                  await get().saveCheckpoint();
+                  await get().continueWorkflow('process_document');
+                } catch (error) {
+                  console.error('Error updating workflow after document processing:', error);
+                }
+              }, 0);
+            }
           }
         );
-        const unsubWorkflow = get().subscribeToWorkflowUpdates();
+        
+        // RAG context updates
+        let unsubRagEvents = () => {};
+        try {
+          if (typeof ragMemoryService.subscribeToRagUpdates === 'function') {
+            unsubRagEvents = ragMemoryService.subscribeToRagUpdates((update) => {
+              if (update.chatId === get().chatId || update.threadId === get().threadId) {
+                // Update RAG context in the UI
+                set({
+                  ragContext: {
+                    retrievedChunks: update.chunks || [],
+                    sources: update.sources || [],
+                    lastQuery: update.query
+                  }
+                });
+                
+                // Update workflow state with RAG context
+                if (get().threadId && get().workflowState) {
+                  set(prevState => ({
+                    workflowState: {
+                      ...prevState.workflowState,
+                      ragContext: {
+                        retrievedChunks: update.chunks || [],
+                        sources: update.sources || [],
+                        query: update.query,
+                        updatedAt: new Date().toISOString()
+                      }
+                    }
+                  }));
+                  
+                  // Save checkpoint without blocking UI
+                  setTimeout(() => {
+                    get().saveCheckpoint().catch(console.error);
+                  }, 0);
+                }
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Error subscribing to RAG updates:', error);
+        }
+        
+        // Subscribe to workflow state updates through checkpointer
+        const unsubWorkflow = () => {};
+        if (get().threadId) {
+          try {
+            const subscription = get().checkpointer.subscribe(get().threadId, (state) => {
+              if (state && state.threadId) {
+                // Update state and sync messages
+                set({ workflowState: state });
+                get().syncMessagesFromWorkflow(state);
+              }
+            });
+            
+            return () => {
+              unsubDocumentStatus();
+              unsubDocumentProcessed();
+              unsubRagEvents();
+              subscription();
+            };
+          } catch (error) {
+            console.error('Error subscribing to workflow updates:', error);
+          }
+        }
+        
         return () => {
           unsubDocumentStatus();
           unsubDocumentProcessed();
-          unsubWorkflow();
+          unsubRagEvents();
         };
       },
 
@@ -1265,6 +1459,590 @@ export const useChatStore = create<ChatStore>()(
       clearMessages: () => {
         set({ messages: [] });
       },
+      
+      // =========================
+      // Core Workflow Actions
+      // =========================
+      initializeWorkflow: async (patientId, userId) => {
+        try {
+          // Generate a new thread ID
+          const threadId = crypto.randomUUID();
+          
+          // Create initial workflow state
+          const initialState = createInitialWorkflowState(patientId, userId, threadId);
+          
+          // Create and invoke the workflow
+          const workflow = createSupervisorWorkflow(get().checkpointer);
+          await workflow.invoke(initialState);
+          
+          // Update store with IDs
+          set({ 
+            threadId,
+            patientId,
+            userId,
+            workflowState: initialState
+          });
+          
+          // Add a system message to indicate the workflow has started
+          get().addSystemMessage(
+            "Medical workflow initialized",
+            ChatMessageType.SYSTEM,
+            { threadId, patientId }
+          );
+          
+          return threadId;
+        } catch (error) {
+          ephemeralErrorHandler.handleError(error, {
+            domain: "workflow",
+            step: "initializeWorkflow",
+          });
+          
+          throw error;
+        }
+      },
+      
+      sendToWorkflow: async (content) => {
+        try {
+          const { threadId, checkpointer } = get();
+          
+          if (!threadId) {
+            throw new Error("No active workflow thread");
+          }
+          
+          // Set loading state
+          set({ isLoading: true });
+          
+          // Load the current workflow state
+          const currentState = await checkpointer.load(threadId);
+          
+          if (!currentState || !currentState.threadId) {
+            throw new Error("Failed to load workflow state");
+          }
+          
+          // Update the current message in the state
+          const updatedState = {
+            ...currentState,
+            currentMessage: {
+              content,
+              role: 'user',
+              createdAt: new Date().toISOString()
+            },
+            interactionHistory: [
+              ...(currentState.interactionHistory || []),
+              {
+                id: crypto.randomUUID(),
+                message: content,
+                timestamp: new Date().toISOString(),
+                userId: get().userId,
+                role: 'user'
+              }
+            ]
+          };
+          
+          // Save the updated state
+          await checkpointer.save(updatedState, threadId);
+          
+          // Get the workflow
+          const workflow = createSupervisorWorkflow(checkpointer);
+          
+          // Continue the workflow with the current state
+          const result = await workflow.continue(threadId);
+          
+          // Update store with new state
+          set({ 
+            workflowState: result,
+            isLoading: false
+          });
+          
+          // Sync messages from the workflow state
+          get().syncMessagesFromWorkflow(result);
+          
+          // Save a checkpoint
+          await get().saveCheckpoint();
+          
+        } catch (error) {
+          set({ isLoading: false });
+          
+          ephemeralErrorHandler.handleError(error, {
+            domain: "workflow",
+            step: "sendToWorkflow",
+            content
+          });
+          
+          get().addSystemMessage(
+            `Error processing message: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+        }
+      },
+      
+      syncMessagesFromWorkflow: (state) => {
+        if (!state || !state.interactionHistory) return;
+        
+        try {
+          // Convert workflow interactions to chat messages
+          const messages = state.interactionHistory.map(interaction => ({
+            id: interaction.id || crypto.randomUUID(),
+            role: interaction.role,
+            content: interaction.message,
+            createdAt: interaction.timestamp,
+            type: interaction.messageType || ChatMessageType.CHAT,
+            metadata: {
+              type: interaction.messageType,
+              contextual: interaction.contextual,
+              step: state.progress?.currentStep,
+              sources: interaction.sources
+            }
+          }));
+          
+          // Update the store's messages
+          get().updateMessages(messages);
+          
+          // Update RAG context if available
+          if (state.ragContext) {
+            set({
+              ragContext: {
+                retrievedChunks: state.ragContext.retrievedChunks || [],
+                sources: state.ragContext.sources || [],
+                lastQuery: state.ragContext.query
+              }
+            });
+          }
+          
+        } catch (error) {
+          ephemeralErrorHandler.handleError(error, {
+            domain: "workflow",
+            step: "syncMessagesFromWorkflow",
+          });
+        }
+      },
+      
+      continueWorkflow: async (action) => {
+        try {
+          const { threadId, checkpointer, workflowState } = get();
+          
+          if (!threadId || !workflowState) {
+            throw new Error("No active workflow");
+          }
+          
+          // Set loading state
+          set({ isLoading: true });
+          
+          // Update the current action in the state
+          const updatedState = {
+            ...workflowState,
+            currentAction: action,
+            lastUpdated: new Date().toISOString()
+          };
+          
+          // Save the updated state
+          await checkpointer.save(updatedState, threadId);
+          
+          // Get the workflow
+          const workflow = createSupervisorWorkflow(checkpointer);
+          
+          // Continue the workflow with the action
+          const result = await workflow.continue(threadId);
+          
+          // Update store with new state
+          set({ 
+            workflowState: result,
+            isLoading: false
+          });
+          
+          // Sync messages from the workflow state
+          get().syncMessagesFromWorkflow(result);
+          
+        } catch (error) {
+          set({ isLoading: false });
+          
+          ephemeralErrorHandler.handleError(error, {
+            domain: "workflow",
+            step: "continueWorkflow",
+            action
+          });
+          
+          get().addSystemMessage(
+            `Error continuing workflow: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+        }
+      },
+      
+      handleWorkflowError: (error, context) => {
+        const formattedError = error.message || "Unknown workflow error";
+        
+        // Add error message to chat
+        get().addSystemMessage(formattedError, ChatMessageType.ERROR, {
+          domain: context.domain || "workflow",
+          step: context.step,
+          timestamp: new Date().toISOString(),
+          recoverable: context.recoverable || false
+        });
+        
+        // Update workflow state to reflect error
+        if (get().workflowState) {
+          set(prevState => ({
+            workflowState: {
+              ...prevState.workflowState,
+              error: {
+                message: formattedError,
+                timestamp: new Date().toISOString(),
+                domain: context.domain || "workflow",
+                step: context.step,
+                recoverable: context.recoverable || false
+              }
+            }
+          }));
+        }
+        
+        // Log the error
+        logger.error("Workflow error", {
+          threadId: get().threadId,
+          error: formattedError,
+          context
+        });
+      },
+      
+      updateWorkflowProgress: (progress) => {
+        if (!get().workflowState) return;
+        
+        set(prevState => ({
+          workflowState: {
+            ...prevState.workflowState,
+            progress
+          }
+        }));
+      },
+      
+      // =========================
+      // LangGraph Checkpointing & Thread Management
+      // =========================
+      saveCheckpoint: async () => {
+        try {
+          const { threadId, workflowState } = get();
+          
+          if (!threadId) {
+            throw new Error('Cannot save checkpoint: Missing thread ID');
+          }
+          
+          if (workflowState) {
+            const updatedState = {
+              ...workflowState,
+              workflowUpdatedAt: new Date().toISOString()
+            };
+            
+            await get().checkpointer.save(updatedState, threadId);
+            return;
+          }
+          
+          // If no workflow state exists yet, try to load it first
+          const loadedState = await get().checkpointer.load(threadId);
+          
+          if (loadedState && loadedState.threadId) {
+            const updatedState = {
+              ...loadedState,
+              workflowUpdatedAt: new Date().toISOString()
+            };
+            
+            await get().checkpointer.save(updatedState, threadId);
+          } else {
+            // Create a new state if no existing state was found
+            const initialState = createInitialWorkflowState(
+              get().patientId || 'unknown',
+              get().userId || 'anonymous',
+              threadId
+            );
+            
+            await get().checkpointer.save(initialState, threadId);
+            set({ workflowState: initialState });
+          }
+          
+        } catch (error) {
+          console.error('Error saving checkpoint:', error);
+          throw error;
+        }
+      },
+      
+      loadCheckpoint: async (threadId) => {
+        try {
+          // Load workflow state from Supabase
+          const state = await get().checkpointer.load(threadId);
+          
+          // Check if state exists (empty object means not found)
+          if (!state || !state.threadId) {
+            return false;
+          }
+          
+          // Set the state into the store
+          set({ 
+            threadId: state.threadId,
+            patientId: state.patientId,
+            userId: state.userId,
+            workflowState: state
+          });
+          
+          // Sync the interaction history to messages
+          get().syncMessagesFromWorkflow(state);
+          
+          // Set RAG context if available
+          if (state.ragContext) {
+            set({
+              ragContext: {
+                retrievedChunks: state.ragContext.retrievedChunks || [],
+                sources: state.ragContext.sources || [],
+                lastQuery: state.ragContext.query
+              }
+            });
+          }
+          
+          // Set document state if available
+          if (state.extractedData) {
+            set({
+              extractedDocument: {
+                id: state.documentId,
+                text: state.extractedData.text,
+                ...state.extractedData.structuredData,
+              },
+              docProgress: 100,
+              isDocProcessing: false
+            });
+          }
+          
+          return true;
+        } catch (error) {
+          console.error('Error loading checkpoint:', error);
+          return false;
+        }
+      },
+      
+      listCheckpoints: async (options) => {
+        try {
+          return await get().checkpointer.list(options);
+        } catch (error) {
+          console.error('Error listing checkpoints:', error);
+          return [];
+        }
+      },
+      
+      /**
+       * Creates a fork of the current thread
+       */
+      forkThread: async (options) => {
+        try {
+          const { threadId, workflowState } = get();
+          
+          if (!threadId) {
+            throw new Error('Cannot fork: No active thread');
+          }
+          
+          // Make sure current state is saved
+          await get().saveCheckpoint();
+          
+          // Fork the thread
+          const newThreadId = await get().checkpointer.fork({
+            parentThreadId: threadId,
+            name: options?.name || `Fork of ${threadId.substring(0, 8)}`,
+            metadata: options?.metadata || {
+              createdAt: new Date().toISOString(),
+              parentState: workflowState?.progress?.currentStep || 'unknown'
+            }
+          });
+          
+          if (!newThreadId) {
+            throw new Error('Failed to create thread fork');
+          }
+          
+          // Add a system message in the current thread
+          get().addSystemMessage(
+            `Created a fork of this conversation: ${newThreadId.substring(0, 8)}`,
+            ChatMessageType.SYSTEM,
+            { 
+              isThreadOperation: true,
+              forkedThreadId: newThreadId,
+              threadOperation: 'fork' 
+            }
+          );
+          
+          return newThreadId;
+        } catch (error) {
+          console.error('Error forking thread:', error);
+          
+          get().addSystemMessage(
+            `Error creating fork: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+          
+          throw error;
+        }
+      },
+      
+      /**
+       * Pauses the current thread
+       */
+      pauseThread: async () => {
+        try {
+          const { threadId } = get();
+          
+          if (!threadId) {
+            throw new Error('Cannot pause: No active thread');
+          }
+          
+          // Save current state
+          await get().saveCheckpoint();
+          
+          // Pause the thread
+          const result = await get().checkpointer.pause(threadId);
+          
+          // Add a system message
+          get().addSystemMessage(
+            'Conversation paused. You can resume it later.',
+            ChatMessageType.SYSTEM,
+            { 
+              isThreadOperation: true,
+              threadOperation: 'pause'
+            }
+          );
+          
+          return result;
+        } catch (error) {
+          console.error('Error pausing thread:', error);
+          
+          get().addSystemMessage(
+            `Error pausing conversation: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+          
+          throw error;
+        }
+      },
+      
+      /**
+       * Marks the current thread as completed
+       */
+      completeThread: async () => {
+        try {
+          const { threadId } = get();
+          
+          if (!threadId) {
+            throw new Error('Cannot complete: No active thread');
+          }
+          
+          // Save current state
+          await get().saveCheckpoint();
+          
+          // Complete the thread
+          const result = await get().checkpointer.complete(threadId);
+          
+          // Add a system message
+          get().addSystemMessage(
+            'Conversation completed. Starting a new conversation will create a new thread.',
+            ChatMessageType.SYSTEM,
+            { 
+              isThreadOperation: true,
+              threadOperation: 'complete'
+            }
+          );
+          
+          return result;
+        } catch (error) {
+          console.error('Error completing thread:', error);
+          
+          get().addSystemMessage(
+            `Error completing conversation: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+          
+          throw error;
+        }
+      },
+      
+      /**
+       * Archives the current thread
+       */
+      archiveThread: async (permanent = false) => {
+        try {
+          const { threadId } = get();
+          
+          if (!threadId) {
+            throw new Error('Cannot archive: No active thread');
+          }
+          
+          // Save current state
+          await get().saveCheckpoint();
+          
+          // Archive the thread
+          const result = await get().checkpointer.archive(threadId, permanent);
+          
+          // Add a system message
+          get().addSystemMessage(
+            permanent 
+              ? 'Conversation permanently deleted.'
+              : 'Conversation archived. It can be restored later.',
+            ChatMessageType.SYSTEM,
+            { 
+              isThreadOperation: true,
+              threadOperation: permanent ? 'delete' : 'archive'
+            }
+          );
+          
+          return result;
+        } catch (error) {
+          console.error('Error archiving thread:', error);
+          
+          get().addSystemMessage(
+            `Error archiving conversation: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+          
+          throw error;
+        }
+      },
+      
+      /**
+       * Restores an archived thread
+       */
+      restoreThread: async (threadId) => {
+        try {
+          if (!threadId) {
+            throw new Error('Cannot restore: No thread ID provided');
+          }
+          
+          // Restore the thread
+          const result = await get().checkpointer.restore(threadId);
+          
+          // Load the thread
+          await get().loadCheckpoint(threadId);
+          
+          // Add a system message
+          get().addSystemMessage(
+            'Restored archived conversation.',
+            ChatMessageType.SYSTEM,
+            { 
+              isThreadOperation: true,
+              threadOperation: 'restore'
+            }
+          );
+          
+          return result;
+        } catch (error) {
+          console.error('Error restoring thread:', error);
+          
+          get().addSystemMessage(
+            `Error restoring conversation: ${normalizeError(error).message}`,
+            ChatMessageType.ERROR
+          );
+          
+          throw error;
+        }
+      },
+      
+      // =========================
+      // RAG Integration
+      // =========================
+      clearRagContext: () => set({ ragContext: undefined }),
+      
+      updateRagContext: (context) => set({ ragContext: context }),
 
       // =========================
       // Research
@@ -1334,13 +2112,23 @@ export const useChatStore = create<ChatStore>()(
             },
           }));
           
-          // If workflow exists, update it
-          if (get().workflowId) {
-            await get().updateWorkflowStep('complete', {
-              researchId: crypto.randomUUID(),
-              researchQuery: query,
-              researchCompletedAt: new Date().toISOString()
-            });
+              // If we have a thread, update the workflow state
+          if (get().threadId && get().workflowState) {
+            const state = get().workflowState;
+            const updatedState = {
+              ...state,
+              researchResults: {
+                query,
+                result: result,
+                completedAt: new Date().toISOString()
+              }
+            };
+            
+            // Update the workflow state
+            set({ workflowState: updatedState });
+            
+            // Save the updated state
+            await get().saveCheckpoint();
           }
           
           return result;

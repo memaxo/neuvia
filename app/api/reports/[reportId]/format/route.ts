@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { validateRequest } from '@/lib/api/validation'
 import { ApplicationError } from '@/lib/errors'
 import type { ReportFormat } from '@/lib/chat/types'
-import { reportService } from '@/lib/services/report/report-service'
+import { reportFormattingService, reportStorageService } from '@/lib/services/report'
 
 // Request validation schema
 const formatReportSchema = z.object({
@@ -53,14 +53,25 @@ export async function POST(
       metadataInFooter
     }
     
-    // Format the report
-    const formattedReport = await reportService.formatReport(reportId, formatOptions)
+    // Get the report from database
+    const reportData = await reportStorageService.getReport(reportId)
     
-    if (!formattedReport) {
-      return apiError({
-        message: 'Report not found',
-        status: 404
-      })
+    // Format the report
+    const formattedContent = await reportFormattingService.formatOutput(
+      reportData,
+      format,
+      {
+        style,
+        metadataInFooter
+      }
+    )
+    
+    // Create formatted report response
+    const formattedReport = {
+      id: reportId,
+      content: formattedContent,
+      format,
+      downloadUrl: null
     }
     
     // Return success response

@@ -8,17 +8,18 @@ import {
 } from '@/lib/types/workflow' // normal import for enum usage
 import type { UUID } from '@/lib/types/base'
 import { DOCUMENT_ERROR_CODES, STORAGE_ERROR_CODES } from '@/lib/errors/error-codes'
-import { DocumentAnalysisService } from './analysis-service'
-import { DocumentExtractionService } from './extraction-service'
-import { DocumentStorageService } from './storage-service'
+import { extractionService } from './extraction'
+import { DocumentTypeService } from './analysis'
+import storageServices from './storage'
 import { documentMapper } from '@/lib/types/document-mapper'
 import type { DbDocument } from '@/lib/types/db-adapters'
 
 // For random UUID generation
 import { randomUUID } from 'crypto'
 
-// If there's a custom error "ValidationError" from a separate file:
-import { ValidationError } from '@/lib/errors/verification-errors'
+// Verification error import removed
+// Use standard ValidationError
+import { ValidationError } from '@/lib/errors'
 import { withRetry } from '@/lib/utils/retry'
 
 // Simplified "SystemError" removing "Error | unknown" => just "unknown"
@@ -108,9 +109,10 @@ interface EnhancedExtractionOptions {
 export class DocumentService {
   private readonly supabase = createBrowserClient()
 
-  private readonly extractionService = new DocumentExtractionService()
-  private readonly analysisService = new DocumentAnalysisService()
-  private readonly storageService = new DocumentStorageService()
+  private readonly typeService = new DocumentTypeService()
+  private readonly dbService = storageServices.databaseService
+  private readonly formatterService = storageServices.formatterService
+  private readonly metadataService = storageServices.metadataService
 /**
  * Process a document by extracting text, analyzing content, and saving if desired.
  * Now integrates with the workflow system for better state management.
@@ -239,7 +241,7 @@ public async processDocument(
       }
     } else {
       extractedData = await withRetry(
-        async () => this.extractionService.extractText(file, extractionOptions),
+        async () => extractionService.extractText(file, extractionOptions),
         {
           maxRetries: 3,
           baseDelay: 2000,
@@ -278,7 +280,7 @@ public async processDocument(
       })
       
       detectionResult = await withRetry(
-        async () => this.analysisService.detectDocumentType(extractedData.rawText),
+        async () => this.typeService.detectDocumentType(extractedData.rawText),
         {
           maxRetries: 2,
           baseDelay: 1000,
@@ -475,9 +477,48 @@ private getStepDescription(phase: ProcessingPhase): string {
     })
 
     try {
+      // Prepare document for saving
+      const category = this.metadataService.validateDocumentCategory(
+        extractedDocument.documentType.category
+      );
+      
+      const title = this.metadataService.generateDocumentTitle(
+        extractedDocument.documentType,
+        extractedDocument.extractedData.metadata.title
+      );
+      
+      const summary = this.formatterService.generateContentSummary(
+        extractedDocument.extractedData.rawText
+      );
+      
+      const metadata = this.metadataService.prepareDocumentMetadata(
+        extractedDocument,
+        departmentId
+      );
+      
+      // Prepare record for insertion
+      const documentRecord = {
+        patient_id: extractedDocument.patientId,
+        title,
+        category: category as any,
+        document_type: extractedDocument.documentType as unknown as Json,
+        file_path: extractedDocument.extractedData.metadata.filename || 'unknown-file',
+        file_type: extractedDocument.extractedData.metadata.fileFormat || 'application/pdf',
+        file_size: extractedDocument.extractedData.metadata.fileSize || 0,
+        checksum: extractedDocument.extractedData.metadata.checksum || `generated-${Date.now().toString()}`,
+        document_date: new Date().toISOString().split('T')[0],
+        content_text: extractedDocument.extractedData.rawText,
+        content_summary: summary,
+        metadata,
+        processing_status: extractedDocument.isProcessed ? 'completed' : 'failed',
+        is_processed: extractedDocument.isProcessed,
+        processing_error: extractedDocument.processingError,
+        department: departmentId,
+      };
+      
       // Use standardized retry logic for DB operations
       const docId = await withRetry(
-        async () => this.storageService.saveDocument(extractedDocument, departmentId),
+        async () => this.dbService.insertDocument(documentRecord),
         {
           maxRetries: 3,
           baseDelay: 1000,

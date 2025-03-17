@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DocumentExtractionService } from '@/lib/services/document/extraction-service';
-import { GeminiOCRClient } from '@/lib/services/document/gemini-ocr-client';
+import { GeminiOCRClient } from '@/lib/services/document/extraction/ocr/gemini-ocr-client';
 import logger from '@/lib/logger';
 
 // Set up the services

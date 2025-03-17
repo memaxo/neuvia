@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { createServerClient } from '@/lib/supabase/clients'
 import { apiError, apiSuccess } from '@/lib/api/response-helpers'
-import { reportService } from '@/lib/services/report/report-service'
+import { reportFormattingService, reportGenerationService } from '@/lib/services/report'
 import { perplexityService } from '@/lib/services/perplexity/perplexity-service'
 import { ReportType, ReportStatus } from '@/lib/types/report'
 import logger from '@/lib/logger'
@@ -264,8 +264,8 @@ async function generateReportAsync(
       .update({ status: 'formatting' })
       .eq('id', reportId)
 
-    // Format the output
-    const formattedContent = await reportService.formatReportOutput({
+    // Create report data structure
+    const reportData = {
       report: {
         id: reportId,
         patientId,
@@ -280,7 +280,7 @@ async function generateReportAsync(
             editable: true
           }
         },
-        sourceDocuments: [],
+        sourceDocuments: researchResult.sources?.map(s => s.url) || [],
         metadata: {
           generatedAt: new Date().toISOString(),
           version: '1.0'
@@ -288,9 +288,27 @@ async function generateReportAsync(
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
-      // This second argument isn't typed in the old snippet, but the code in `report-service` uses a param for sources
-      sources: researchResult.sources ?? []
-    }, options.format)
+      patient: {
+        id: patientId,
+        firstName: patient.first_name || 'Unknown',
+        lastName: patient.last_name || 'Patient'
+      },
+      sourceDocuments: (researchResult.sources || []).map(s => ({
+        id: crypto.randomUUID(),
+        title: s.title || 'Unknown Source',
+        documentType: {
+          category: 'administrative',
+          type: 'reference'
+        },
+        citation: s.url || ''
+      }))
+    }
+    
+    // Format the report content
+    const formattedContent = await reportFormattingService.formatOutput(
+      reportData,
+      options.format
+    )
 
     // Mark report as 'completed', store text in 'content', plus formattedContent, etc.
     // Convert researchResult.sources to JSON for DB
