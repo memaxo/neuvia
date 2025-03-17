@@ -1,11 +1,13 @@
 // workflow/nodes/patient/verification-node.ts
 
 import { patientSummaryVerificationService } from '@/lib/services/patient/verification/patient-summary-verification-service'
-import { patientSummaryFormattingService } from '@/lib/services/patient/formatting/patient-summary-formatting-service'
 import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
 import { VerificationStatus } from '@/lib/types/verification'
-import type { WorkflowState, PartialWorkflowState } from '@/workflow/state/workflow-state'
+import type { WorkflowState } from '../../state/workflow-state'
 import logger from '@/lib/logger'
+
+// Define the return type since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 /**
  * LangGraph node for handling patient summary verification
@@ -39,7 +41,7 @@ export const patientVerificationNode = async (
     
     // Get the current message content
     const messageContent = state.currentMessage.content;
-    const userId = state.currentMessage.userId || state.userId || 'system';
+    const userId = state.userId || 'system';
     
     // Check verification status from message content
     const verificationStatus = await patientSummaryVerificationService.checkVerificationStatus(
@@ -53,7 +55,7 @@ export const patientVerificationNode = async (
       
       // Mark summary as verified
       const verifiedSummary = await patientSummaryVerificationService.verifySummary(
-        state.patientId,
+        state.patientId || '',
         userId,
         'verified',
         messageContent
@@ -64,11 +66,11 @@ export const patientVerificationNode = async (
         return {
           error: {
             message: 'Failed to mark summary as verified',
-            code: 'VERIFICATION_ERROR',
-            step: WorkflowSteps.VERIFICATION,
+            domain: 'verification',
+            step: "verification",
             timestamp: new Date().toISOString(),
             recoverable: true,
-            details: {
+            context: {
               patientId: state.patientId,
               userId
             }
@@ -87,16 +89,16 @@ export const patientVerificationNode = async (
       return {
         patientSummary: verifiedSummary,
         verification: {
-          status: VerificationStatus.completed,
+          status: 'completed',
           verifiedAt: new Date().toISOString(),
           verifiedBy: userId,
           corrections: state.verification?.corrections || [],
-          message: 'Summary verified successfully'
+          items: state.verification?.items || []
         },
         progress: {
           currentStep: WorkflowSteps.VERIFICATION_COMPLETED,
           percentage: 80,
-          phase: ProcessingPhase.VERIFICATION_COMPLETED,
+          phase: ProcessingPhase.VERIFICATION_COMPLETION,
           isCompleted: false
         },
         workflowUpdatedAt: new Date().toISOString(),
@@ -124,10 +126,10 @@ export const patientVerificationNode = async (
       // Return state with request for clarification
       return {
         verification: {
-          status: VerificationStatus.in_progress,
+          status: 'in_progress',
           corrections: state.verification?.corrections || [],
-          verificationStartedAt: state.verification?.verificationStartedAt || new Date().toISOString(),
-          message: 'Please confirm if the summary is correct or provide specific corrections.'
+          verifiedAt: state.verification?.verifiedAt,
+          items: state.verification?.items || []
         },
         progress: {
           currentStep: WorkflowSteps.VERIFICATION,
@@ -146,11 +148,11 @@ export const patientVerificationNode = async (
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown verification error',
-        code: 'VERIFICATION_PROCESSING_ERROR',
-        step: WorkflowSteps.VERIFICATION,
+        domain: 'verification',
+        step: "verification",
         timestamp: new Date().toISOString(),
         recoverable: true,
-        details: {
+        context: {
           threadId: state.threadId,
           patientId: state.patientId,
           error: String(error)

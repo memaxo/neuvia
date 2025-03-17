@@ -1,8 +1,11 @@
 // lib/workflow/nodes/chat/response-generation-node.ts
-import { WorkflowState, PartialWorkflowState } from '@/workflow/state/workflow-state';
+import type { WorkflowState, WorkflowInteraction, WorkflowError } from '../../state/workflow-state';
 import { ProcessingPhase } from '@/lib/types/workflow';
 import { ChatMessageType } from '@/lib/types/chat';
 import logger from '@/lib/logger';
+
+// Define the return type
+type PartialWorkflowState = Partial<WorkflowState>;
 
 export async function responseGenerationNode(
   state: WorkflowState
@@ -22,16 +25,19 @@ export async function responseGenerationNode(
     switch (lastIntent) {
       case 'document_extraction':
         if (state.extractedData) {
-          responseMessage = `Document extracted successfully. Extracted ${state.extractedData.text.length} characters with ${Math.round(state.extractedData.confidence * 100)}% confidence.`;
+          // Safely access text length and handle confidence without assuming property exists
+          const textLength = state.extractedData.text?.length || 0;
+          const confidence = state.extractedData.structuredData?.confidence as number || 0.8;
+          responseMessage = `Document extracted successfully. Extracted ${textLength} characters with ${Math.round(confidence * 100)}% confidence.`;
         } else {
           responseMessage = 'Please upload a document to extract text.';
         }
         break;
       
       case 'verification':
-        if (state.verification.status === 'completed') {
+        if (state.verification?.status === 'completed') {
           responseMessage = 'The summary has been verified successfully.';
-        } else if (state.verification.status === 'in_progress') {
+        } else if (state.verification?.status === 'in_progress') {
           responseMessage = 'Please confirm if the summary is accurate or provide corrections.';
         } else {
           responseMessage = 'No summary available for verification.';
@@ -46,15 +52,16 @@ export async function responseGenerationNode(
     }
     
     // Add response to interaction history
-    const interaction = {
+    const interaction: WorkflowInteraction = {
+      id: `msg_${Date.now()}`,
       timestamp: new Date().toISOString(),
       message: responseMessage,
       userId: 'system',
       role: 'assistant',
-      messageType: ChatMessageType.ASSISTANT,
+      messageType: 'assistant', // Fixed: Using string literal instead of enum
       contextual: {
         step: 'response_generation',
-        intent: lastIntent,
+        intent: lastIntent as string,
       },
     };
     
@@ -75,10 +82,11 @@ export async function responseGenerationNode(
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown error',
-        code: 'RESPONSE_GENERATION_ERROR',
-        step: 'response_generation',
         timestamp: new Date().toISOString(),
+        domain: 'response',
+        step: 'response_generation',
         recoverable: true,
+        context: { error }
       },
       progress: {
         currentStep: 'error',

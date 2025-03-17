@@ -1,10 +1,12 @@
 // workflow/nodes/patient/summary-generation-node.ts
 
 import { patientSummaryCoreService } from '@/lib/services/patient/core/patient-summary-core-service'
-import { patientSummaryFormattingService } from '@/lib/services/patient/formatting/patient-summary-formatting-service'
 import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
-import type { WorkflowState, PartialWorkflowState } from '@/workflow/state/workflow-state'
+import type { WorkflowState } from '../../state/workflow-state'
 import logger from '@/lib/logger'
+
+// Define the return type since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 /**
  * LangGraph node for generating a patient summary from extracted documents
@@ -30,7 +32,7 @@ export const patientSummaryGenerationNode = async (
     // Update progress state to indicate summarization is starting
     const partialState: PartialWorkflowState = {
       progress: {
-        currentStep: WorkflowSteps.SUMMARY_GENERATION,
+        currentStep: "summary_generation", // Use string literal instead of enum
         percentage: 40,
         phase: ProcessingPhase.ANALYSIS,
         isCompleted: false
@@ -54,11 +56,11 @@ export const patientSummaryGenerationNode = async (
         ...partialState,
         error: {
           message: 'No documents available for summary generation',
-          code: 'NO_DOCUMENTS',
-          step: WorkflowSteps.SUMMARY_GENERATION,
+          domain: 'document', // Changed from code to domain to match WorkflowError
+          step: "summary_generation", // Use string literal instead of enum
           timestamp: new Date().toISOString(),
           recoverable: true,
-          details: {
+          context: { // Changed details to context to match WorkflowError
             patientId: state.patientId
           }
         },
@@ -73,7 +75,7 @@ export const patientSummaryGenerationNode = async (
     
     // Update progress
     partialState.progress = {
-      currentStep: WorkflowSteps.SUMMARY_GENERATION,
+      currentStep: "summary_generation", // Use string literal instead of enum
       percentage: 50,
       phase: ProcessingPhase.ANALYSIS,
       isCompleted: false
@@ -117,35 +119,31 @@ export const patientSummaryGenerationNode = async (
       );
     }
     
-    // Generate markdown for display
-    const summaryMarkdown = patientSummaryFormattingService.generateMarkdown(patientSummary);
-    
-    // Extract structured data for potential use in other nodes
-    const structuredData = patientSummaryFormattingService.extractStructuredData(summaryMarkdown);
-    
     // Update progress state to indicate summarization is complete
     partialState.progress = {
-      currentStep: WorkflowSteps.SUMMARY_GENERATION,
+      currentStep: "summary_generation", // Use string literal instead of enum
       percentage: 70,
-      phase: ProcessingPhase.SUMMARY_GENERATED,
+      phase: ProcessingPhase.COMPLETION, // Use COMPLETION instead of non-existent SUMMARY_GENERATED
       isCompleted: false
     };
     
     moduleLogger.info('Patient summary generation completed successfully', {
       documentCount: extractedDocuments.length,
-      summaryLength: summaryMarkdown.length
+      summaryLength: JSON.stringify(patientSummary).length
     });
+    
+    // Current timestamp for tracking
+    const now = new Date().toISOString();
     
     // Return updated state with patient summary
     return {
       ...partialState,
       patientSummary,
-      patientSummaryMarkdown: summaryMarkdown,
-      patientSummaryStructuredData: structuredData,
       verification: {
         status: 'pending',
         corrections: [],
-        verificationStartedAt: new Date().toISOString()
+        verifiedAt: undefined,
+        items: []
       }
     };
   } catch (error) {
@@ -156,11 +154,11 @@ export const patientSummaryGenerationNode = async (
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown summary generation error',
-        code: 'SUMMARY_GENERATION_ERROR',
-        step: WorkflowSteps.SUMMARY_GENERATION,
+        domain: 'summary', // Changed from code to domain to match WorkflowError
+        step: "summary_generation", // Use string literal instead of enum
         timestamp: new Date().toISOString(),
         recoverable: false,
-        details: {
+        context: { // Changed details to context to match WorkflowError
           threadId: state.threadId,
           patientId: state.patientId,
           error: String(error)

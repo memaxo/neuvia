@@ -1,7 +1,10 @@
-import { WorkflowState, PartialWorkflowState } from '@/lib/workflow/state/workflow-state';
+import type { WorkflowState } from '../../state/workflow-state';
 import { ProcessingPhase, WorkflowSteps } from '@/lib/types/workflow';
 import { ChatMessageType, ChatIntentType } from '@/lib/types/chat';
 import logger from '@/lib/logger';
+
+// Define the return type since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 /**
  * Message processing node for LangGraph workflow
@@ -64,7 +67,7 @@ export async function messageProcessingNode(
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       message: messageContent,
-      userId: state.currentMessage.userId || state.userId,
+      userId: state.userId || 'user',
       role: 'user' as const,
       messageType: ChatMessageType.CHAT,
       contextual: {
@@ -99,7 +102,7 @@ export async function messageProcessingNode(
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown message processing error',
-        code: 'MESSAGE_PROCESSING_ERROR',
+        domain: 'message_processing',
         step: WorkflowSteps.CHAT_IN_PROGRESS,
         timestamp: new Date().toISOString(),
         recoverable: true,

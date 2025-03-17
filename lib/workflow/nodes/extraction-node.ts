@@ -7,9 +7,12 @@
  */
 
 import { ExtractionService, type ExtractionOptions } from '@/lib/services/document/extraction/extraction-service'
-import { WorkflowState, PartialWorkflowState } from '@/lib/workflow/state/workflow-state'
+import type { WorkflowState } from '@/lib/workflow/state/workflow-state'
 import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
 import logger from '@/lib/logger'
+
+// Define the return type locally since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 // Create module-level logger
 const moduleLogger = logger.withMetadata({ module: 'ExtractionNode' })
@@ -74,9 +77,12 @@ export const extractionNode = async (
     const extractionTime = Date.now() - extractionStartTime
     
     // Calculate confidence score based on metadata or defaults
-    const confidence = extractedData.metadata.confidence ? 
-      Number(extractedData.metadata.confidence) : 
-      (extractedData.metadata.processingComplete ? 0.85 : 0.5)
+    // Use type assertion for custom properties that might be in the custom field
+    const customMetadata = extractedData.metadata.custom || {};
+    const confidence = 
+      customMetadata.confidence ? 
+      Number(customMetadata.confidence) : 
+      (customMetadata.processingComplete ? 0.85 : 0.5);
     
     // Log successful extraction
     moduleLogger.info('Document extraction completed', {
@@ -84,7 +90,7 @@ export const extractionNode = async (
       textLength: extractedData.rawText.length,
       chunkCount: extractedData.chunks?.length || 0,
       processingTimeMs: extractionTime,
-      success: extractedData.metadata.processingComplete === true
+      success: (customMetadata.processingComplete as boolean) === true
     })
     
     // Update the state with extraction results
@@ -92,11 +98,9 @@ export const extractionNode = async (
       ...partialState,
       extractedData: {
         text: extractedData.rawText,
-        metadata: extractedData.metadata,
         structuredData: extractedData.chunks ? 
-          { chunks: extractedData.chunks } : 
-          undefined,
-        confidence,
+          { chunks: extractedData.chunks } as Record<string, unknown> : 
+          {} as Record<string, unknown>,
         extractedAt: new Date().toISOString()
       },
       progress: {
@@ -117,11 +121,11 @@ export const extractionNode = async (
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown extraction error',
-        code: 'EXTRACTION_ERROR',
+        domain: 'extraction',
         step: WorkflowSteps.EXTRACTING,
         timestamp: new Date().toISOString(),
         recoverable: false,
-        details: { 
+        context: { 
           error: String(error),
           fileName: state.file?.name,
           fileType: state.file?.type

@@ -1,11 +1,13 @@
 // lib/workflow/nodes/patient/correction-node.ts
 
 import { patientSummaryVerificationService } from '@/lib/services/patient/verification/patient-summary-verification-service'
-import { patientSummaryFormattingService } from '@/lib/services/patient/formatting/patient-summary-formatting-service'
 import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
 import { VerificationStatus } from '@/lib/types/verification'
-import type { WorkflowState, PartialWorkflowState } from '@/workflow/state/workflow-state'
+import type { WorkflowState } from '../../state/workflow-state'
 import logger from '@/lib/logger'
+
+// Define the return type since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 /**
  * LangGraph node for handling patient summary corrections
@@ -44,7 +46,7 @@ export const patientCorrectionNode = async (
     }
     
     // Get user ID for attribution
-    const userId = state.currentMessage?.userId || state.userId || 'system';
+    const userId = state.userId || 'system';
     
     // Process the correction using the verification service
     const correctedSummary = await patientSummaryVerificationService.processCorrection(
@@ -60,25 +62,18 @@ export const patientCorrectionNode = async (
       }
     );
     
-    // Generate markdown for the corrected summary
-    const correctedMarkdown = patientSummaryFormattingService.generateMarkdown(correctedSummary);
-    
-    // Extract structured data from the corrected summary
-    const structuredData = patientSummaryFormattingService.extractStructuredData(correctedMarkdown);
-    
     // Create correction record for the verification history
     const correction = {
-      id: crypto.randomUUID(),
+      original: JSON.stringify(state.patientSummary),
+      corrected: JSON.stringify(correctedSummary),
       timestamp: new Date().toISOString(),
-      userId,
-      text: state.correctionText
+      userId
     };
     
     // Get current corrections from state or initialize empty array
     const currentCorrections = state.verification?.corrections || [];
     
     moduleLogger.info('Correction applied successfully', {
-      correctionId: correction.id,
       userId,
       correctionCount: currentCorrections.length + 1
     });
@@ -86,13 +81,11 @@ export const patientCorrectionNode = async (
     // Return updated state with corrected summary
     return {
       patientSummary: correctedSummary,
-      patientSummaryMarkdown: correctedMarkdown,
-      patientSummaryStructuredData: structuredData,
       verification: {
-        status: VerificationStatus.in_progress,
+        status: 'in_progress',
         corrections: [...currentCorrections, correction],
-        verificationStartedAt: state.verification?.verificationStartedAt || new Date().toISOString(),
-        message: 'Correction applied. Please confirm if the summary is now correct or provide additional corrections.'
+        verifiedAt: state.verification?.verifiedAt,
+        items: state.verification?.items || []
       },
       progress: {
         currentStep: WorkflowSteps.VERIFICATION,
@@ -113,11 +106,11 @@ export const patientCorrectionNode = async (
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown correction error',
-        code: 'CORRECTION_PROCESSING_ERROR',
-        step: WorkflowSteps.VERIFICATION,
+        domain: 'correction',
+        step: "verification",
         timestamp: new Date().toISOString(),
         recoverable: true,
-        details: {
+        context: {
           threadId: state.threadId,
           patientId: state.patientId,
           error: String(error)

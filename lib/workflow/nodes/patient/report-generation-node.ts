@@ -10,8 +10,12 @@ import { reportFormattingService } from '@/lib/services/report/report-formatting
 import { reportStorageService } from '@/lib/services/report/report-storage-service'
 import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
 import { ReportFormat, ReportType, ReportGenerationParams } from '@/lib/types/report'
-import type { WorkflowState, PartialWorkflowState } from '@/workflow/state/workflow-state'
+import type { WorkflowState } from '../../state/workflow-state'
 import logger from '@/lib/logger'
+import { getFormatterForType as getReportFormatterForType } from '@/lib/services/report/formatters/report-formatter'
+
+// Define the return type locally since PartialWorkflowState isn't exported
+type PartialWorkflowState = Partial<WorkflowState>;
 
 // Create module-level logger
 const moduleLogger = logger.withMetadata({ module: 'ReportGenerationNode' })
@@ -123,7 +127,7 @@ export const reportGenerationNode = async (
     partialState.progress = {
       currentStep: WorkflowSteps.REPORT_GENERATION,
       percentage: 90,
-      phase: ProcessingPhase.FORMATTING,
+      phase: ProcessingPhase.REPORT_FORMATTING,
       isCompleted: false
     }
     
@@ -136,7 +140,7 @@ export const reportGenerationNode = async (
         format
       })
       
-      const formatter = getFormatterForType(reportType.toString().toLowerCase())
+      const formatter = getReportFormatterForType(reportType.toString().toLowerCase())
       const formatOptions = formatter.getFormatOptions(format)
       
       const formattedContent = await reportFormattingService.formatOutput(
@@ -164,7 +168,7 @@ export const reportGenerationNode = async (
     partialState.progress = {
       currentStep: WorkflowSteps.REPORT_GENERATION,
       percentage: 95,
-      phase: ProcessingPhase.STORAGE,
+      phase: ProcessingPhase.REPORT_PREVIEW,
       isCompleted: false
     }
     
@@ -188,7 +192,7 @@ export const reportGenerationNode = async (
     partialState.progress = {
       currentStep: WorkflowSteps.REPORT_GENERATION,
       percentage: 100,
-      phase: ProcessingPhase.COMPLETED,
+      phase: ProcessingPhase.COMPLETION,
       isCompleted: true
     }
     
@@ -216,12 +220,12 @@ export const reportGenerationNode = async (
         id: savedReportId,
         type: reportType,
         format,
-        content: reportData.formattedContent?.[format] || patientSummaryMarkdown
+        content: reportData.formattedContent?.[format as keyof typeof reportData.formattedContent] || patientSummaryMarkdown
       },
       progress: {
-        currentStep: WorkflowSteps.REPORT_COMPLETED,
+        currentStep: WorkflowSteps.COMPLETE,
         percentage: 100,
-        phase: ProcessingPhase.COMPLETED,
+        phase: ProcessingPhase.COMPLETION,
         isCompleted: true
       },
       workflowUpdatedAt: new Date().toISOString()
@@ -236,11 +240,11 @@ export const reportGenerationNode = async (
     return {
       error: {
         message: error instanceof Error ? error.message : 'Unknown report generation error',
-        code: 'REPORT_GENERATION_ERROR',
+        domain: 'report',
         step: WorkflowSteps.REPORT_GENERATION,
         timestamp: new Date().toISOString(),
         recoverable: false,
-        details: {
+        context: {
           error: String(error),
           patientId: state.patientId
         }
@@ -260,8 +264,7 @@ export const reportGenerationNode = async (
  * Helper to get the appropriate formatter for a report type
  */
 function getFormatterForType(type: string) {
-  const { getFormatterForType } = require('@/lib/services/report/formatters/report-formatter')
-  return getFormatterForType(type)
+  return getReportFormatterForType(type);
 }
 
 /**

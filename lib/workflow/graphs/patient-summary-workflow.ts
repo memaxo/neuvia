@@ -70,9 +70,41 @@ const PatientSummaryAnnotation = Annotation.Root({
   })
 });
 
-// Wrap extractionNode to match expected Runnable signature
-const extractionNodeWrapper = async (state: WorkflowState, config?: any) => {
-  return extractionNode(state, config) as Promise<WorkflowState>;
+// Wrap nodes to match expected Runnable signature
+
+// Extraction node wrapper (already defined)
+const extractionNodeWrapper = async (state: WorkflowState) => {
+  return extractionNode(state) as Promise<WorkflowState>;
+};
+
+// Analysis node wrapper
+const analysisNodeWrapper = async (state: WorkflowState) => {
+  const result = await analysisNode(state);
+  return { ...state, ...result } as WorkflowState;
+};
+
+// Patient summary generation node wrapper
+const patientSummaryGenerationNodeWrapper = async (state: WorkflowState) => {
+  const result = await patientSummaryGenerationNode(state);
+  return { ...state, ...result } as WorkflowState;
+};
+
+// Patient verification node wrapper
+const patientVerificationNodeWrapper = async (state: WorkflowState) => {
+  const result = await patientVerificationNode(state);
+  return { ...state, ...result } as WorkflowState;
+};
+
+// Patient correction node wrapper
+const patientCorrectionNodeWrapper = async (state: WorkflowState) => {
+  const result = await patientCorrectionNode(state);
+  return { ...state, ...result } as WorkflowState;
+};
+
+// Report generation node wrapper
+const reportGenerationNodeWrapper = async (state: WorkflowState) => {
+  const result = await reportGenerationNode(state);
+  return { ...state, ...result } as WorkflowState;
 };
 
 /**
@@ -88,13 +120,13 @@ export const createPatientSummaryWorkflow = (checkpointer?: SupabaseCheckpointer
   // Create workflow graph using the annotation and cast to allow arbitrary node names
   const graph = new StateGraph(PatientSummaryAnnotation) as unknown as StateGraph<WorkflowState, WorkflowState, WorkflowState, string>;
   
-  // Add nodes to the graph
+  // Add nodes to the graph with wrappers to ensure proper return types
   graph.addNode("documentExtraction", extractionNodeWrapper);
-  graph.addNode("documentAnalysis", analysisNode);
-  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNode);
-  graph.addNode("patientVerification", patientVerificationNode);
-  graph.addNode("patientCorrection", patientCorrectionNode);
-  graph.addNode("reportGeneration", reportGenerationNode);
+  graph.addNode("documentAnalysis", analysisNodeWrapper);
+  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNodeWrapper);
+  graph.addNode("patientVerification", patientVerificationNodeWrapper);
+  graph.addNode("patientCorrection", patientCorrectionNodeWrapper);
+  graph.addNode("reportGeneration", reportGenerationNodeWrapper);
   
   // Set up the workflow graph edges
   graph.addEdge(START, "documentExtraction");
@@ -154,10 +186,10 @@ export const createSummaryVerificationWorkflow = (checkpointer?: SupabaseCheckpo
   // Create workflow graph using the annotation and cast to allow arbitrary node names
   const graph = new StateGraph(PatientSummaryAnnotation) as unknown as StateGraph<WorkflowState, WorkflowState, WorkflowState, string>;
   
-  // Add only the necessary nodes
-  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNode);
-  graph.addNode("patientVerification", patientVerificationNode);
-  graph.addNode("patientCorrection", patientCorrectionNode);
+  // Add only the necessary nodes, with wrappers to ensure proper return types
+  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNodeWrapper);
+  graph.addNode("patientVerification", patientVerificationNodeWrapper);
+  graph.addNode("patientCorrection", patientCorrectionNodeWrapper);
   
   // Add edges
   graph.addEdge(START, "patientSummaryGeneration");
@@ -204,11 +236,11 @@ export const createDocumentToReportWorkflow = (checkpointer?: SupabaseCheckpoint
   // Create workflow graph using the annotation and cast to allow arbitrary node names
   const graph = new StateGraph(PatientSummaryAnnotation) as unknown as StateGraph<WorkflowState, WorkflowState, WorkflowState, string>;
   
-  // Add nodes to the graph
+  // Add nodes to the graph with wrappers to ensure proper return types
   graph.addNode("documentExtraction", extractionNodeWrapper);
-  graph.addNode("documentAnalysis", analysisNode);
-  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNode);
-  graph.addNode("reportGeneration", reportGenerationNode);
+  graph.addNode("documentAnalysis", analysisNodeWrapper);
+  graph.addNode("patientSummaryGeneration", patientSummaryGenerationNodeWrapper);
+  graph.addNode("reportGeneration", reportGenerationNodeWrapper);
   
   // Add sequential path
   graph.addEdge(START, "documentExtraction");
