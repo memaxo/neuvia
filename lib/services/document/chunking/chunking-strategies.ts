@@ -2,21 +2,13 @@
  * Chunking Strategies
  *
  * Provides different strategies for chunking document text into smaller segments
+ * for both extraction and RAG use cases.
  */
 
 import { Document } from 'langchain/document'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { SectionDetector } from '../utils/section-detection'
-
-/**
- * Options for chunking
- */
-export interface ChunkingOptions {
-  chunkSize: number
-  chunkOverlap: number
-  preserveMetadata: boolean
-  strategy: 'size' | 'semantic' | 'section'
-}
+import type { ChunkingOptions } from '@/lib/types/chunk'
 
 /**
  * Interface for chunking strategies
@@ -69,6 +61,7 @@ export class SemanticChunkingStrategy implements ChunkingStrategy {
       pageContent: text,
       metadata: {
         chunkType: 'semantic',
+        domain: options.domain || 'general',
         ...(structuredData || {})
       },
     });
@@ -81,7 +74,8 @@ export class SemanticChunkingStrategy implements ChunkingStrategy {
       content: doc.pageContent,
       metadata: {
         ...doc.metadata,
-        chunkType: 'semantic'
+        chunkType: 'semantic',
+        domain: options.domain
       }
     }));
   }
@@ -127,7 +121,8 @@ export class PageBasedChunkingStrategy implements ChunkingStrategy {
                 sectionType: paragraph.sectionType ||
                   SectionDetector.detectSectionType(paragraph.content),
                 bounds: paragraph.bounds || null,
-                chunkType: 'paragraph'
+                chunkType: 'paragraph',
+                domain: options.domain
               }
             });
           }
@@ -147,7 +142,8 @@ export class PageBasedChunkingStrategy implements ChunkingStrategy {
               tableData: table.cells || null,
               tableRows: table.rows || null,
               tableCols: table.columns || null,
-              chunkType: 'table'
+              chunkType: 'table',
+              domain: options.domain
             }
           });
         });
@@ -161,7 +157,8 @@ export class PageBasedChunkingStrategy implements ChunkingStrategy {
             source: structuredData.source || 'page-based',
             confidence: page.confidence || structuredData.confidence || 0.9,
             bounds: page.bounds || null,
-            chunkType: 'page'
+            chunkType: 'page',
+            domain: options.domain
           }
         });
       }
@@ -189,7 +186,7 @@ export class SectionBasedChunkingStrategy implements ChunkingStrategy {
     // Use SectionDetector to split text into sections
     const sections = SectionDetector.splitTextBySections(text);
     
-    sections.forEach((section, index) => {
+    for (const [index, section] of sections.entries()) {
       // For large sections, we might further chunk them
       if (section.content.length > options.chunkSize * 1.5) {
         // Create a subsplitter for large sections
@@ -198,21 +195,23 @@ export class SectionBasedChunkingStrategy implements ChunkingStrategy {
           chunkOverlap: options.chunkOverlap,
         });
         
-        // Create chunks (returns a Promise, but we'll handle it later)
-        splitter.createDocuments([section.content]).then(subDocs => {
-          subDocs.forEach((subDoc, subIndex) => {
-            chunks.push({
-              content: subDoc.pageContent,
-              metadata: {
-                section: section.section,
-                sectionIndex: index,
-                subSectionIndex: subIndex,
-                source: structuredData?.source || 'section-based',
-                chunkType: 'section-chunk'
-              }
-            });
+        // Create chunks for this section
+        const subDocs = await splitter.createDocuments([section.content]);
+        
+        // Add each sub-document as a chunk
+        for (const [subIndex, subDoc] of subDocs.entries()) {
+          chunks.push({
+            content: subDoc.pageContent,
+            metadata: {
+              section: section.section,
+              sectionIndex: index,
+              subSectionIndex: subIndex,
+              source: structuredData?.source || 'section-based',
+              chunkType: 'section-chunk',
+              domain: options.domain
+            }
           });
-        });
+        }
       } else {
         // Section is small enough to use as-is
         chunks.push({
@@ -221,11 +220,12 @@ export class SectionBasedChunkingStrategy implements ChunkingStrategy {
             section: section.section,
             sectionIndex: index,
             source: structuredData?.source || 'section-based',
-            chunkType: 'section'
+            chunkType: 'section',
+            domain: options.domain
           }
         });
       }
-    });
+    }
     
     return chunks;
   }
@@ -253,6 +253,15 @@ export class ChunkingStrategyFactory {
       return new SectionBasedChunkingStrategy();
     } else if (options.strategy === 'size') {
       return new SemanticChunkingStrategy();
+    }
+
+    // If domain is 'rag', prefer smaller semantic chunks
+    if (options.domain === 'rag') {
+      if (structuredData?.sections && structuredData.sections.length > 2) {
+        return new SectionBasedChunkingStrategy();
+      } else {
+        return new SemanticChunkingStrategy();
+      }
     }
 
     // Otherwise, determine based on data characteristics

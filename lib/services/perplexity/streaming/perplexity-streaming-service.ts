@@ -1,52 +1,34 @@
-import researchConfig from '@/lib/config/research'
-import { langChainCore } from '@/lib/langchain/core'
-import type { LangChainCore } from '@/lib/langchain/core'
 import type { ResearchOptions, ResearchResult, ResearchSource } from '@/lib/types/research'
-import logger from '@/lib/logger'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { PerplexityChainFactory } from '../chains/chain-factory'
 import { ResearchTextParser } from '../parsers/research-text-parser'
 import { PerplexityStreamingError } from '../error/perplexity-errors'
-import { perplexityCacheService } from '../cache/perplexity-cache-service'
+import { PerplexityBaseService } from '../core/perplexity-base-service'
+import researchConfig from '@/lib/config/research'
+
+const DEFAULT_DEBUG = researchConfig.debug
 
 /**
  * Service for performing streaming research operations with Perplexity API
  * 
- * This service focuses solely on streaming research functionality, without any
- * workflow orchestration or progress tracking logic.
+ * LangGraph Integration:
+ * This service is designed to be used as a streaming node in a LangGraph workflow.
+ * It can feed incremental results to subsequent nodes for progressive processing.
  */
-export class PerplexityStreamingService {
-  private readonly langChain: LangChainCore
-  private readonly logger: typeof logger
-  private readonly chainFactory: PerplexityChainFactory
-  
-  constructor(
-    langChainProvider?: LangChainCore,
-    loggerInstance?: typeof logger
-  ) {
-    this.langChain = langChainProvider || langChainCore
-    this.logger = loggerInstance || logger
-    this.chainFactory = new PerplexityChainFactory(this.langChain, this.logger)
+export class PerplexityStreamingService extends PerplexityBaseService {
+  // Implement abstract method
+  protected getServiceName(): string {
+    return 'PerplexityStreamingService'
   }
 
   /**
    * Perform streaming research with real-time results
-   * 
-   * @param query The research query
-   * @param options Optional research parameters
-   * @param config Optional LangChain config
-   * @returns ReadableStream of partial results
    */
   async performStreamingResearch(
     query: string,
     options?: ResearchOptions,
     config?: RunnableConfig
-  ): Promise<ReadableStream> {
-    const moduleLogger = this.logger.withMetadata({
-      module: 'PerplexityStreamingService',
-      method: 'performStreamingResearch',
-      query,
-    })
+  ): Promise<ReadableStream<any>> {
+    const moduleLogger = this.createModuleLogger('performStreamingResearch', query, options)
 
     moduleLogger.info('Starting streaming research', {
       model: options?.model ?? researchConfig.providers.perplexity.model,
@@ -54,7 +36,7 @@ export class PerplexityStreamingService {
 
     // Create a new ReadableStream for sending chunks
     return new ReadableStream({
-      async start(controller) {
+      async start: async (controller) => {
         try {
           // Determine what type of research to perform
           const isForMedicalDiagnosis = options?.isMedicalDiagnosis === true
@@ -94,54 +76,41 @@ export class PerplexityStreamingService {
 
           // Process each chunk from the stream
           for await (const chunk of stream) {
-            if (typeof chunk === 'string') {
-              // Plain text chunk
-              textSoFar += chunk
-              controller.enqueue({
-                type: 'text-delta',
-                content: chunk
-              })
-            } else if (chunk && typeof chunk === 'object') {
-              // Handle structured output
-              if ('sources' in chunk && Array.isArray(chunk.sources)) {
-                // Update sources when they come in
-                sources = [...sources, ...chunk.sources]
-                controller.enqueue({
-                  type: 'source-delta',
-                  content: chunk.sources
-                })
-              }
-              
-              if ('keyFindings' in chunk && Array.isArray(chunk.keyFindings)) {
-                // Update key findings
-                keyFindings = [...keyFindings, ...chunk.keyFindings]
-                controller.enqueue({
-                  type: 'key-findings-delta',
-                  content: chunk.keyFindings
-                })
-              }
-              
-              if ('summary' in chunk && typeof chunk.summary === 'string') {
-                // Update summary
-                summary = chunk.summary
-                controller.enqueue({
-                  type: 'summary-delta',
-                  content: chunk.summary
-                })
-              }
-              
-              if ('text' in chunk && typeof chunk.text === 'string') {
-                // Handle text chunk
-                const newText = chunk.text.slice(textSoFar.length)
-                if (newText) {
-                  textSoFar = chunk.text
-                  controller.enqueue({
-                    type: 'text-delta',
-                    content: newText
-                  })
-                }
+            // Update accumulated text
+            if (chunk.text) {
+              textSoFar += chunk.text
+            }
+
+            // Extract and accumulate sources if available
+            if (chunk.sources && Array.isArray(chunk.sources)) {
+              sources = [...sources, ...chunk.sources]
+            }
+
+            // Extract key findings if available
+            if (chunk.keyFindings && Array.isArray(chunk.keyFindings)) {
+              keyFindings = [...keyFindings, ...chunk.keyFindings]
+            }
+
+            // Update summary if available
+            if (chunk.summary) {
+              summary = chunk.summary
+            }
+
+            // Create a partial result to send
+            const partialResult = {
+              type: 'partial',
+              content: {
+                text: chunk.text || '',
+                sources: chunk.sources || [],
+                keyFindings: chunk.keyFindings || [],
+                summary: chunk.summary || '',
+                timestamp: new Date(),
+                complete: false
               }
             }
+
+            // Send the partial result to the stream
+            controller.enqueue(partialResult)
           }
 
           // Create a final result to cache
@@ -156,7 +125,7 @@ export class PerplexityStreamingService {
           }
           
           // Cache the final result
-          perplexityCacheService.cacheResult(query, options, finalResult)
+          this.cacheResult(query, options, finalResult)
           
           // Send completion message
           controller.enqueue({
@@ -181,7 +150,7 @@ export class PerplexityStreamingService {
             error instanceof Error ? error : undefined
           )
         }
-      }.bind(this),
+      }
     })
   }
 }

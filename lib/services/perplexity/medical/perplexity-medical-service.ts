@@ -1,45 +1,26 @@
-import researchConfig from '@/lib/config/research'
-import { langChainCore } from '@/lib/langchain/core'
-import type { LangChainCore } from '@/lib/langchain/core'
-import type { ResearchOptions, ResearchResult, ResearchType } from '@/lib/types/research'
-import logger from '@/lib/logger'
-import { withRetry } from '@/lib/utils/retry'
+import type { ResearchOptions, ResearchResult } from '@/lib/types/research'
 import type { RunnableConfig } from '@langchain/core/runnables'
-import { PerplexityChainFactory } from '../chains/chain-factory'
 import { PerplexityMedicalError } from '../error/perplexity-errors'
-import { perplexityCacheService } from '../cache/perplexity-cache-service'
+import { PerplexityBaseService } from '../core/perplexity-base-service'
+import researchConfig from '@/lib/config/research'
 
-// Default debug flag
 const DEFAULT_DEBUG = researchConfig.debug
 
 /**
  * Service for performing medical diagnosis operations with Perplexity API
  * 
- * This service focuses solely on specialized medical diagnosis research,
- * without any workflow orchestration or progress tracking logic.
+ * LangGraph Integration:
+ * This service is designed to be used as a node in a LangGraph workflow
+ * for medical diagnosis and patient data analysis.
  */
-export class PerplexityMedicalService {
-  private readonly langChain: LangChainCore
-  private readonly logger: typeof logger
-  private readonly chainFactory: PerplexityChainFactory
-  
-  constructor(
-    langChainProvider?: LangChainCore,
-    loggerInstance?: typeof logger
-  ) {
-    this.langChain = langChainProvider || langChainCore
-    this.logger = loggerInstance || logger
-    this.chainFactory = new PerplexityChainFactory(this.langChain, this.logger)
+export class PerplexityMedicalService extends PerplexityBaseService {
+  // Implement abstract method
+  protected getServiceName(): string {
+    return 'PerplexityMedicalService'
   }
 
   /**
    * Perform medical diagnosis using Perplexity API
-   * 
-   * @param query The diagnostic query
-   * @param patientData Patient data for analysis
-   * @param options Optional research parameters
-   * @param config Optional LangChain config
-   * @returns Medical diagnosis research result
    */
   async performMedicalDiagnosis(
     query: string,
@@ -47,16 +28,10 @@ export class PerplexityMedicalService {
     options?: Omit<ResearchOptions, 'isMedicalDiagnosis' | 'patientData'>,
     config?: RunnableConfig
   ): Promise<ResearchResult> {
-    const moduleLogger = this.logger.withMetadata({
-      module: 'PerplexityMedicalService',
-      method: 'performMedicalDiagnosis',
-      model: options?.model ?? researchConfig.providers.perplexity.model,
-    })
+    const moduleLogger = this.createModuleLogger('performMedicalDiagnosis', query, options)
 
-    if (DEFAULT_DEBUG) {
-      moduleLogger.debug('Performing medical diagnosis', {
-        query,
-      })
+    if (options?.debug ?? DEFAULT_DEBUG) {
+      moduleLogger.debug('Performing medical diagnosis', { query })
     }
 
     // Combine options with medical diagnosis specifics
@@ -64,18 +39,18 @@ export class PerplexityMedicalService {
       ...options,
       isMedicalDiagnosis: true,
       patientData,
-      researchType: ResearchType.MEDICAL_DIAGNOSIS,
+      researchType: 'medical_diagnosis',
       depth: options?.depth || 'comprehensive'
     }
 
     // Check cache first
-    const cachedResult = perplexityCacheService.getCachedResult(query, medicalOptions)
+    const cachedResult = this.getCachedResult(query, medicalOptions)
     if (cachedResult) {
       return cachedResult
     }
 
     // Use the retry mechanism for the API call
-    return withRetry(async () => {
+    return this.withRetry(async () => {
       try {
         // Create medical diagnosis chain
         const diagnosisChain = await this.chainFactory.createMedicalDiagnosisChain(
@@ -91,30 +66,33 @@ export class PerplexityMedicalService {
         }, config)
 
         // Format the result
-        const formattedResult: ResearchResult = {
-          text: chainResult.text,
-          sources: chainResult.sources || [],
-          summary: chainResult.summary,
-          keyFindings: chainResult.keyFindings,
-          timestamp: new Date(),
-          confidence: 0.9, // Higher confidence for medical diagnosis
-          modelName: options?.model ?? researchConfig.providers.perplexity.model,
-        }
+        const formattedResult = this.formatResult(chainResult, medicalOptions, true)
 
         // Cache the result for future use
-        perplexityCacheService.cacheResult(query, medicalOptions, formattedResult)
+        this.cacheResult(query, medicalOptions, formattedResult)
 
         return formattedResult
       } catch (error) {
-        throw new PerplexityMedicalError(
-          `Medical diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
-          error instanceof Error ? error : undefined
-        )
+        this.handleServiceError(error, query, medicalOptions, PerplexityMedicalError)
+        throw error // This line should never be reached due to handleServiceError, but TypeScript doesn't know that
       }
-    }, {
-      maxRetries: 3,
-      baseDelay: 1000,
-    })
+    }, 3, 1000, PerplexityMedicalError)
+  }
+  
+  /**
+   * Analyze patient medical records and generate insights
+   */
+  async analyzePatientRecords(
+    patientData: string,
+    analysisPrompt: string,
+    options?: Omit<ResearchOptions, 'isMedicalDiagnosis' | 'patientData'>,
+    config?: RunnableConfig
+  ): Promise<ResearchResult> {
+    // Construct a query from the analysis prompt
+    const query = `Analyze the following patient data: ${analysisPrompt}`;
+    
+    // Use the medical diagnosis function with the constructed query
+    return this.performMedicalDiagnosis(query, patientData, options, config);
   }
 }
 

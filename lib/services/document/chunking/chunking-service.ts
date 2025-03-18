@@ -2,8 +2,7 @@
  * Chunking Service
  * 
  * Dedicated service for document chunking operations.
- * Extracted from the main extraction service to provide a focused, 
- * reusable document chunking capability.
+ * Provides a centralized implementation for both extraction and RAG use cases.
  */
 
 import { Document } from 'langchain/document'
@@ -12,25 +11,32 @@ import logger from '@/lib/logger'
 import { ChunkingStrategyFactory } from './chunking-strategies'
 import { SectionDetector } from '../utils/section-detection'
 import type { OcrPage, OcrParagraph } from '../extraction/ocr-service'
+import type { 
+  ChunkingOptions, 
+  ExtractionChunk, 
+  RAGChunk 
+} from '@/lib/types/chunk'
 
 /**
- * Options for chunking
+ * Default chunking options for extraction
  */
-export interface ChunkingOptions {
-  chunkSize: number
-  chunkOverlap: number
-  preserveMetadata: boolean
-  strategy: 'size' | 'semantic' | 'section'
-}
-
-/**
- * Default chunking options
- */
-export const DEFAULT_CHUNKING_OPTIONS: ChunkingOptions = {
+export const DEFAULT_EXTRACTION_CHUNKING_OPTIONS: ChunkingOptions = {
   chunkSize: 5000,
   chunkOverlap: 200,
   preserveMetadata: true,
-  strategy: 'semantic'
+  strategy: 'semantic',
+  domain: 'extraction'
+}
+
+/**
+ * Default chunking options for RAG
+ */
+export const DEFAULT_RAG_CHUNKING_OPTIONS: ChunkingOptions = {
+  chunkSize: 1000,
+  chunkOverlap: 200,
+  preserveMetadata: true,
+  strategy: 'semantic',
+  domain: 'rag'
 }
 
 /**
@@ -49,14 +55,15 @@ export class ChunkingService {
    */
   async chunkText(
     text: string,
-    options: ChunkingOptions = DEFAULT_CHUNKING_OPTIONS,
+    options: ChunkingOptions = DEFAULT_EXTRACTION_CHUNKING_OPTIONS,
     structuredData?: Record<string, any>
   ): Promise<Array<{ content: string, metadata?: Record<string, any> }>> {
     this.logger.info('Chunking document text', {
       textLength: text.length,
       strategy: options.strategy,
       chunkSize: options.chunkSize,
-      chunkOverlap: options.chunkOverlap
+      chunkOverlap: options.chunkOverlap,
+      domain: options.domain
     });
     
     // Get appropriate chunking strategy
@@ -64,6 +71,111 @@ export class ChunkingService {
     
     // Apply the strategy
     return strategy.createChunks(text, options, structuredData);
+  }
+  
+  /**
+   * Create extraction-specific chunks from a document
+   * 
+   * @param text Document text to chunk
+   * @param options Chunking options
+   * @param structuredData Optional structured data
+   * @returns Array of extraction chunks
+   */
+  async createExtractionChunks(
+    text: string,
+    options: ChunkingOptions = DEFAULT_EXTRACTION_CHUNKING_OPTIONS,
+    structuredData?: Record<string, any>
+  ): Promise<ExtractionChunk[]> {
+    const chunks = await this.chunkText(text, {
+      ...options,
+      domain: 'extraction'
+    }, structuredData);
+    
+    // Convert to ExtractionChunk format
+    return chunks.map((chunk, index) => ({
+      content: chunk.content,
+      chunkIndex: index,
+      metadata: chunk.metadata,
+      pageNumber: chunk.metadata?.pageNumber,
+      section: chunk.metadata?.section,
+      confidence: chunk.metadata?.confidence,
+      isTable: chunk.metadata?.isTable
+    }));
+  }
+  
+  /**
+   * Create RAG-specific chunks from a document
+   * 
+   * @param text Document text to chunk
+   * @param documentId ID of the document
+   * @param baseMetadata Base metadata to include with all chunks
+   * @param options Chunking options
+   * @param structuredData Optional structured data
+   * @returns Array of RAG chunks
+   */
+  async createRAGChunks(
+    text: string,
+    documentId: string,
+    baseMetadata: Record<string, any> = {},
+    options: ChunkingOptions = DEFAULT_RAG_CHUNKING_OPTIONS,
+    structuredData?: Record<string, any>
+  ): Promise<RAGChunk[]> {
+    // Use smaller chunks for RAG by default
+    const ragOptions = {
+      ...options,
+      domain: 'rag'
+    };
+    
+    const chunks = await this.chunkText(text, ragOptions, structuredData);
+    
+    // Convert to RAGChunk format
+    return chunks.map((chunk, index) => {
+      // Find position of chunk in original text for retrieval context
+      const start = text.indexOf(chunk.content);
+      const end = start + chunk.content.length;
+      
+      return {
+        content: chunk.content,
+        chunkIndex: index,
+        documentId,
+        metadata: {
+          ...baseMetadata,
+          ...(chunk.metadata || {}),
+          position: {
+            start: start >= 0 ? start : undefined,
+            end: start >= 0 ? end : undefined
+          }
+        }
+      };
+    });
+  }
+  
+  /**
+   * Convert extraction chunks to RAG chunks
+   * 
+   * @param extractionChunks Chunks from extraction process
+   * @param documentId Document ID
+   * @param baseMetadata Additional metadata to include
+   * @returns RAG compatible chunks
+   */
+  convertExtractionChunksToRAG(
+    extractionChunks: ExtractionChunk[],
+    documentId: string,
+    baseMetadata: Record<string, any> = {}
+  ): RAGChunk[] {
+    return extractionChunks.map((chunk, index) => ({
+      content: chunk.content,
+      chunkIndex: chunk.chunkIndex || index,
+      documentId,
+      metadata: {
+        ...baseMetadata,
+        ...(chunk.metadata || {}),
+        pageNumber: chunk.pageNumber,
+        section: chunk.section,
+        confidence: chunk.confidence,
+        isTable: chunk.isTable
+      }
+    }));
   }
   
   /**
@@ -81,7 +193,7 @@ export class ChunkingService {
    */
   async createSemanticChunks(
     text: string,
-    options: ChunkingOptions = DEFAULT_CHUNKING_OPTIONS,
+    options: ChunkingOptions = DEFAULT_EXTRACTION_CHUNKING_OPTIONS,
     structuredData?: {
       pages?: OcrPage[],
       paragraphs?: OcrParagraph[],
@@ -176,7 +288,8 @@ export class ChunkingService {
     const doc = new Document({
       pageContent: text,
       metadata: {
-        chunkType: 'auto-split'
+        chunkType: 'auto-split',
+        domain: options.domain
       },
     });
 

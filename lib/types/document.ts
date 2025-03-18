@@ -95,6 +95,36 @@ export enum DocumentLifecycleStage {
  */
 export interface DocumentType {
   /**
+   * Unique identifier
+   */
+  id?: string
+  
+  /**
+   * Document title
+   */
+  title?: string
+  
+  /**
+   * Document content
+   */
+  content?: string
+  
+  /**
+   * Patient ID
+   */
+  patientId?: string
+  
+  /**
+   * Creation timestamp
+   */
+  createdAt?: Date
+  
+  /**
+   * Document status
+   */
+  status?: string
+  
+  /**
    * Document category
    */
   category: DocumentCategory
@@ -113,6 +143,26 @@ export interface DocumentType {
    * Additional metadata for the document type
    */
   metadata?: Record<string, unknown>
+  
+  /**
+   * Pre-extracted chunks from document processing
+   * Used to avoid redundant chunking
+   */
+  chunks?: Array<{
+    content: string
+    pageNumber?: number
+    metadata?: Record<string, unknown>
+  }>
+  
+  /**
+   * Structured data from extraction
+   */
+  structuredData?: Record<string, any>
+  
+  /**
+   * Extracted data from processing
+   */
+  extractedData?: ExtractedData
 }
 
 /**
@@ -122,16 +172,48 @@ export function isDocumentType(value: unknown): value is DocumentType {
   if (!value || typeof value !== 'object') return false
 
   const obj = value as Record<string, unknown>
-  return (
+  
+  // Check required properties
+  const hasRequiredProperties = 
     typeof obj.category === 'string' &&
     Object.values(DocumentCategory).includes(
       obj.category as DocumentCategory
     ) &&
-    typeof obj.type === 'string' &&
+    typeof obj.type === 'string';
+  
+  if (!hasRequiredProperties) return false;
+    
+  // Check optional properties have correct types if present
+  const hasValidOptionalProperties =
+    (obj.id === undefined || typeof obj.id === 'string') &&
+    (obj.title === undefined || typeof obj.title === 'string') &&
+    (obj.content === undefined || typeof obj.content === 'string') &&
+    (obj.patientId === undefined || typeof obj.patientId === 'string') &&
+    (obj.status === undefined || typeof obj.status === 'string') &&
+    (obj.createdAt === undefined || obj.createdAt instanceof Date || 
+      (typeof obj.createdAt === 'string' && !isNaN(Date.parse(obj.createdAt as string)))) &&
     (obj.subtype === undefined || typeof obj.subtype === 'string') &&
-    (obj.metadata === undefined ||
-      (typeof obj.metadata === 'object' && obj.metadata !== null))
-  )
+    (obj.metadata === undefined || (typeof obj.metadata === 'object' && obj.metadata !== null)) &&
+    (obj.structuredData === undefined || (typeof obj.structuredData === 'object' && obj.structuredData !== null));
+  
+  // Check chunks array if present
+  const hasValidChunks = obj.chunks === undefined || (
+    Array.isArray(obj.chunks) && 
+    obj.chunks.every(chunk => 
+      typeof chunk === 'object' && 
+      chunk !== null && 
+      typeof (chunk as any).content === 'string'
+    )
+  );
+  
+  // Check extractedData if present
+  const hasValidExtractedData = obj.extractedData === undefined || (
+    typeof obj.extractedData === 'object' && 
+    obj.extractedData !== null &&
+    typeof (obj.extractedData as any).rawText === 'string'
+  );
+  
+  return hasValidOptionalProperties && hasValidChunks && hasValidExtractedData;
 }
 
 /**
