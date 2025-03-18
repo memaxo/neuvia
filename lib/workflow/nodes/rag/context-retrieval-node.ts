@@ -2,66 +2,51 @@ import { RAGRetrievalError } from '@/lib/services/rag/error/rag-errors'
 import { ragRetrievalService } from '@/lib/services/rag/retrieval/rag-retrieval-service'
 import type { WorkflowState } from '@/workflow/state/workflow-state'
 
+import logger from '@/lib/logger'
+
 /**
  * LangGraph node for retrieving relevant context from documents
  * 
  * This node takes a query from the current message and retrieves
- * relevant document chunks for use in RAG.
+ * relevant document chunks for use in RAG. It now delegates to the
+ * RAG retrieval service for both domain logic and state transformations,
+ * following the pattern of domain services being the single source of truth.
  * 
  * @param state Current workflow state
  * @returns Partial state update with retrieved context
  */
 export const contextRetrievalNode = async (state: WorkflowState): Promise<Partial<WorkflowState>> => {
-  // Get message content from state
-  const messageContent = state.currentMessage?.content
-  const patientId = state.patientId
+  // Configure logger
+  const nodeLogger = logger.withMetadata({
+    module: 'contextRetrievalNode',
+    workflowId: state.workflowId
+  })
   
-  if (!messageContent) {
-    throw new RAGRetrievalError('Message content required for context retrieval')
+  // Initialize progress tracking
+  const initialState: Partial<WorkflowState> = {
+    retrievalStatus: 'in-progress',
+    retrievalStartTime: new Date().toISOString()
   }
   
   try {
-    // Retrieve context
-    const retrievalResult = patientId
-      ? await ragRetrievalService.retrieveForPatient(
-          patientId,
-          messageContent,
-          {
-            limit: state.retrievalOptions?.limit || 5,
-            minRelevance: state.retrievalOptions?.minRelevance || 0.7,
-            documentType: state.retrievalOptions?.documentType,
-            includeMetadata: true
-          }
-        )
-      : await ragRetrievalService.retrieveContext(
-          messageContent,
-          {
-            limit: state.retrievalOptions?.limit || 5,
-            minRelevance: state.retrievalOptions?.minRelevance || 0.7,
-            documentType: state.retrievalOptions?.documentType,
-            includeMetadata: true
-          }
-        )
+    // Log start of retrieval at orchestration level
+    nodeLogger.info('Starting context retrieval', {
+      messageId: state.currentMessage?.id,
+      workflowId: state.workflowId
+    })
     
-    // Rank and filter results
-    const rankedResults = await ragRetrievalService.rankRetrievedContext(retrievalResult)
-    const filteredResults = await ragRetrievalService.filterByRelevance(
-      rankedResults,
-      state.retrievalOptions?.minRelevance || 0.7
-    )
+    // Delegate to domain service for both retrieval and state transformation
+    const result = await ragRetrievalService.retrieveContextFromWorkflowState(state)
     
-    // Return updated state
-    return {
-      ragContext: {
-        retrievedChunks: filteredResults.chunks,
-        sources: filteredResults.sources,
-        totalMatches: filteredResults.totalMatches,
-        averageRelevance: filteredResults.averageRelevance,
-        retrievalTimestamp: new Date().toISOString()
-      },
-      retrievalStatus: 'completed'
-    }
+    // Return result from domain service
+    return result
   } catch (error) {
+    // Log the error at the orchestration level
+    nodeLogger.error('Error in context retrieval node', { 
+      workflowId: state.workflowId,
+      messageId: state.currentMessage?.id
+    }, error)
+    
     // If error occurred, update state with error information
     return {
       ragContext: {

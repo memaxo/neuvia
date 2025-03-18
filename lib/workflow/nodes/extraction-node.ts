@@ -36,7 +36,9 @@ const DEFAULT_EXTRACTION_OPTIONS: ExtractionOptions = {
  * Document extraction node for LangGraph workflow
  * 
  * This node extracts text from document files using the ExtractionService
- * and updates the workflow state with extraction results.
+ * and updates the workflow state with extraction results. It now delegates to the
+ * extraction service for both domain logic and state transformations, following the
+ * pattern of domain services being the single source of truth.
  * 
  * @param state The current workflow state
  * @param options Optional extraction options to customize the extraction process
@@ -47,74 +49,33 @@ export const extractionNode = async (
   options: ExtractionOptions = DEFAULT_EXTRACTION_OPTIONS
 ): Promise<PartialWorkflowState> => {
   try {
-    // Log the start of extraction
-    moduleLogger.info('Starting document extraction', {
+    // Log the start of extraction at the orchestration level
+    moduleLogger.info('Starting document extraction node', {
       documentId: state.documentId,
-      fileName: state.file?.name,
-      fileType: state.file?.type,
-      fileSize: state.file?.size
+      workflowId: state.workflowId
     })
     
-    // Update progress state to indicate extraction is starting
-    const partialState: PartialWorkflowState = {
+    // Initialize progress tracking
+    const initialState: PartialWorkflowState = {
       progress: {
         currentStep: WorkflowSteps.EXTRACTING,
-        percentage: 20,
+        percentage: 10,
         phase: ProcessingPhase.EXTRACTION,
         isCompleted: false
       },
       workflowUpdatedAt: new Date().toISOString()
     }
     
-    // Validate input state has the required file
-    if (!state.file) {
-      throw new Error('No file available for extraction')
-    }
+    // Delegate to domain service for both extraction and state transformation
+    const result = await extractionService.extractTextFromWorkflowState(state, options)
     
-    // Perform extraction using the extraction service
-    const extractionStartTime = Date.now()
-    const extractedData = await extractionService.extractText(state.file, options)
-    const extractionTime = Date.now() - extractionStartTime
-    
-    // Calculate confidence score based on metadata or defaults
-    // Use type assertion for custom properties that might be in the custom field
-    const customMetadata = extractedData.metadata.custom || {};
-    const confidence = 
-      customMetadata.confidence ? 
-      Number(customMetadata.confidence) : 
-      (customMetadata.processingComplete ? 0.85 : 0.5);
-    
-    // Log successful extraction
-    moduleLogger.info('Document extraction completed', {
-      documentId: state.documentId,
-      textLength: extractedData.rawText.length,
-      chunkCount: extractedData.chunks?.length || 0,
-      processingTimeMs: extractionTime,
-      success: (customMetadata.processingComplete as boolean) === true
-    })
-    
-    // Update the state with extraction results
-    return {
-      ...partialState,
-      extractedData: {
-        text: extractedData.rawText,
-        structuredData: extractedData.chunks ? 
-          { chunks: extractedData.chunks } as Record<string, unknown> : 
-          {} as Record<string, unknown>,
-        extractedAt: new Date().toISOString()
-      },
-      progress: {
-        currentStep: WorkflowSteps.EXTRACTING,
-        percentage: 40,
-        phase: ProcessingPhase.EXTRACTION_COMPLETED,
-        isCompleted: false
-      }
-    }
+    // Return result from domain service
+    return result
   } catch (error) {
-    // Log the error
-    moduleLogger.error('Document extraction failed', {
-      documentId: state.documentId,
-      fileName: state.file?.name
+    // Log the error at the orchestration level
+    moduleLogger.error('Error in extraction node', { 
+      workflowId: state.workflowId,
+      documentId: state.documentId
     }, error)
     
     // Return error state

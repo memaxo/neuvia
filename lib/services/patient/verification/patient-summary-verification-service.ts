@@ -22,6 +22,256 @@ import type { Database } from '@/lib/types/database'
 export class PatientSummaryVerificationService {
   private readonly logger = logger as any; // Type assertion for withMetadata method
   private readonly supabase = createBrowserClient();
+  
+  /**
+   * Process verification from workflow state
+   * 
+   * This method handles both verification logic and workflow state transformation
+   * allowing workflow nodes to be simpler orchestrators
+   * 
+   * @param state Current workflow state
+   * @returns Partial workflow state with verification results
+   */
+  async processVerificationFromWorkflowState(
+    state: any
+  ): Promise<Partial<any>> {
+    const moduleLogger = this.logger.withMetadata({
+      method: 'processVerificationFromWorkflowState',
+      threadId: state.threadId,
+      patientId: state.patientId
+    });
+
+    try {
+      moduleLogger.info('Processing verification from workflow state');
+      
+      // Ensure we have a patient summary and current message
+      if (!state.patientSummary) {
+        throw new Error('No patient summary available for verification');
+      }
+      
+      if (!state.currentMessage?.content) {
+        throw new Error('No message content available for verification');
+      }
+      
+      // Get the current message content
+      const messageContent = state.currentMessage.content;
+      const userId = state.userId || 'system';
+      
+      // Check verification status from message content
+      const verificationStatus = await this.checkVerificationStatus(
+        messageContent,
+        { workflowId: state.threadId }
+      );
+      
+      // Handle different verification statuses
+      if (verificationStatus === 'VERIFIED') {
+        moduleLogger.info('User confirmed verification', { userId });
+        
+        // Mark summary as verified
+        const verifiedSummary = await this.verifySummary(
+          state.patientId || '',
+          userId,
+          'verified',
+          messageContent
+        );
+        
+        // If verification failed, return error state
+        if (!verifiedSummary) {
+          return {
+            error: {
+              message: 'Failed to mark summary as verified',
+              domain: 'verification',
+              step: "verification",
+              timestamp: new Date().toISOString(),
+              recoverable: true,
+              context: {
+                patientId: state.patientId,
+                userId
+              }
+            },
+            progress: {
+              currentStep: "ERROR",
+              percentage: state.progress?.percentage || 70,
+              phase: "ERROR",
+              isCompleted: false
+            }
+          };
+        }
+        
+        // Update state with verified summary
+        return {
+          patientSummary: verifiedSummary,
+          verification: {
+            status: 'completed',
+            verifiedAt: new Date().toISOString(),
+            verifiedBy: userId,
+            corrections: state.verification?.corrections || [],
+            items: state.verification?.items || []
+          },
+          progress: {
+            currentStep: "VERIFICATION_COMPLETED",
+            percentage: 80,
+            phase: "VERIFICATION_COMPLETION",
+            isCompleted: false
+          },
+          readyForReport: true,
+          workflowUpdatedAt: new Date().toISOString()
+        };
+      } else if (verificationStatus === 'NEEDS_CORRECTION') {
+        moduleLogger.info('User requested correction', { userId });
+        
+        // Signal that correction is needed
+        return {
+          needsCorrection: true,
+          correctionText: messageContent,
+          progress: {
+            currentStep: "VERIFICATION",
+            percentage: 75,
+            phase: "VERIFICATION",
+            isCompleted: false
+          },
+          workflowUpdatedAt: new Date().toISOString()
+        };
+      } else {
+        // Handle unclear verification status
+        moduleLogger.info('Verification status unclear', { userId, messageContent });
+        
+        // Return state with request for clarification
+        return {
+          verification: {
+            status: 'in_progress',
+            corrections: state.verification?.corrections || [],
+            verifiedAt: state.verification?.verifiedAt,
+            items: state.verification?.items || []
+          },
+          progress: {
+            currentStep: "VERIFICATION",
+            percentage: 75,
+            phase: "VERIFICATION",
+            isCompleted: false
+          },
+          workflowUpdatedAt: new Date().toISOString()
+        };
+      }
+    } catch (error) {
+      // Log error
+      moduleLogger.error('Verification processing from workflow state failed', {}, error);
+      
+      // Return error state
+      return {
+        error: {
+          message: error instanceof Error ? error.message : 'Unknown verification error',
+          domain: 'verification',
+          step: "verification",
+          timestamp: new Date().toISOString(),
+          recoverable: true,
+          context: {
+            threadId: state.threadId,
+            patientId: state.patientId,
+            error: String(error)
+          }
+        },
+        progress: {
+          currentStep: "ERROR",
+          percentage: state.progress?.percentage || 0,
+          phase: "ERROR",
+          isCompleted: false
+        },
+        workflowUpdatedAt: new Date().toISOString()
+      };
+    }
+  }
+  
+  /**
+   * Process a correction from workflow state
+   * 
+   * @param state Current workflow state with correction information
+   * @returns Partial workflow state with correction results
+   */
+  async processCorrectionFromWorkflowState(
+    state: any
+  ): Promise<Partial<any>> {
+    const moduleLogger = this.logger.withMetadata({
+      method: 'processCorrectionFromWorkflowState',
+      threadId: state.threadId,
+      patientId: state.patientId
+    });
+    
+    try {
+      moduleLogger.info('Processing correction from workflow state');
+      
+      // Validate requirements
+      if (!state.patientSummary) {
+        throw new Error('No patient summary available for correction');
+      }
+      
+      if (!state.correctionText) {
+        throw new Error('No correction text provided');
+      }
+      
+      // Process the correction
+      const correctedSummary = await this.processCorrection(
+        state.patientSummary,
+        state.correctionText,
+        {
+          workflowId: state.threadId,
+          userId: state.userId
+        }
+      );
+      
+      // Return updated workflow state
+      return {
+        patientSummary: correctedSummary,
+        verification: {
+          status: 'in_progress',
+          corrections: [
+            ...(state.verification?.corrections || []),
+            {
+              timestamp: new Date().toISOString(),
+              text: state.correctionText,
+              userId: state.userId || 'system'
+            }
+          ],
+          items: state.verification?.items || []
+        },
+        progress: {
+          currentStep: "VERIFICATION",
+          percentage: 75,
+          phase: "VERIFICATION",
+          isCompleted: false
+        },
+        needsCorrection: false,
+        correctionText: undefined,
+        workflowUpdatedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      // Log error
+      moduleLogger.error('Correction processing from workflow state failed', {}, error);
+      
+      // Return error state
+      return {
+        error: {
+          message: error instanceof Error ? error.message : 'Unknown correction error',
+          domain: 'verification',
+          step: "correction",
+          timestamp: new Date().toISOString(),
+          recoverable: true,
+          context: {
+            threadId: state.threadId,
+            patientId: state.patientId,
+            error: String(error)
+          }
+        },
+        progress: {
+          currentStep: "ERROR",
+          percentage: state.progress?.percentage || 0,
+          phase: "ERROR",
+          isCompleted: false
+        },
+        workflowUpdatedAt: new Date().toISOString()
+      };
+    }
+  }
 
   /**
    * Process a correction to update a patient summary

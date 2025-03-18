@@ -23,6 +23,133 @@ export class PatientSummaryCoreService {
   private readonly logger = logger;
 
   /**
+   * Generate a patient summary from workflow state
+   * 
+   * This method handles both domain logic and workflow state transformation
+   * allowing workflow nodes to be simpler orchestrators
+   * 
+   * @param state Current workflow state
+   * @returns Partial workflow state with generated summary and progress updates
+   */
+  async generateSummaryFromWorkflowState(
+    state: any
+  ): Promise<Partial<any>> {
+    const moduleLogger = this.logger.withMetadata({
+      method: 'generateSummaryFromWorkflowState',
+      patientId: state.patientId,
+      threadId: state.threadId
+    });
+
+    try {
+      moduleLogger.info('Processing workflow state for summary generation');
+      
+      // Validate requirements
+      if (!state.patientId) {
+        throw new Error('Patient ID is required for summary generation');
+      }
+      
+      const extractedDocuments = state.extractedDocuments || [];
+      if (extractedDocuments.length === 0) {
+        moduleLogger.warn('No extracted documents available for summary generation');
+        
+        return {
+          error: {
+            message: 'No documents available for summary generation',
+            domain: 'document',
+            step: "summary_generation",
+            timestamp: new Date().toISOString(),
+            recoverable: true,
+            context: {
+              patientId: state.patientId
+            }
+          },
+          progress: {
+            currentStep: "ERROR",
+            percentage: state.progress?.percentage || 0,
+            phase: "ERROR",
+            isCompleted: false
+          }
+        };
+      }
+      
+      // Configure options from workflow state
+      const options = {
+        workflowId: state.threadId,
+        onProgress: (progress: number) => {
+          // Progress callback can be used for real-time updates if needed
+        }
+      };
+      
+      // Generate or update summary based on existing state
+      let patientSummary;
+      if (state.patientSummary) {
+        moduleLogger.info('Updating existing patient summary', {
+          newDocumentCount: extractedDocuments.length
+        });
+        
+        patientSummary = await this.updateSummary(
+          state.patientSummary,
+          extractedDocuments,
+          options
+        );
+      } else {
+        moduleLogger.info('Generating new patient summary', {
+          documentCount: extractedDocuments.length
+        });
+        
+        patientSummary = await this.generateSummary(
+          state.patientId,
+          extractedDocuments,
+          options
+        );
+      }
+      
+      // Return transformed workflow state
+      return {
+        patientSummary,
+        verification: {
+          status: 'pending',
+          corrections: [],
+          verifiedAt: undefined,
+          items: []
+        },
+        progress: {
+          currentStep: "summary_generation",
+          percentage: 70,
+          phase: "COMPLETION",
+          isCompleted: false
+        },
+        workflowUpdatedAt: new Date().toISOString()
+      };
+    } catch (error) {
+      moduleLogger.error('Summary generation from workflow state failed', {}, error);
+      
+      // Return error state
+      return {
+        error: {
+          message: error instanceof Error ? error.message : 'Unknown summary generation error',
+          domain: 'summary',
+          step: "summary_generation",
+          timestamp: new Date().toISOString(),
+          recoverable: false,
+          context: {
+            threadId: state.threadId,
+            patientId: state.patientId,
+            error: String(error)
+          }
+        },
+        progress: {
+          currentStep: "ERROR",
+          percentage: state.progress?.percentage || 0,
+          phase: "ERROR",
+          isCompleted: false
+        },
+        workflowUpdatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Generate a patient summary from multiple document extractions
    * 
    * @param patientId Patient ID

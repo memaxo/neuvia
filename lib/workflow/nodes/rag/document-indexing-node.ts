@@ -1,55 +1,47 @@
 import { RAGIndexingError } from '@/lib/services/rag/error/rag-errors'
 import { ragIndexingService } from '@/lib/services/rag/indexing/rag-indexing-service'
-import { DocumentDatabaseService } from '@/lib/services/document/storage/document-database-service'
 import type { WorkflowState } from '@/workflow/state/workflow-state'
+import logger from '@/lib/logger'
 
 /**
  * LangGraph node for indexing documents in the RAG system
- * 
+ *
  * This node processes a document to create RAG chunks and embeddings
- * for later retrieval.
+ * for later retrieval. It now delegates to the RAG indexing service
+ * for both domain logic and state transformations, following the pattern
+ * of domain services being the single source of truth.
  * 
  * @param state Current workflow state
  * @returns Partial state update with indexing results
  */
 export const documentIndexingNode = async (state: WorkflowState): Promise<Partial<WorkflowState>> => {
-  // Get the document ID from state
-  const documentId = state.documentId
+  // Configure logger
+  const nodeLogger = logger.withMetadata({
+    module: 'documentIndexingNode',
+    workflowId: state.workflowId
+  })
   
-  if (!documentId) {
-    throw new RAGIndexingError('Document ID required for indexing')
+  // Initialize progress tracking
+  const initialState: Partial<WorkflowState> = {
+    documentProcessing: {
+      ...state.documentProcessing,
+      indexingStatus: 'in-progress',
+      indexingStartTime: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    }
   }
   
   try {
-    // Get document service
-    const documentService = new DocumentDatabaseService()
+    // Delegate to domain service for both indexing and state transformation
+    const result = await ragIndexingService.indexDocumentFromWorkflowState(state)
     
-    // Retrieve document
-    const document = await documentService.getDocumentById(documentId)
-    
-    if (!document) {
-      throw new RAGIndexingError(`Document not found: ${documentId}`)
-    }
-    
-    // Index document
-    await ragIndexingService.indexDocument(document, {
-      chunkSize: state.indexingOptions?.chunkSize,
-      chunkOverlap: state.indexingOptions?.chunkOverlap,
-      embeddingModel: state.indexingOptions?.embeddingModel
-    })
-    
-    // Return updated state
-    return {
-      document,
-      documentProcessing: {
-        ...state.documentProcessing,
-        indexingStatus: 'completed',
-        indexingComplete: true,
-        lastUpdated: new Date().toISOString()
-      }
-    }
+    // Return result from domain service
+    return result
   } catch (error) {
-    // If error occurred, update state with error information
+    // Log the error at the orchestration level
+    nodeLogger.error('Error in document indexing node', { workflowId: state.workflowId }, error)
+    
+    // If error occurred, return a standard error state
     return {
       documentProcessing: {
         ...state.documentProcessing,

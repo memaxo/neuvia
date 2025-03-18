@@ -10,22 +10,13 @@
  * and updates the workflow state with analysis results.
  */
 
-import { 
-  DocumentTypeService,
-  DocumentSectionService,
-  KeyPointService
-} from '@/lib/services/document/analysis'
+import { analyzeDocumentFromWorkflowState } from '@/lib/services/document/analysis'
 import { WorkflowState, PartialWorkflowState } from '@/lib/workflow/state/workflow-state'
-import { WorkflowSteps, ProcessingPhase } from '@/lib/types/workflow'
+import { ProcessingPhase } from '@/lib/types/workflow'
 import logger from '@/lib/logger'
 
 // Create module-level logger
 const moduleLogger = logger.withMetadata({ module: 'AnalysisNode' })
-
-// Initialize services
-const sectionService = new DocumentSectionService()
-const typeService = new DocumentTypeService(sectionService)
-const keyPointService = new KeyPointService(sectionService)
 
 /**
  * Document analysis node for LangGraph workflow
@@ -48,10 +39,10 @@ export const analysisNode = async (
       extractedTextLength: state.extractedData?.text?.length
     })
     
-    // Update progress state to indicate analysis is starting
-    const partialState: PartialWorkflowState = {
+    // Initial progress update
+    const initialState: PartialWorkflowState = {
       progress: {
-        currentStep: WorkflowSteps.DOCUMENT_ANALYSIS,
+        currentStep: "DOCUMENT_ANALYSIS",
         percentage: 45,
         phase: ProcessingPhase.ANALYSIS,
         isCompleted: false
@@ -59,116 +50,36 @@ export const analysisNode = async (
       workflowUpdatedAt: new Date().toISOString()
     }
     
-    // Validate that we have extracted text to analyze
-    if (!state.extractedData?.text) {
-      throw new Error('No extracted text available for analysis')
-    }
+    // Delegate to domain service's workflow-aware method
+    // The service will handle all analysis logic and state transformation
+    const result = await analyzeDocumentFromWorkflowState(state);
     
-    const extractedText = state.extractedData.text
-    
-    // 1. Detect document type
-    moduleLogger.info('Detecting document type', { 
-      documentId: state.documentId,
-      textLength: extractedText.length 
-    })
-    
-    const typeDetectionStartTime = Date.now()
-    const typeResult = await typeService.detectDocumentType(extractedText)
-    const typeDetectionTime = Date.now() - typeDetectionStartTime
-    
-    moduleLogger.info('Document type detected', { 
-      documentId: state.documentId,
-      documentType: `${typeResult.type.category}/${typeResult.type.type}`,
-      confidence: typeResult.confidence,
-      detectionTimeMs: typeDetectionTime
-    })
-    
-    // Update progress
-    partialState.progress = {
-      currentStep: WorkflowSteps.DOCUMENT_ANALYSIS,
-      percentage: 60,
-      phase: ProcessingPhase.ANALYSIS,
-      isCompleted: false
-    }
-    
-    // 2. Extract key points if we have a document type
-    const keyPointsStartTime = Date.now()
-    const keyPoints = await keyPointService.extractKeyPoints(extractedText, typeResult.type)
-    const keyPointsTime = Date.now() - keyPointsStartTime
-    
-    moduleLogger.info('Key points extracted', { 
-      documentId: state.documentId,
-      keyPointCount: keyPoints.length,
-      extractionTimeMs: keyPointsTime
-    })
-    
-    // 3. Create a basic summary from top key points
-    let summary = ''
-    if (keyPoints.length > 0) {
-      // Use the highest-scoring key points to build a summary
-      const topPoints = keyPoints
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .map(kp => kp.text)
-      
-      summary = `This appears to be a ${typeResult.type.type} document`
-      
-      if (typeResult.detectedSections && typeResult.detectedSections.length > 0) {
-        summary += ` with sections including ${typeResult.detectedSections.slice(0, 3).join(', ')}`
-      }
-      
-      summary += `. Key information: ${topPoints.join(' ')}`
-    } else {
-      summary = `This appears to be a ${typeResult.type.type} document. No key points were identified.`
-    }
-    
-    // Log successful analysis
-    moduleLogger.info('Document analysis completed', {
-      documentId: state.documentId,
-      documentType: `${typeResult.type.category}/${typeResult.type.type}`,
-      keyPointCount: keyPoints.length,
-      summaryLength: summary.length
-    })
-    
-    // Update the state with analysis results
+    // Return combined state
     return {
-      ...partialState,
-      analysisResult: {
-        summary,
-        keyFindings: keyPoints.map(kp => kp.text),
-        documentType: typeResult.type,
-        confidence: typeResult.confidence,
-        analyzedAt: new Date().toISOString()
-      },
-      progress: {
-        currentStep: WorkflowSteps.DOCUMENT_ANALYSIS,
-        percentage: 70,
-        phase: ProcessingPhase.EXTRACTION_COMPLETED,
-        isCompleted: false
-      }
+      ...initialState,
+      ...result
     }
   } catch (error) {
-    // Log the error
-    moduleLogger.error('Document analysis failed', {
+    // Log critical orchestration errors
+    moduleLogger.error('Document analysis node orchestration failed', {
       documentId: state.documentId
     }, error)
     
-    // Return error state
+    // Return error state for orchestration errors
     return {
       error: {
-        message: error instanceof Error ? error.message : 'Unknown analysis error',
-        code: 'ANALYSIS_ERROR',
-        step: WorkflowSteps.DOCUMENT_ANALYSIS,
+        message: error instanceof Error ? error.message : 'Orchestration error in document analysis',
+        domain: 'workflow',
+        step: "DOCUMENT_ANALYSIS",
         timestamp: new Date().toISOString(),
         recoverable: true,
-        details: { 
+        context: { 
           error: String(error),
-          documentId: state.documentId,
-          textLength: state.extractedData?.text?.length
+          documentId: state.documentId
         }
       },
       progress: {
-        currentStep: WorkflowSteps.ERROR,
+        currentStep: "ERROR",
         percentage: state.progress?.percentage || 0,
         phase: ProcessingPhase.ERROR,
         isCompleted: false
@@ -195,9 +106,8 @@ export const enhancedAnalysisNode = async (
     maxKeyPoints?: number;
   } = {}
 ): Promise<PartialWorkflowState> => {
-  // This function could be expanded to include more advanced analysis options
-  // such as custom NLP, entity extraction, relation detection, etc.
   // For now, we'll use the standard analysis node
+  // In the future, this could pass options to the service layer
   return analysisNode(state);
 }
 

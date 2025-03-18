@@ -347,5 +347,92 @@ export class RAGRetrievalService {
   }
 }
 
+/**
+ * Retrieve context from a workflow state
+ * 
+ * This method handles both the domain logic of context retrieval
+ * and the workflow state transformations, following the pattern
+ * of domain services being responsible for both concerns.
+ * 
+ * @param state Current workflow state
+ * @returns Partial state update with retrieval results
+ */
+async retrieveContextFromWorkflowState(state: any): Promise<Partial<any>> {
+  const moduleLogger = this.logger.withMetadata({
+    module: 'RAGRetrievalService',
+    method: 'retrieveContextFromWorkflowState',
+    workflowId: state.workflowId
+  })
+  
+  try {
+    // Get message content from state
+    const messageContent = state.currentMessage?.content
+    const patientId = state.patientId
+    
+    if (!messageContent) {
+      throw new RAGRetrievalError('Message content required for context retrieval')
+    }
+    
+    // Retrieve context
+    const retrievalResult = patientId
+      ? await this.retrieveForPatient(
+          patientId,
+          messageContent,
+          {
+            limit: state.retrievalOptions?.limit || 5,
+            minRelevance: state.retrievalOptions?.minRelevance || 0.7,
+            documentType: state.retrievalOptions?.documentType,
+            includeMetadata: true
+          }
+        )
+      : await this.retrieveContext(
+          messageContent,
+          {
+            limit: state.retrievalOptions?.limit || 5,
+            minRelevance: state.retrievalOptions?.minRelevance || 0.7,
+            documentType: state.retrievalOptions?.documentType,
+            includeMetadata: true
+          }
+        )
+    
+    // Rank and filter results
+    const rankedResults = await this.rankRetrievedContext(retrievalResult)
+    const filteredResults = await this.filterByRelevance(
+      rankedResults,
+      state.retrievalOptions?.minRelevance || 0.7
+    )
+    
+    moduleLogger.info('Retrieved and ranked context successfully', {
+      chunkCount: filteredResults.chunks.length,
+      sourceCount: filteredResults.sources.length,
+      averageRelevance: filteredResults.averageRelevance
+    })
+    
+    // Return updated state
+    return {
+      ragContext: {
+        retrievedChunks: filteredResults.chunks,
+        sources: filteredResults.sources,
+        totalMatches: filteredResults.totalMatches,
+        averageRelevance: filteredResults.averageRelevance,
+        retrievalTimestamp: new Date().toISOString()
+      },
+      retrievalStatus: 'completed'
+    }
+  } catch (error) {
+    // Log the error
+    moduleLogger.error('Failed to retrieve context', {}, error)
+    
+    // If error occurred, update state with error information
+    return {
+      ragContext: {
+        error: error instanceof Error ? error.message : String(error),
+        retrievalTimestamp: new Date().toISOString()
+      },
+      retrievalStatus: 'error'
+    }
+  }
+}
+
 // Export singleton instance
 export const ragRetrievalService = new RAGRetrievalService()
